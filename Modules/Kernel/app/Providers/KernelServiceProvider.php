@@ -5,7 +5,9 @@ namespace Modules\Kernel\Providers;
 use Illuminate\Support\Facades\Gate;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Kernel\Console\RestaurerBaseDeDonneesCommand;
 use Modules\Kernel\Console\SauvegarderBaseDeDonneesCommand;
+use Modules\Kernel\Support\BackupDiskProductionGuard;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\DirectionScopeBypassResolver;
 use Modules\Kernel\Contracts\NotificationService;
@@ -42,6 +44,7 @@ class KernelServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         SauvegarderBaseDeDonneesCommand::class,
+        RestaurerBaseDeDonneesCommand::class,
     ];
 
     /**
@@ -68,6 +71,8 @@ class KernelServiceProvider extends ModuleServiceProvider
     public function boot(): void
     {
         parent::boot();
+
+        BackupDiskProductionGuard::verifier();
 
         Gate::policy(Direction::class, DirectionPolicy::class);
         Gate::policy(User::class, UserPolicy::class);

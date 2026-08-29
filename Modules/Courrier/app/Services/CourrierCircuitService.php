@@ -2,6 +2,7 @@
 
 namespace Modules\Courrier\Services;
 
+use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Contracts\CourrierPdfGenerator;
 use Modules\Courrier\Contracts\NumeroGenerator;
@@ -67,17 +68,23 @@ class CourrierCircuitService
             && ! empty($donnees['direction_destination_id'])
             && $donnees['type'] !== CourrierType::DEMANDE_STAGE->value;
 
-        $courrier = Courrier::query()->create([
-            ...$donnees,
-            'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-            'statut' => CourrierStatut::RECU,
-            'necessite_avis_dg' => ! $estCircuitCourt,
-            'initie_par_dg' => false,
-            'created_by' => $auteur->id,
-        ]);
+        $courrier = DB::transaction(function () use ($auteur, $donnees, $estCircuitCourt) {
+            $courrier = Courrier::query()->create([
+                ...$donnees,
+                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'statut' => CourrierStatut::RECU,
+                'necessite_avis_dg' => ! $estCircuitCourt,
+                'initie_par_dg' => false,
+                'created_by' => $auteur->id,
+            ]);
 
-        $this->tracerTransition($courrier, $auteur);
+            $this->tracerTransition($courrier, $auteur);
 
+            return $courrier;
+        });
+
+        // Notification envoyée après commit : jamais de mail annonçant un
+        // courrier dont l'écriture aurait finalement été annulée.
         if ($courrier->direction_destination_id) {
             $responsables = User::query()
                 ->where('direction_id', $courrier->direction_destination_id)
@@ -101,19 +108,23 @@ class CourrierCircuitService
      */
     public function creerDepuisPublic(array $donnees): Courrier
     {
-        $courrier = Courrier::query()->create([
-            ...$donnees,
-            'type' => CourrierType::DEMANDE_STAGE,
-            'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-            'statut' => CourrierStatut::RECU,
-            // Une demande de stage exige structurellement l'avis de la DG :
-            // toujours le circuit complet, jamais le circuit court.
-            'necessite_avis_dg' => true,
-            'initie_par_dg' => false,
-            'created_by' => null,
-        ]);
+        $courrier = DB::transaction(function () use ($donnees) {
+            $courrier = Courrier::query()->create([
+                ...$donnees,
+                'type' => CourrierType::DEMANDE_STAGE,
+                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'statut' => CourrierStatut::RECU,
+                // Une demande de stage exige structurellement l'avis de la DG :
+                // toujours le circuit complet, jamais le circuit court.
+                'necessite_avis_dg' => true,
+                'initie_par_dg' => false,
+                'created_by' => null,
+            ]);
 
-        $this->tracerTransition($courrier, null);
+            $this->tracerTransition($courrier, null);
+
+            return $courrier;
+        });
 
         if ($courrier->candidat_email) {
             $this->notifications->envoyerMail($courrier->candidat_email, new AccuseReceptionCandidatMail($courrier));
@@ -132,17 +143,21 @@ class CourrierCircuitService
      */
     public function creerCourrierExterneDepuisPublic(array $donnees): Courrier
     {
-        $courrier = Courrier::query()->create([
-            ...$donnees,
-            'type' => CourrierType::CORRESPONDANCE_GENERALE,
-            'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-            'statut' => CourrierStatut::RECU,
-            'necessite_avis_dg' => true,
-            'initie_par_dg' => false,
-            'created_by' => null,
-        ]);
+        $courrier = DB::transaction(function () use ($donnees) {
+            $courrier = Courrier::query()->create([
+                ...$donnees,
+                'type' => CourrierType::CORRESPONDANCE_GENERALE,
+                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'statut' => CourrierStatut::RECU,
+                'necessite_avis_dg' => true,
+                'initie_par_dg' => false,
+                'created_by' => null,
+            ]);
 
-        $this->tracerTransition($courrier, null);
+            $this->tracerTransition($courrier, null);
+
+            return $courrier;
+        });
 
         if ($courrier->expediteur_externe_email) {
             $this->notifications->envoyerMail($courrier->expediteur_externe_email, new AccuseReceptionCourrierExterneMail($courrier));
@@ -168,31 +183,35 @@ class CourrierCircuitService
 
         $validationRequise = (bool) ($donnees['validation_dg_requise'] ?? false);
 
-        $courrier = Courrier::query()->create([
-            'objet' => $donnees['objet'],
-            'type' => CourrierType::CORRESPONDANCE_GENERALE,
-            'direction_destination_id' => $donnees['direction_destination_id'],
-            'direction_origine_id' => null,
-            'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-            'statut' => CourrierStatut::RECU,
-            'necessite_avis_dg' => false,
-            'initie_par_dg' => true,
-            'validation_dg_requise' => $validationRequise,
-            'piece_jointe_chemin' => $donnees['piece_jointe_chemin'] ?? null,
-            'created_by' => $secretariat1->id,
-        ]);
+        $courrier = DB::transaction(function () use ($secretariat1, $donnees, $validationRequise) {
+            $courrier = Courrier::query()->create([
+                'objet' => $donnees['objet'],
+                'type' => CourrierType::CORRESPONDANCE_GENERALE,
+                'direction_destination_id' => $donnees['direction_destination_id'],
+                'direction_origine_id' => null,
+                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'statut' => CourrierStatut::RECU,
+                'necessite_avis_dg' => false,
+                'initie_par_dg' => true,
+                'validation_dg_requise' => $validationRequise,
+                'piece_jointe_chemin' => $donnees['piece_jointe_chemin'] ?? null,
+                'created_by' => $secretariat1->id,
+            ]);
 
-        $this->tracerTransition($courrier, $secretariat1);
+            $this->tracerTransition($courrier, $secretariat1);
 
-        $courrier->projet_reponse_contenu = $donnees['projet_reponse_contenu'];
-        $courrier->relecteur_id = $donnees['relecteur_id'];
-        $courrier->statut = $validationRequise ? CourrierStatut::EN_ATTENTE_VALIDATION_DG : CourrierStatut::EN_RELECTURE;
-        $courrier->save();
-        $this->tracerTransition($courrier, $secretariat1);
+            $courrier->projet_reponse_contenu = $donnees['projet_reponse_contenu'];
+            $courrier->relecteur_id = $donnees['relecteur_id'];
+            $courrier->statut = $validationRequise ? CourrierStatut::EN_ATTENTE_VALIDATION_DG : CourrierStatut::EN_RELECTURE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $secretariat1);
 
-        $this->audit->enregistrer('courrier.initie_par_dg', $courrier, $secretariat1, [
-            'validation_dg_requise' => $validationRequise,
-        ]);
+            $this->audit->enregistrer('courrier.initie_par_dg', $courrier, $secretariat1, [
+                'validation_dg_requise' => $validationRequise,
+            ]);
+
+            return $courrier;
+        });
 
         $responsables = User::query()
             ->where('direction_id', $courrier->direction_destination_id)
@@ -214,16 +233,19 @@ class CourrierCircuitService
      */
     public function validerAvantDiffusion(Courrier $courrier, User $dg): Courrier
     {
-        $this->assertTransitionAutorisee($courrier, $dg, CourrierStatut::EN_RELECTURE);
+        return DB::transaction(function () use ($courrier, $dg) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $dg, CourrierStatut::EN_RELECTURE);
 
-        $courrier->valide_par_dg_at = now();
-        $courrier->statut = CourrierStatut::EN_RELECTURE;
-        $courrier->save();
-        $this->tracerTransition($courrier, $dg);
+            $courrier->valide_par_dg_at = now();
+            $courrier->statut = CourrierStatut::EN_RELECTURE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $dg);
 
-        $this->audit->enregistrer('courrier.valide_par_dg', $courrier, $dg);
+            $this->audit->enregistrer('courrier.valide_par_dg', $courrier, $dg);
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     /**
@@ -271,6 +293,20 @@ class CourrierCircuitService
      * le statut) l'appellent : ce sont les deux seuls points d'entrée où un
      * utilisateur agit sur un dossier qui vient de lui être transmis.
      */
+    /**
+     * Recharge le courrier avec un verrou de ligne, à appeler en tout
+     * premier à l'intérieur d'une DB::transaction() : si deux requêtes
+     * tentent la même transition au même instant, la seconde attend que la
+     * première committe puis relit l'état réel avant de revalider — jamais
+     * un statut déjà périmé porté par l'instance reçue en paramètre de la
+     * méthode publique. Même pattern que
+     * StagiaireCircuitService::lockStagiaireFrais().
+     */
+    private function lockCourrierFrais(Courrier $courrier): Courrier
+    {
+        return Courrier::query()->lockForUpdate()->findOrFail($courrier->id);
+    }
+
     private function assertDechargeDonnee(Courrier $courrier): void
     {
         if ($courrier->enTransit()) {
@@ -305,64 +341,74 @@ class CourrierCircuitService
      */
     public function accuserReception(Courrier $courrier, User $utilisateur): Courrier
     {
-        $bordereau = $courrier->bordereauCourant();
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
 
-        if ($bordereau === null) {
-            throw TransitionNonAutoriseeException::sautDetape();
-        }
+            $bordereau = $courrier->bordereauCourant();
 
-        if ($bordereau->accuse_reception_at !== null) {
-            throw TransitionNonAutoriseeException::dechargeDejaDonnee();
-        }
-
-        if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
-            if ($courrier->relecteur_id !== $utilisateur->id) {
-                throw TransitionNonAutoriseeException::posteNonHabilite();
-            }
-        } else {
-            $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg);
-            $enInterim = $utilisateur->poste === Poste::DGA;
-
-            if ($utilisateur->poste === null || ! in_array($utilisateur->poste, $postesAutorises, true)) {
-                throw TransitionNonAutoriseeException::posteNonHabilite();
+            if ($bordereau === null) {
+                throw TransitionNonAutoriseeException::sautDetape();
             }
 
-            if ($enInterim && DgDisponibilite::estDisponible()) {
-                throw TransitionNonAutoriseeException::posteNonHabilite();
+            if ($bordereau->accuse_reception_at !== null) {
+                throw TransitionNonAutoriseeException::dechargeDejaDonnee();
             }
-        }
 
-        $bordereau->accuse_reception_par_id = $utilisateur->id;
-        $bordereau->accuse_reception_at = now();
-        $bordereau->save();
+            if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
+                if ($courrier->relecteur_id !== $utilisateur->id) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
+            } else {
+                $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg);
+                $enInterim = $utilisateur->poste === Poste::DGA;
 
-        $this->audit->enregistrer('courrier.accuse_reception', $courrier, $utilisateur, [
-            'statut' => $courrier->statut->value,
-        ]);
+                if ($utilisateur->poste === null || ! in_array($utilisateur->poste, $postesAutorises, true)) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
 
-        return $courrier;
+                if ($enInterim && DgDisponibilite::estDisponible()) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
+            }
+
+            $bordereau->accuse_reception_par_id = $utilisateur->id;
+            $bordereau->accuse_reception_at = now();
+            $bordereau->save();
+
+            $this->audit->enregistrer('courrier.accuse_reception', $courrier, $utilisateur, [
+                'statut' => $courrier->statut->value,
+            ]);
+
+            return $courrier;
+        });
     }
 
     public function transmettreAuProtocole(Courrier $courrier, User $utilisateur): Courrier
     {
-        $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::AU_PROTOCOLE);
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::AU_PROTOCOLE);
 
-        $courrier->statut = CourrierStatut::AU_PROTOCOLE;
-        $courrier->save();
-        $this->tracerTransition($courrier, $utilisateur);
+            $courrier->statut = CourrierStatut::AU_PROTOCOLE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     public function transmettreEnAttenteAvisDg(Courrier $courrier, User $utilisateur): Courrier
     {
-        $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
 
-        $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
-        $courrier->save();
-        $this->tracerTransition($courrier, $utilisateur);
+            $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     /**
@@ -376,94 +422,111 @@ class CourrierCircuitService
      */
     public function rendreAvisDg(Courrier $courrier, User $utilisateur, AvisDg $avis, ?string $commentaire): Courrier
     {
-        $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::PROJET_REPONSE_EN_COURS);
+        return DB::transaction(function () use ($courrier, $utilisateur, $avis, $commentaire) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::PROJET_REPONSE_EN_COURS);
 
-        $enInterim = $utilisateur->poste === Poste::DGA;
+            $enInterim = $utilisateur->poste === Poste::DGA;
 
-        if ($enInterim && DgDisponibilite::estDisponible()) {
-            throw TransitionNonAutoriseeException::posteNonHabilite();
-        }
+            if ($enInterim && DgDisponibilite::estDisponible()) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
 
-        $courrier->avis_dg = $avis;
-        $courrier->avis_dg_commentaire = $commentaire;
-        $courrier->avis_dg_rendu_at = now();
-        $courrier->avis_dg_rendu_par_id = $utilisateur->id;
-        $courrier->avis_dg_rendu_en_interim = $enInterim;
-        $courrier->statut = CourrierStatut::PROJET_REPONSE_EN_COURS;
-        $courrier->save();
-        $this->tracerTransition($courrier, $utilisateur);
+            $courrier->avis_dg = $avis;
+            $courrier->avis_dg_commentaire = $commentaire;
+            $courrier->avis_dg_rendu_at = now();
+            $courrier->avis_dg_rendu_par_id = $utilisateur->id;
+            $courrier->avis_dg_rendu_en_interim = $enInterim;
+            $courrier->statut = CourrierStatut::PROJET_REPONSE_EN_COURS;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
 
-        $this->audit->enregistrer('courrier.avis_dg_rendu', $courrier, $utilisateur, [
-            'avis' => $avis->value,
-            'interim' => $enInterim,
-        ]);
+            $this->audit->enregistrer('courrier.avis_dg_rendu', $courrier, $utilisateur, [
+                'avis' => $avis->value,
+                'interim' => $enInterim,
+            ]);
 
-        if ($avis === AvisDg::FAVORABLE && $courrier->type === CourrierType::DEMANDE_STAGE) {
-            CourrierStageAvisFavorable::dispatch($courrier);
-        }
+            // Après commit uniquement : la fiche stagiaire créée en
+            // réaction à cet événement ne doit jamais exister pour un avis
+            // finalement annulé par un rollback (ex. verrou expiré, échec
+            // d'assertion concurrente).
+            if ($avis === AvisDg::FAVORABLE && $courrier->type === CourrierType::DEMANDE_STAGE) {
+                DB::afterCommit(fn () => CourrierStageAvisFavorable::dispatch($courrier));
+            }
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     public function soumettreProjetReponse(Courrier $courrier, User $utilisateur, array $projetReponseContenu, int $relecteurId): Courrier
     {
-        $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_RELECTURE);
+        return DB::transaction(function () use ($courrier, $utilisateur, $projetReponseContenu, $relecteurId) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_RELECTURE);
 
-        $courrier->projet_reponse_contenu = $projetReponseContenu;
-        $courrier->relecteur_id = $relecteurId;
-        $courrier->relecture_validee_at = null;
-        $courrier->statut = CourrierStatut::EN_RELECTURE;
-        $courrier->save();
-        $this->tracerTransition($courrier, $utilisateur);
+            $courrier->projet_reponse_contenu = $projetReponseContenu;
+            $courrier->relecteur_id = $relecteurId;
+            $courrier->relecture_validee_at = null;
+            $courrier->statut = CourrierStatut::EN_RELECTURE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     public function validerRelecture(Courrier $courrier, User $utilisateur, ?string $commentaire): Courrier
     {
-        if ($courrier->statut !== CourrierStatut::EN_RELECTURE) {
-            throw TransitionNonAutoriseeException::sautDetape();
-        }
+        return DB::transaction(function () use ($courrier, $utilisateur, $commentaire) {
+            $courrier = $this->lockCourrierFrais($courrier);
 
-        if ($courrier->relecteur_id !== $utilisateur->id) {
-            throw TransitionNonAutoriseeException::posteNonHabilite();
-        }
+            if ($courrier->statut !== CourrierStatut::EN_RELECTURE) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
 
-        $this->assertDechargeDonnee($courrier);
+            if ($courrier->relecteur_id !== $utilisateur->id) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
 
-        $courrier->relecture_validee_at = now();
-        $courrier->relecture_commentaire = $commentaire;
-        $courrier->save();
+            $this->assertDechargeDonnee($courrier);
 
-        return $courrier;
+            $courrier->relecture_validee_at = now();
+            $courrier->relecture_commentaire = $commentaire;
+            $courrier->save();
+
+            return $courrier;
+        });
     }
 
     public function signer(Courrier $courrier, User $utilisateur): Courrier
     {
-        $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::SIGNE);
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::SIGNE);
 
-        if (! $courrier->relectureEstValidee()) {
-            throw new RelectureNonValideeException;
-        }
+            if (! $courrier->relectureEstValidee()) {
+                throw new RelectureNonValideeException;
+            }
 
-        $courrier->signataire_id = $utilisateur->id;
-        $courrier->signe_at = now();
-        $courrier->statut = CourrierStatut::SIGNE;
+            $courrier->signataire_id = $utilisateur->id;
+            $courrier->signe_at = now();
+            $courrier->statut = CourrierStatut::SIGNE;
 
-        // PDF définitif généré exactement ici, jamais avant (le contenu du
-        // projet de réponse reste modifiable jusqu'à cet instant précis) et
-        // jamais régénéré ensuite : posé dans la même sauvegarde que la
-        // transition elle-même, pour qu'il n'existe jamais d'état
-        // "signé sans PDF".
-        $courrier->pdf_chemin = $this->pdf->generer($courrier);
-        $courrier->save();
-        $this->tracerTransition($courrier, $utilisateur);
+            // PDF définitif généré exactement ici, jamais avant (le contenu du
+            // projet de réponse reste modifiable jusqu'à cet instant précis) et
+            // jamais régénéré ensuite : posé dans la même sauvegarde que la
+            // transition elle-même, pour qu'il n'existe jamais d'état
+            // "signé sans PDF".
+            $courrier->pdf_chemin = $this->pdf->generer($courrier);
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
 
-        $this->audit->enregistrer('courrier.signature', $courrier, $utilisateur, [
-            'description' => "Signature du courrier {$courrier->numero_accuse_reception}",
-        ]);
+            $this->audit->enregistrer('courrier.signature', $courrier, $utilisateur, [
+                'description' => "Signature du courrier {$courrier->numero_accuse_reception}",
+            ]);
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     public function enregistrer(
@@ -473,18 +536,21 @@ class CourrierCircuitService
         ?string $noteTechnique,
         ?string $accuseReceptionPartenaire,
     ): Courrier {
-        $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENREGISTRE);
+        return DB::transaction(function () use ($courrier, $utilisateur, $classification, $noteTechnique, $accuseReceptionPartenaire) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENREGISTRE);
 
-        $courrier->classification = $classification;
-        $courrier->note_technique = $noteTechnique;
-        $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
-        $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
-        $courrier->enregistre_at = now();
-        $courrier->statut = CourrierStatut::ENREGISTRE;
-        $courrier->save();
-        $this->tracerTransition($courrier, $utilisateur);
+            $courrier->classification = $classification;
+            $courrier->note_technique = $noteTechnique;
+            $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
+            $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
+            $courrier->enregistre_at = now();
+            $courrier->statut = CourrierStatut::ENREGISTRE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
 
-        return $courrier;
+            return $courrier;
+        });
     }
 
     public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation
