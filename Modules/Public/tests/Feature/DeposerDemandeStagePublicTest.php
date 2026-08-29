@@ -93,7 +93,7 @@ class DeposerDemandeStagePublicTest extends TestCase
             ->assertCreated()
             ->json('numero_accuse_reception');
 
-        $this->getJson("/api/v1/public/dossiers/{$numero}")
+        $this->postJson('/api/v1/public/dossiers/verifier', ['numero' => $numero, 'nom' => 'Jean Kabila'])
             ->assertOk()
             ->assertJsonPath('data.statut_simplifie', "En cours d'examen");
     }

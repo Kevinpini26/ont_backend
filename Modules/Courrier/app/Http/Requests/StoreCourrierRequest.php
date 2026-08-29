@@ -49,6 +49,13 @@ class StoreCourrierRequest extends FormRequest
             'direction_destination_id' => ['nullable', 'integer', 'exists:directions,id'],
             'expediteur_externe_nom' => ['nullable', 'string', 'max:255'],
             'candidat_nom' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'string', 'max:255'],
+            // Facultatif même pour une demande de stage : un dépôt au
+            // guichet n'a pas toujours d'e-mail, contrairement au dépôt en
+            // ligne (voir DeposerDemandeStagePublicRequest). Sert de second
+            // facteur alternatif au nom pour le suivi public du dossier, et
+            // permet d'envoyer l'accusé de réception par e-mail quand il
+            // est renseigné (voir CourrierCircuitService::creer()).
+            'candidat_email' => ['nullable', 'email', 'max:255'],
             'candidat_contact' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'string', 'max:255'],
             'candidat_etablissement' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'string', 'max:255'],
             'periode_souhaitee_debut' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'date'],

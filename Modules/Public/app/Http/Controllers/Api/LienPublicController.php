@@ -29,7 +29,11 @@ class LienPublicController extends Controller
             ->with(['stagiaire.direction'])
             ->firstOrFail();
 
-        abort_unless($lien->estValide(), 410, 'Ce lien a déjà été utilisé.');
+        // 404 générique, sans message distinguant "lien déjà utilisé" d'un
+        // jeton simplement inconnu : le jeton (48 caractères aléatoires)
+        // n'est de toute façon pas énumérable, mais autant ne pas confirmer
+        // par le code HTTP qu'un lien donné a bien existé.
+        abort_unless($lien->estValide(), 404);
 
         return $lien;
     }

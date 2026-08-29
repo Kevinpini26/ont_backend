@@ -88,9 +88,10 @@ class ConventionStageTest extends StagiaireTestCase
 
         $this->assertNotNull($stagiaire->fresh()->convention_signee_stagiaire_at);
 
-        // Lien à usage unique : une seconde tentative doit être refusée.
+        // Lien à usage unique : une seconde tentative doit être refusée,
+        // par un 404 générique (pas de distinction avec un jeton inconnu).
         $this->postJson("/api/v1/public/liens/{$lien->token}/signer-convention")
-            ->assertStatus(410);
+            ->assertStatus(404);
     }
 
     public function test_un_lien_du_mauvais_type_est_refuse_pour_signer_une_convention(): void

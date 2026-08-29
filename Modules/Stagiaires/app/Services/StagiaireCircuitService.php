@@ -5,6 +5,7 @@ namespace Modules\Stagiaires\Services;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Models\Direction;
@@ -507,6 +508,7 @@ class StagiaireCircuitService
             now()->year,
             $this->sequences->suivant('attestation', now()->year),
         );
+        $stagiaire->token_verification = Str::random(32);
         $stagiaire->save();
 
         $chemin = $this->attestations->generer($stagiaire);

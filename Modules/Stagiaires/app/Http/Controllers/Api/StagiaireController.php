@@ -19,16 +19,33 @@ use Modules\Stagiaires\Http\Requests\ReaffecterStagiaireRequest;
 use Modules\Stagiaires\Http\Requests\ValiderArriveeRequest;
 use Modules\Stagiaires\Http\Resources\StagiaireResource;
 use Modules\Stagiaires\Http\Resources\StagiaireRetourResource;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Services\StagiaireCircuitService;
+use Modules\Stagiaires\Support\VisibiliteStagiairePourCircuitCourrier;
 
 class StagiaireController extends Controller
 {
-    public function __construct(private readonly StagiaireCircuitService $circuit) {}
+    public function __construct(
+        private readonly StagiaireCircuitService $circuit,
+        private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier,
+    ) {}
 
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Stagiaire::class);
+
         $query = Stagiaire::query()->with('direction');
+
+        // Le DirectionScope global filtre déjà les responsables de
+        // direction sur leur propre direction. Un agent du circuit
+        // courrier (poste central, donc hors périmètre de ce scope) ne
+        // doit voir que les dossiers dont le courrier d'origine est
+        // encore dans sa propre file — voir StagiairePolicy::view() pour
+        // la même règle appliquée fiche par fiche.
+        if ($request->user()->role === UserRole::AGENT_CIRCUIT_COURRIER) {
+            $this->visibiliteCircuitCourrier->appliquerFiltre($query, $request->user()->poste);
+        }
 
         // Opt-in explicite : charge la relation 'presences' seulement pour
         // l'aperçu présences (voir PresencesApercuPage.jsx côté frontend),

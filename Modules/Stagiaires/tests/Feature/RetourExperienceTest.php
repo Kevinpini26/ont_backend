@@ -92,12 +92,13 @@ class RetourExperienceTest extends StagiaireTestCase
 
         $this->assertDatabaseHas('stagiaire_retours', ['stagiaire_id' => $stagiaire->id]);
 
-        // Usage unique.
+        // Usage unique, 404 générique (pas de distinction avec un jeton
+        // inconnu — voir LienPublicController::trouverLienValide()).
         $this->postJson("/api/v1/public/liens/{$lien->token}/retour", [
             'note_encadrement' => 3,
             'note_missions' => 3,
             'note_ambiance' => 3,
-        ])->assertStatus(410);
+        ])->assertStatus(404);
     }
 
     public function test_seule_la_dfp_peut_consulter_le_retour_jamais_la_direction_daccueil(): void

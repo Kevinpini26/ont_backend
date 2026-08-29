@@ -14,8 +14,15 @@ Route::prefix('v1/public')->middleware('throttle:sensitive')->group(function () 
     Route::post('/demandes-stage', [DemandeStagePublicController::class, 'store']);
     Route::get('/disponibilite-demandes-stage', [DisponibiliteDemandesStagePublicController::class, 'show']);
     Route::post('/courriers-externes', [CourrierExternePublicController::class, 'store']);
-    Route::get('/dossiers/{numeroAccuseReception}', [DossierPublicController::class, 'show']);
-    Route::get('/attestations/{numeroAttestation}', [AttestationPublicController::class, 'show']);
+
+    // Vérifications à identifiant devinable (numéro séquentiel) : limiteur
+    // dédié par IP en plus de 'sensitive', et verrouillage par identifiant
+    // géré dans le contrôleur (voir VerificationEchecsLimiteur).
+    Route::middleware('throttle:public-lookup')->group(function () {
+        Route::post('/dossiers/verifier', [DossierPublicController::class, 'verifier']);
+        Route::get('/attestations/token/{token}', [AttestationPublicController::class, 'verifierParToken']);
+        Route::post('/attestations/verifier', [AttestationPublicController::class, 'verifierParNumero']);
+    });
 
     Route::get('/liens/{token}', [LienPublicController::class, 'show']);
     Route::get('/liens/{token}/convention.pdf', [LienPublicController::class, 'telechargerConvention']);

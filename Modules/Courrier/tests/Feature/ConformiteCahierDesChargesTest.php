@@ -232,7 +232,10 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
         $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")->assertOk();
 
-        $response = $this->getJson("/api/v1/public/dossiers/{$numero}")->assertOk();
+        $response = $this->postJson('/api/v1/public/dossiers/verifier', [
+            'numero' => $numero,
+            'nom' => 'Agence Voyage Congo SARL',
+        ])->assertOk();
 
         $this->assertArrayNotHasKey('statut', $response->json('data'));
         $this->assertArrayNotHasKey('statut_label', $response->json('data'));

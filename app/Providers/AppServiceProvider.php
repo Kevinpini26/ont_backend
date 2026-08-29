@@ -41,5 +41,11 @@ class AppServiceProvider extends ServiceProvider
         // vérification publique de dossier) : plus permissif que 'auth'
         // mais plus strict que le débit API général.
         RateLimiter::for('sensitive', fn ($request) => Limit::perMinute(20)->by($request->user()?->id ?: $request->ip()));
+
+        // Vérification publique par identifiant séquentiel devinable
+        // (numéro de dossier, numéro d'attestation) : freine le
+        // moissonnage par IP, en plus du verrouillage par identifiant
+        // (voir Modules\Public\Support\VerificationEchecsLimiteur).
+        RateLimiter::for('public-lookup', fn ($request) => Limit::perMinute(10)->by($request->ip()));
     }
 }

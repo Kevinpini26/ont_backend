@@ -53,6 +53,7 @@ class Stagiaire extends Model
         'note_finale',
         'cloture_at',
         'numero_attestation',
+        'token_verification',
         'objectifs',
         'doublon_suspecte',
         'doublon_stagiaire_id',

@@ -32,11 +32,11 @@ class DompdfAttestationGenerator implements AttestationGenerator
 
     private function genererQrCodeDataUri(Stagiaire $stagiaire): ?string
     {
-        if (! $stagiaire->numero_attestation) {
+        if (! $stagiaire->token_verification) {
             return null;
         }
 
-        $url = rtrim(config('app.frontend_url'), '/')."/verification-attestation/{$stagiaire->numero_attestation}";
+        $url = rtrim(config('app.frontend_url'), '/')."/verification-attestation/{$stagiaire->token_verification}";
 
         return $this->qrCode->genererSvgDataUri($url);
     }

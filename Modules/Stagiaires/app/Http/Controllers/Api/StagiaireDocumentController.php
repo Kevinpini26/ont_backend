@@ -44,12 +44,12 @@ class StagiaireDocumentController extends Controller
 
         abort_unless($document->stagiaire_id === $stagiaire->id, 404);
 
-        // L'attestation contient le détail des deux évaluations : jamais
-        // accessible à la direction d'accueil, même une fois le dossier
-        // clôturé (voir StagiairePolicy::voirEvaluationFinale()).
-        if ($document->type === DocumentType::ATTESTATION_STAGE) {
-            $this->authorize('voirEvaluationFinale', Stagiaire::class);
-        }
+        // Accès au dossier (ci-dessus) et accès à cette pièce précise sont
+        // deux gardes distinctes : pièce d'identité, diplômes et CV
+        // restent réservés à la DFP même pour quelqu'un qui voit par
+        // ailleurs le dossier (ex. la direction d'accueil) — voir
+        // StagiairePolicy::telechargerDocument().
+        $this->authorize('telechargerDocument', [$stagiaire, $document->type]);
 
         return Storage::disk('local')->download($document->chemin, $document->nom_original);
     }

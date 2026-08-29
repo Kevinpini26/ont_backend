@@ -5,18 +5,47 @@ namespace Modules\Stagiaires\Policies;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Stagiaires\Enums\DocumentType;
 use Modules\Stagiaires\Models\Stagiaire;
+use Modules\Stagiaires\Support\VisibiliteStagiairePourCircuitCourrier;
 
 class StagiairePolicy
 {
+    public function __construct(private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier) {}
+
+    /**
+     * Filtre grossier (qui a le droit de lister des stagiaires, pas
+     * lesquels) : le filtrage fin par ligne, pour la direction et le
+     * circuit courrier, est appliqué dans StagiaireController::index() en
+     * plus de cette policy — voir VisibiliteStagiairePourCircuitCourrier
+     * et le DirectionScope global.
+     */
     public function viewAny(User $user): bool
     {
-        return true;
+        return match ($user->role) {
+            UserRole::ADMINISTRATEUR, UserRole::AGENT_DFP, UserRole::RESPONSABLE_DIRECTION => true,
+            UserRole::AGENT_CIRCUIT_COURRIER => $user->poste !== null,
+            default => false,
+        };
     }
 
+    /**
+     * La DFP et l'administrateur voient tout ; un responsable de direction
+     * ne voit que les dossiers de sa propre direction ; un agent du
+     * circuit courrier ne voit un dossier que tant que le courrier
+     * d'origine est encore dans sa propre file de traitement (voir
+     * VisibiliteStagiairePourCircuitCourrier) — jamais après, notamment
+     * une fois le stage en cours ou évalué.
+     */
     public function view(User $user, Stagiaire $stagiaire): bool
     {
-        return true;
+        return match ($user->role) {
+            UserRole::ADMINISTRATEUR, UserRole::AGENT_DFP => true,
+            UserRole::RESPONSABLE_DIRECTION => $user->direction_id === $stagiaire->direction_id,
+            UserRole::AGENT_CIRCUIT_COURRIER => $user->poste !== null
+                && $this->visibiliteCircuitCourrier->estVisible($user->poste, $stagiaire),
+            default => false,
+        };
     }
 
     public function gererDossier(User $user): bool
@@ -129,6 +158,31 @@ class StagiairePolicy
     {
         return $user->role === UserRole::AGENT_DFP
             || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id);
+    }
+
+    /**
+     * Téléchargement d'une pièce précise : identité, diplômes et CV
+     * relèvent du dossier administratif du candidat et restent réservés à
+     * la DFP et à l'administrateur, jamais à la direction d'accueil — même
+     * une fois le stage terminé. La lettre de l'université et la lettre de
+     * demande de stage, elles, concernent directement la direction
+     * d'accueil (objet de son affectation) et lui restent visibles. Voir
+     * view() ci-dessus pour la garde d'accès au dossier lui-même, vérifiée
+     * en amont par le contrôleur avant cette règle plus fine par type.
+     */
+    public function telechargerDocument(User $user, Stagiaire $stagiaire, DocumentType $type): bool
+    {
+        if ($user->role === UserRole::ADMINISTRATEUR) {
+            return true;
+        }
+
+        return match ($type) {
+            DocumentType::PIECE_IDENTITE, DocumentType::DIPLOME_ETAT, DocumentType::DERNIER_DIPLOME,
+            DocumentType::CV, DocumentType::ATTESTATION_INSCRIPTION => $user->role === UserRole::AGENT_DFP,
+            DocumentType::LETTRE_STAGE_UNIVERSITE, DocumentType::LETTRE_DEMANDE_STAGE => $user->role === UserRole::AGENT_DFP
+                || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id),
+            DocumentType::ATTESTATION_STAGE => $this->voirEvaluationFinale($user),
+        };
     }
 
     /**
