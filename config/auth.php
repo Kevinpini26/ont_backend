@@ -96,7 +96,9 @@ return [
         'users' => [
             'provider' => 'users',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
-            'expire' => 60,
+            // Durée de vie courte, volontairement : un lien qui traîne des
+            // heures dans une boîte mail est une fenêtre d'attaque inutile.
+            'expire' => env('AUTH_PASSWORD_RESET_EXPIRE', 30),
             'throttle' => 60,
         ],
     ],

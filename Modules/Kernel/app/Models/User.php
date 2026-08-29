@@ -10,6 +10,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Modules\Kernel\Database\Factories\UserFactory;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Notifications\ReinitialisationMotDePasseNotification;
 
 class User extends Authenticatable
 {
@@ -24,6 +25,7 @@ class User extends Authenticatable
         'poste',
         'direction_id',
         'dg_disponible',
+        'doit_changer_mot_de_passe',
     ];
 
     protected $hidden = [
@@ -39,7 +41,14 @@ class User extends Authenticatable
             'role' => UserRole::class,
             'poste' => Poste::class,
             'dg_disponible' => 'boolean',
+            'doit_changer_mot_de_passe' => 'boolean',
+            'verrouille_jusqu_a' => 'datetime',
         ];
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ReinitialisationMotDePasseNotification($token));
     }
 
     protected static function newFactory(): UserFactory

@@ -27,7 +27,11 @@ class AuthenticationTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('user.id', $user->id)
-            ->assertJsonStructure(['user', 'token']);
+            ->assertJsonStructure(['user', 'token', 'expires_at']);
+
+        // Le frontend programme l'avertissement de fin de session dessus
+        // (voir useSessionExpiryWatcher) : doit être dans le futur.
+        $this->assertTrue(\Illuminate\Support\Carbon::parse($response->json('expires_at'))->isFuture());
     }
 
     public function test_login_fails_with_invalid_credentials(): void

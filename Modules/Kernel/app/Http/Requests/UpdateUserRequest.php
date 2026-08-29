@@ -4,9 +4,9 @@ namespace Modules\Kernel\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Support\PasswordPolicy;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -22,7 +22,7 @@ class UpdateUserRequest extends FormRequest
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', Rule::unique('users', 'email')->ignore($user)],
-            'password' => ['sometimes', 'required', 'string', Password::min(10)->mixedCase()->numbers()],
+            'password' => ['sometimes', 'required', 'string', PasswordPolicy::regle()],
             'role' => ['sometimes', 'required', Rule::enum(UserRole::class)],
             'poste' => [
                 Rule::requiredIf(fn () => $this->input('role', $user?->role?->value) === UserRole::AGENT_CIRCUIT_COURRIER->value),

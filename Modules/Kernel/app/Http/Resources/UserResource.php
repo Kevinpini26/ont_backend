@@ -21,6 +21,7 @@ class UserResource extends JsonResource
             'dg_disponible' => $this->when($this->poste?->value === 'dg', fn () => $this->dg_disponible),
             'direction' => new DirectionResource($this->whenLoaded('direction')),
             'direction_id' => $this->direction_id,
+            'doit_changer_mot_de_passe' => $this->doit_changer_mot_de_passe,
             'created_at' => $this->created_at,
         ];
     }
