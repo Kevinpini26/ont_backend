@@ -11,8 +11,6 @@ use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
-use Modules\Kernel\Models\User;
-use Tests\TestCase;
 
 class CircuitCourrierTest extends CourrierTestCase
 {

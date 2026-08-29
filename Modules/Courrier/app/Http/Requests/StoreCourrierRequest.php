@@ -5,12 +5,13 @@ namespace Modules\Courrier\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Models\Courrier;
 
 class StoreCourrierRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('create', \Modules\Courrier\Models\Courrier::class);
+        return $this->user()->can('create', Courrier::class);
     }
 
     /**

@@ -2,9 +2,8 @@
 
 namespace Modules\Stagiaires\Providers;
 
-use Illuminate\Support\Facades\Gate;
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Gate;
 use Modules\Stagiaires\Console\VerifierEcheancesStageCommand;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\AttestationGenerator;
@@ -20,6 +19,7 @@ use Modules\Stagiaires\Support\DompdfAttestationGenerator;
 use Modules\Stagiaires\Support\DompdfConventionGenerator;
 use Modules\Stagiaires\Support\MoyenneCalculateurNoteFinale;
 use Modules\Stagiaires\Support\SimilarTextDoublonDetector;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class StagiairesServiceProvider extends ModuleServiceProvider
 {

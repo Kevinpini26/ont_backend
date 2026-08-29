@@ -21,8 +21,8 @@ class DatabaseAuditLogger implements AuditLogger
             'auditable_type' => $sujet?->getMorphClass(),
             'auditable_id' => $sujet?->getKey(),
             'description' => Arr::pull($contexte, 'description'),
-            'ip_address' => $requete?->ip(),
-            'user_agent' => $requete ? mb_substr((string) $requete->userAgent(), 0, 255) : null,
+            'ip_address' => $requete->ip(),
+            'user_agent' => mb_substr((string) $requete->userAgent(), 0, 255),
             'meta' => $contexte === [] ? null : $contexte,
             'created_at' => now(),
         ]);

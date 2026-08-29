@@ -3,7 +3,6 @@
 namespace Modules\Stagiaires\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Enums\StagiaireStatut;

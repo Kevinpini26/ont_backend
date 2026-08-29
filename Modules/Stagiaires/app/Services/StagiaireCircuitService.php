@@ -565,6 +565,7 @@ class StagiaireCircuitService
             $presence->saisi_par_id = $saisiPar->id;
             $presence->save();
 
+            /** @var StagiairePresence */
             return $presence;
         });
     }
@@ -580,6 +581,7 @@ class StagiaireCircuitService
 
     public function ajouterDocument(Stagiaire $stagiaire, User $uploadePar, DocumentType $type, string $nomOriginal, string $chemin): StagiaireDocument
     {
+        /** @var StagiaireDocument */
         return $stagiaire->documents()->create([
             'type' => $type,
             'nom_original' => $nomOriginal,

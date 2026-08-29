@@ -5,11 +5,12 @@ namespace Modules\Courrier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
-use Tests\TestCase;
 
 class CourrierStatistiqueTest extends CourrierTestCase
 {
@@ -66,8 +67,8 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
-        \Modules\Courrier\Models\Courrier::factory()->count(3)->create(['created_at' => now()]);
-        \Modules\Courrier\Models\Courrier::factory()->count(2)->create(['created_at' => now()->subDays(45)]);
+        Courrier::factory()->count(3)->create(['created_at' => now()]);
+        Courrier::factory()->count(2)->create(['created_at' => now()->subDays(45)]);
 
         $response = $this->actingAs($reception)
             ->getJson('/api/v1/courriers/statistiques?periode=30j')
@@ -84,9 +85,9 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $autreDirection = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $direction->id, 'direction_origine_id' => null]);
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_origine_id' => $direction->id, 'direction_destination_id' => null]);
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $autreDirection->id, 'direction_origine_id' => null]);
+        Courrier::factory()->create(['direction_destination_id' => $direction->id, 'direction_origine_id' => null]);
+        Courrier::factory()->create(['direction_origine_id' => $direction->id, 'direction_destination_id' => null]);
+        Courrier::factory()->create(['direction_destination_id' => $autreDirection->id, 'direction_origine_id' => null]);
 
         $response = $this->actingAs($responsable)
             ->getJson('/api/v1/courriers/statistiques-direction')
@@ -103,10 +104,10 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        \Modules\Courrier\Models\Courrier::factory()->create([
+        Courrier::factory()->create([
             'direction_destination_id' => $direction->id,
             'direction_origine_id' => null,
-            'statut' => \Modules\Courrier\Enums\CourrierStatut::ENREGISTRE,
+            'statut' => CourrierStatut::ENREGISTRE,
         ]);
 
         $response = $this->actingAs($responsable)
@@ -142,8 +143,8 @@ class CourrierStatistiqueTest extends CourrierTestCase
 
         $directionA = Direction::factory()->create();
         $directionB = Direction::factory()->create();
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $directionA->id]);
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $directionB->id]);
+        Courrier::factory()->create(['direction_destination_id' => $directionA->id]);
+        Courrier::factory()->create(['direction_destination_id' => $directionB->id]);
 
         $response = $this->actingAs($dfp)
             ->getJson('/api/v1/courriers/statistiques-direction')
@@ -161,8 +162,8 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $autreDirection = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($saDirection)->create();
 
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $saDirection->id]);
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $autreDirection->id]);
+        Courrier::factory()->create(['direction_destination_id' => $saDirection->id]);
+        Courrier::factory()->create(['direction_destination_id' => $autreDirection->id]);
 
         $response = $this->actingAs($responsable)
             ->getJson('/api/v1/courriers/statistiques-direction')

@@ -3,12 +3,13 @@
 namespace Modules\Stagiaires\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Stagiaires\Models\Stagiaire;
 
 class AffecterStagiaireRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('affecter', \Modules\Stagiaires\Models\Stagiaire::class);
+        return $this->user()->can('affecter', Stagiaire::class);
     }
 
     public function rules(): array

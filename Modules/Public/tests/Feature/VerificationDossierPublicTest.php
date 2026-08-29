@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
+use Modules\Kernel\Models\Direction;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\Stagiaire;
 use Tests\TestCase;
@@ -204,7 +205,7 @@ class VerificationDossierPublicTest extends TestCase
 
     public function test_un_courrier_purement_interne_sans_nom_ni_expediteur_reste_introuvable_publiquement(): void
     {
-        $direction = \Modules\Kernel\Models\Direction::factory()->create();
+        $direction = Direction::factory()->create();
         Courrier::factory()->create([
             'numero_accuse_reception' => 'AR-2026-000064',
             'direction_origine_id' => $direction->id,

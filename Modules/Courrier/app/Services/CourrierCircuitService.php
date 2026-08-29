@@ -555,6 +555,7 @@ class CourrierCircuitService
 
     public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation
     {
+        /** @var CourrierAnnotation */
         return $courrier->annotations()->create([
             'auteur_id' => $auteur->id,
             'contenu' => $contenu,

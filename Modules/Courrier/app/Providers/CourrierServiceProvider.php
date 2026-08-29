@@ -2,9 +2,8 @@
 
 namespace Modules\Courrier\Providers;
 
-use Illuminate\Support\Facades\Gate;
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
@@ -17,6 +16,7 @@ use Modules\Courrier\Support\ConfigCircuitTransitionRules;
 use Modules\Courrier\Support\DatabaseSequenceGenerator;
 use Modules\Courrier\Support\DefaultNumeroGenerator;
 use Modules\Courrier\Support\DompdfCourrierPdfGenerator;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class CourrierServiceProvider extends ModuleServiceProvider
 {
@@ -69,8 +69,6 @@ class CourrierServiceProvider extends ModuleServiceProvider
 
     /**
      * Define module schedules.
-     *
-     * @param $schedule
      */
     protected function configureSchedules(Schedule $schedule): void
     {

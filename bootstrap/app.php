@@ -9,6 +9,7 @@ use Modules\Kernel\Http\Middleware\EnsureMotDePasseAJour;
 use Modules\Kernel\Http\Middleware\EnsureUserHasPoste;
 use Modules\Kernel\Http\Middleware\EnsureUserHasRole;
 use Modules\Kernel\Http\Middleware\SecurityHeaders;
+use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -49,7 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Voir SecurityHeaders::appliquer() : seul point qui couvre aussi
         // bien les réponses normales que les erreurs.
-        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response, \Throwable $e, Request $request) {
+        $exceptions->respond(function (Response $response, Throwable $e, Request $request) {
             return $request->is('api/*') ? SecurityHeaders::appliquer($response, $request) : $response;
         });
     })->create();

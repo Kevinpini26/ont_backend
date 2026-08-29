@@ -7,7 +7,6 @@ use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\Stagiaire;
-use Tests\TestCase;
 
 class StagiaireStatistiqueTest extends StagiaireTestCase
 {

@@ -4,11 +4,12 @@ namespace Modules\Courrier\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Kernel\Http\Resources\UserResource;
 
-/** @mixin \Modules\Courrier\Models\Courrier */
+/** @mixin Courrier */
 class CourrierResource extends JsonResource
 {
     public function toArray(Request $request): array

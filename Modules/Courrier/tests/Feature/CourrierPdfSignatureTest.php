@@ -6,10 +6,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
-use Modules\Courrier\Models\CourrierTransition;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
-use Modules\Kernel\Models\User;
 
 class CourrierPdfSignatureTest extends CourrierTestCase
 {

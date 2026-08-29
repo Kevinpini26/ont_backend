@@ -82,7 +82,7 @@ class DirectionScopeTest extends TestCase
         $this->assertCount(2, ScopedTestRecord::all());
     }
 
-    public function test_an_assistant_at_directionA_does_not_see_directionB_by_default_scope_unless_configured(): void
+    public function test_an_assistant_at_direction_a_does_not_see_direction_b_by_default_scope_unless_configured(): void
     {
         // Les postes du circuit central sont, par défaut, tous configurés en
         // bypass (config('kernel.circuit_courrier_central_postes')) car le

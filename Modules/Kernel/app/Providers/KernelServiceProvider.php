@@ -2,28 +2,29 @@
 
 namespace Modules\Kernel\Providers;
 
-use Illuminate\Support\Facades\Gate;
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Gate;
 use Modules\Kernel\Console\RestaurerBaseDeDonneesCommand;
 use Modules\Kernel\Console\SauvegarderBaseDeDonneesCommand;
-use Modules\Kernel\Support\BackupDiskProductionGuard;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\DirectionScopeBypassResolver;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Contracts\QrCodeService;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Policies\AuditLogPolicy;
 use Modules\Kernel\Policies\DirectionPolicy;
 use Modules\Kernel\Policies\UserPolicy;
+use Modules\Kernel\Support\BackupDiskProductionGuard;
 use Modules\Kernel\Support\DatabaseAuditLogger;
 use Modules\Kernel\Support\DefaultDirectionScopeBypassResolver;
 use Modules\Kernel\Support\DompdfPdfGenerationService;
 use Modules\Kernel\Support\EndroidQrCodeService;
 use Modules\Kernel\Support\LaravelNotificationService;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class KernelServiceProvider extends ModuleServiceProvider
 {
@@ -83,15 +84,13 @@ class KernelServiceProvider extends ModuleServiceProvider
         // à produire elle-même ce rapport pour la tutelle).
         Gate::define('genererRapportTutelle', fn (User $user) => in_array(
             $user->role,
-            [\Modules\Kernel\Enums\UserRole::ADMINISTRATEUR, \Modules\Kernel\Enums\UserRole::AGENT_DFP],
+            [UserRole::ADMINISTRATEUR, UserRole::AGENT_DFP],
             true,
         ));
     }
 
     /**
      * Define module schedules.
-     *
-     * @param $schedule
      */
     protected function configureSchedules(Schedule $schedule): void
     {

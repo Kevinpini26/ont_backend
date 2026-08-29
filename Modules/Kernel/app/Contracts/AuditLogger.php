@@ -16,9 +16,9 @@ interface AuditLogger
 {
     /**
      * @param  array<string, mixed>  $contexte  Données libres associées à l'action
-     *                                           (ex: ['note' => 15, 'ancienne_note' => 12]).
-     *                                           La clé 'description' est traitée à part
-     *                                           comme résumé lisible de l'action.
+     *                                          (ex: ['note' => 15, 'ancienne_note' => 12]).
+     *                                          La clé 'description' est traitée à part
+     *                                          comme résumé lisible de l'action.
      */
     public function enregistrer(string $action, ?Model $sujet = null, ?User $acteur = null, array $contexte = []): void;
 }

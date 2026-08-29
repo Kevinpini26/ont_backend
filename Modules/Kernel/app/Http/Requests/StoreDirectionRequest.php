@@ -3,12 +3,13 @@
 namespace Modules\Kernel\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Kernel\Models\Direction;
 
 class StoreDirectionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('create', \Modules\Kernel\Models\Direction::class);
+        return $this->user()->can('create', Direction::class);
     }
 
     public function rules(): array

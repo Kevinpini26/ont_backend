@@ -5,9 +5,10 @@ namespace Modules\Public\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Models\Courrier;
 use Modules\Stagiaires\Models\Stagiaire;
 
-/** @mixin \Modules\Courrier\Models\Courrier */
+/** @mixin Courrier */
 class DossierPublicResource extends JsonResource
 {
     public function __construct($courrier, private readonly ?Stagiaire $stagiaire = null)

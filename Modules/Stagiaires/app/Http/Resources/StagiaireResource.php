@@ -8,7 +8,7 @@ use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Support\AssiduiteCalculateur;
 
-/** @mixin \Modules\Stagiaires\Models\Stagiaire */
+/** @mixin Stagiaire */
 class StagiaireResource extends JsonResource
 {
     public function toArray(Request $request): array

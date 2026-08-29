@@ -4,8 +4,9 @@ namespace Modules\Stagiaires\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Stagiaires\Models\StagiaireRetour;
 
-/** @mixin \Modules\Stagiaires\Models\StagiaireRetour */
+/** @mixin StagiaireRetour */
 class StagiaireRetourResource extends JsonResource
 {
     public function toArray(Request $request): array

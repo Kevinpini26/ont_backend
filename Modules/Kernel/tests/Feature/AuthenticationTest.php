@@ -3,8 +3,8 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
-use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Tests\TestCase;
@@ -31,7 +31,7 @@ class AuthenticationTest extends TestCase
 
         // Le frontend programme l'avertissement de fin de session dessus
         // (voir useSessionExpiryWatcher) : doit être dans le futur.
-        $this->assertTrue(\Illuminate\Support\Carbon::parse($response->json('expires_at'))->isFuture());
+        $this->assertTrue(Carbon::parse($response->json('expires_at'))->isFuture());
     }
 
     public function test_login_fails_with_invalid_credentials(): void

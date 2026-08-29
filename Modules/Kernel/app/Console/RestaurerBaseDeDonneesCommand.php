@@ -24,7 +24,7 @@ class RestaurerBaseDeDonneesCommand extends Command
         {fichier? : Chemin du fichier sur le disque de sauvegarde (ex. database/ont-2026-06-15_030000.sql.gz) — le plus récent par défaut}
         {--force : Exécute sans confirmation, y compris hors environnement local}';
 
-    protected $description = "Restaure la base de données depuis une sauvegarde du disque configuré (voir config/backup.php) — écrase la base cible";
+    protected $description = 'Restaure la base de données depuis une sauvegarde du disque configuré (voir config/backup.php) — écrase la base cible';
 
     public function handle(): int
     {

@@ -13,7 +13,7 @@ interface QrCodeService
 {
     /**
      * @return string Data URI SVG (`data:image/svg+xml;base64,...`), prête
-     *                 à être embarquée dans une vue Blade rendue en PDF.
+     *                à être embarquée dans une vue Blade rendue en PDF.
      */
     public function genererSvgDataUri(string $donnees, int $taille = 180, int $marge = 6): string;
 }

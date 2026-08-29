@@ -18,8 +18,8 @@ class DemandeStagePublicController extends Controller
      * candidat (voir CourrierCircuitService::creerDepuisPublic).
      */
     /**
-     * @var array<string, string> Champ fichier du formulaire → colonne de stockage sur Courrier,
-     *                            et dossier de destination sur le disque local.
+     * @var array<string, array{colonne: string, dossier: string}> Champ fichier du formulaire →
+     *                                                             colonne de stockage sur Courrier, et dossier de destination sur le disque local.
      */
     private const PIECES = [
         'lettre_stage' => ['colonne' => 'lettre_stage_chemin', 'dossier' => 'lettres-stage'],

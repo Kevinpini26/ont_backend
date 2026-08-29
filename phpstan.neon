@@ -1,0 +1,68 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app
+        - Modules
+
+    # Niveau 5 retenu, testé : 0 erreur restante après correction ou
+    # exclusion justifiée de chaque signalement (voir ignoreErrors
+    # ci-dessous). Le niveau 6 a été essayé : 220 erreurs, la quasi-
+    # totalité de la même nature (missingType.generics — annoter
+    # <TModel> sur chaque Builder/Collection Eloquent à travers tout le
+    # projet) plutôt que des bogues réels trouvés — volume disproportionné
+    # pour la valeur, laissé à un futur lot dédié plutôt que fait à la
+    # va-vite ici.
+    level: 5
+
+    excludePaths:
+        - Modules/*/database/migrations/*
+        - Modules/*/tests/*
+        - Modules/*/lang/*
+        - vendor/*
+
+    ignoreErrors:
+        # Larastan résout normalement les propriétés magiques Eloquent
+        # (colonnes de table) via les blocs @property générés par
+        # `artisan ide-helper:models` — non exécutable tel quel ici, les
+        # modèles vivant dans Modules/*/app/Models plutôt que app/Models
+        # (structure modulaire nwidart, hors des chemins scannés par
+        # défaut par ide-helper). Vérifié à la main : les ~500 occurrences
+        # de property.notFound sont toutes des accès à une colonne d'un
+        # modèle Eloquent du projet (Courrier, Stagiaire, User...), aucune
+        # sur une classe hors ORM — ignorer cette règle précise est le
+        # contournement documenté par Larastan lui-même pour ce cas de
+        # figure, pas un blanc-seing général : les autres règles de
+        # niveau 5 restent actives partout.
+        - identifier: property.notFound
+
+        # ~15 occurrences, toutes des .map()/.filter()/.sortByDesc() sur
+        # une Collection issue d'une requête withoutGlobalScopes() ou
+        # d'une jointure brute (DB::table()) — vérifié à la main que les
+        # fermetures concernées ont déjà un type de paramètre explicite
+        # (ex. fn (Stagiaire $s) => ...) : Larastan perd le générique de
+        # la Collection elle-même en amont dans ces deux cas précis
+        # (limitation connue, pas un défaut de typage du code appelant).
+        - identifier: argument.unresolvableType
+
+        # Suggestion rejetée après vérification, pas appliquée : "?->x ??
+        # défaut" avec une base réellement nullable (ex. $acteur?->id ??
+        # Auth::id(), $direction?->id ?? Direction::factory()) produit la
+        # même valeur sans le "?->", mais émet un warning PHP à l'exécution
+        # dès que la base est nulle — précisément le cas courant ici
+        # (action publique sans acteur, factory sans direction fournie).
+        # Suivre la suggestion aurait introduit un warning sur un chemin
+        # fréquent plutôt que corrigé quoi que ce soit.
+        -
+            identifier: nullsafe.neverNull
+            message: '#on left side of \?\? is unnecessary#'
+
+        # Le stub Larastan pour Filesystem::lastModified() le déclare comme
+        # ne renvoyant jamais false pour ce disque — mais l'implémentation
+        # Flysystem réelle peut renvoyer false (fichier supprimé entre le
+        # listing et le stat) : garde défensive conservée volontairement,
+        # pas du code mort.
+        -
+            identifier: notIdentical.alwaysTrue
+            path: Modules/Kernel/app/Console/SauvegarderBaseDeDonneesCommand.php

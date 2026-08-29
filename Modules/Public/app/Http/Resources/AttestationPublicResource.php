@@ -4,8 +4,9 @@ namespace Modules\Public\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Stagiaires\Models\Stagiaire;
 
-/** @mixin \Modules\Stagiaires\Models\Stagiaire */
+/** @mixin Stagiaire */
 class AttestationPublicResource extends JsonResource
 {
     /**

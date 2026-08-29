@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ont_ci
+          POSTGRES_USER: ont
+          POSTGRES_PASSWORD: ont_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U ont"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:0000000000000000000000000000000000000000A=
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: ont_ci
+      DB_USERNAME: ont
+      DB_PASSWORD: ont_ci_password
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      BCRYPT_ROUNDS: 4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, pgsql, zip, intl, bcmath
+          coverage: none
+
+      - name: Installer les dépendances Composer
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Formatage (Pint)
+        run: ./vendor/bin/pint --test
+
+      - name: Analyse statique (Larastan)
+        run: ./vendor/bin/phpstan analyse --memory-limit=1G
+
+      - name: Migrer la base de test
+        run: php artisan migrate --force
+
+      - name: Tests
+        run: php artisan test

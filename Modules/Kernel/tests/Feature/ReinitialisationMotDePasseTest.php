@@ -3,6 +3,7 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Modules\Kernel\Models\User;
@@ -56,7 +57,7 @@ class ReinitialisationMotDePasseTest extends TestCase
             'mot_de_passe_confirmation' => 'Xk9mQprT4vLw#26',
         ])->assertOk();
 
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('Xk9mQprT4vLw#26', $utilisateur->fresh()->password));
+        $this->assertTrue(Hash::check('Xk9mQprT4vLw#26', $utilisateur->fresh()->password));
     }
 
     public function test_la_reinitialisation_leve_lobligation_de_changement_et_revoque_les_jetons(): void

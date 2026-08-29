@@ -158,7 +158,10 @@ class Courrier extends Model
      */
     public function bordereauCourant(): ?CourrierTransition
     {
-        return $this->transitions->where('statut', $this->statut)->last();
+        /** @var CourrierTransition|null $bordereau */
+        $bordereau = $this->transitions->where('statut', $this->statut)->last();
+
+        return $bordereau;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace Modules\Stagiaires\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Enums\StagiaireStatut;
@@ -115,7 +116,7 @@ class DureeStageTest extends StagiaireTestCase
         // Fige l'horloge pour forcer les deux prolongations à partager le
         // même created_at (précision seconde) : c'est exactement le cas
         // qui rendait l'ancien tri ->latest() (created_at seul) ambigu.
-        \Illuminate\Support\Carbon::setTestNow(now());
+        Carbon::setTestNow(now());
 
         $this->actingAs($dfp)->postJson("/api/v1/stagiaires/{$stagiaire->id}/prolonger", [
             'nouvelle_date_fin' => now()->addDays(20)->toDateString(),
@@ -127,7 +128,7 @@ class DureeStageTest extends StagiaireTestCase
             'motif' => 'Deuxieme prolongation.',
         ])->assertOk();
 
-        \Illuminate\Support\Carbon::setTestNow();
+        Carbon::setTestNow();
 
         $prolongations = $stagiaire->fresh()->prolongations;
 

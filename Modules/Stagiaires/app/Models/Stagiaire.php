@@ -176,6 +176,8 @@ class Stagiaire extends Model
             return null;
         }
 
-        return now()->startOfDay()->diffInDays($this->date_fin_stage, false);
+        // Carbon::diffInDays() peut renvoyer un float selon la configuration
+        // de précision — un nombre de jours n'a de sens qu'entier ici.
+        return (int) now()->startOfDay()->diffInDays($this->date_fin_stage, false);
     }
 }

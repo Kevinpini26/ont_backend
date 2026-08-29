@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Public\Http\Requests\SoumettreRetourRequest;
 use Modules\Public\Http\Resources\LienPublicResource;
 use Modules\Stagiaires\Enums\TypeLienPublic;
+use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
 use Modules\Stagiaires\Models\StagiaireRetour;
 use Modules\Stagiaires\Services\StagiaireCircuitService;
@@ -65,7 +66,13 @@ class LienPublicController extends Controller
     {
         $lien = $this->trouverLienValide($token, TypeLienPublic::CONVENTION);
 
-        $this->circuit->signerConventionStagiaire($lien->stagiaire);
+        // stagiaire_id est une colonne obligatoire de stagiaire_liens_publics
+        // et la relation est chargée par trouverLienValide() — jamais nulle
+        // en pratique, contrairement à ce que le type générique de la
+        // relation BelongsTo laisse penser.
+        /** @var Stagiaire $stagiaire */
+        $stagiaire = $lien->stagiaire;
+        $this->circuit->signerConventionStagiaire($stagiaire);
         $lien->consommer();
 
         return response()->json(['message' => 'Convention signée avec succès.']);

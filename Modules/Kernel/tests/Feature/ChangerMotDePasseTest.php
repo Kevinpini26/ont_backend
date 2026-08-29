@@ -3,6 +3,7 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Modules\Kernel\Models\User;
 use Tests\TestCase;
 
@@ -23,7 +24,7 @@ class ChangerMotDePasseTest extends TestCase
             ])
             ->assertOk();
 
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('Xk9mQprT4vLw#26', $utilisateur->fresh()->password));
+        $this->assertTrue(Hash::check('Xk9mQprT4vLw#26', $utilisateur->fresh()->password));
     }
 
     public function test_lancien_mot_de_passe_incorrect_est_rejete(): void

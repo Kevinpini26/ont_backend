@@ -15,7 +15,7 @@ class QuotaDirectionAtteintException extends Exception
 {
     public function __construct()
     {
-        parent::__construct("Cette direction a atteint sa capacité maximale de stagiaires. Une dérogation justifiée est requise pour poursuivre.");
+        parent::__construct('Cette direction a atteint sa capacité maximale de stagiaires. Une dérogation justifiée est requise pour poursuivre.');
     }
 
     public function render(Request $request): JsonResponse

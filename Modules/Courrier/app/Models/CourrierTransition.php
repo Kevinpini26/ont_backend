@@ -4,6 +4,7 @@ namespace Modules\Courrier\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Kernel\Models\User;
 
 /**
@@ -31,7 +32,7 @@ class CourrierTransition extends Model
     protected function casts(): array
     {
         return [
-            'statut' => \Modules\Courrier\Enums\CourrierStatut::class,
+            'statut' => CourrierStatut::class,
             'created_at' => 'datetime',
             'accuse_reception_at' => 'datetime',
         ];

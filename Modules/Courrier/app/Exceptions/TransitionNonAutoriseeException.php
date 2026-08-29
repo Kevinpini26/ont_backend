@@ -10,7 +10,7 @@ class TransitionNonAutoriseeException extends Exception
 {
     public static function sautDetape(): self
     {
-        return new self("Transition refusée : impossible de sauter une étape du circuit courrier.");
+        return new self('Transition refusée : impossible de sauter une étape du circuit courrier.');
     }
 
     public static function posteNonHabilite(): self

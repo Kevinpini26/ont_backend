@@ -15,8 +15,8 @@ interface PdfGenerationService
     /**
      * @param  array<string, mixed>  $donnees  Variables passées à la vue Blade.
      * @return string Contenu binaire du PDF généré (jamais un chemin ni une
-     *                 réponse HTTP — à l'appelant de décider s'il le stocke
-     *                 sur disque ou le sert en téléchargement).
+     *                réponse HTTP — à l'appelant de décider s'il le stocke
+     *                sur disque ou le sert en téléchargement).
      */
     public function genererDepuisVue(string $vue, array $donnees = []): string;
 }

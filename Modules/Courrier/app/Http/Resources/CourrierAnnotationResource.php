@@ -4,9 +4,10 @@ namespace Modules\Courrier\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Kernel\Http\Resources\UserResource;
 
-/** @mixin \Modules\Courrier\Models\CourrierAnnotation */
+/** @mixin CourrierAnnotation */
 class CourrierAnnotationResource extends JsonResource
 {
     public function toArray(Request $request): array

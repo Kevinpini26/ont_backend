@@ -9,6 +9,7 @@ use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Enums\DocumentType;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\Stagiaire;
+use Modules\Stagiaires\Services\StagiaireCircuitService;
 
 class GrilleEvaluationTest extends StagiaireTestCase
 {
@@ -172,7 +173,7 @@ class GrilleEvaluationTest extends StagiaireTestCase
         $stagiaire->evaluation_dfp_at = now();
         $stagiaire->save();
 
-        $service = app(\Modules\Stagiaires\Services\StagiaireCircuitService::class);
+        $service = app(StagiaireCircuitService::class);
         $service->evaluerParDirection($instanceChargeeAvant, $responsable, $this->grille(0.8));
 
         $stagiaire->refresh();

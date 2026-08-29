@@ -23,7 +23,7 @@ class AnonymiserCandidaturesNonRetenuesCommand extends Command
 {
     protected $signature = 'courrier:anonymiser-candidatures-non-retenues {--seuil-mois=12}';
 
-    protected $description = "Anonymise les candidatures de stage à avis DG défavorable, passé le délai de conservation";
+    protected $description = 'Anonymise les candidatures de stage à avis DG défavorable, passé le délai de conservation';
 
     public function handle(): int
     {

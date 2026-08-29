@@ -2,8 +2,10 @@
 
 namespace Modules\Stagiaires\Tests\Feature;
 
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -14,7 +16,7 @@ class PresenceEtDocumentTest extends StagiaireTestCase
 {
     use RefreshDatabase;
 
-    private function jourOuvrePasse(): \Illuminate\Support\Carbon
+    private function jourOuvrePasse(): Carbon
     {
         $jour = now()->subDay();
         while ($jour->isWeekend()) {
@@ -93,7 +95,7 @@ class PresenceEtDocumentTest extends StagiaireTestCase
         $agentDfp = User::factory()->agentDfp()->create();
         $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::STAGE_EN_COURS]);
 
-        $dimanche = now()->next(\Carbon\CarbonInterface::SUNDAY)->toDateString();
+        $dimanche = now()->next(CarbonInterface::SUNDAY)->toDateString();
 
         $this->actingAs($agentDfp)
             ->postJson("/api/v1/stagiaires/{$stagiaire->id}/presences", [

@@ -17,7 +17,7 @@ class DirectionSeeder extends Seeder
             ['code' => 'DMFPT', 'nom' => 'Direction de la Mobilisation du Fonds de Promotion du Tourisme'],
             ['code' => 'DF', 'nom' => 'Direction Financière'],
             ['code' => 'DMC', 'nom' => 'Direction Marketing et Communication'],
-            ['code' => 'DEP', 'nom' => "Direction des Études, de la Planification et du Développement Touristique"],
+            ['code' => 'DEP', 'nom' => 'Direction des Études, de la Planification et du Développement Touristique'],
             ['code' => 'DIPP', 'nom' => 'Direction des Investissements, Partenariats et Patrimoine touristique'],
             ['code' => 'DFP', 'nom' => 'Direction de la Formation et de la Professionnalisation'],
             ['code' => 'DAI', 'nom' => "Direction de l'Audit Interne"],

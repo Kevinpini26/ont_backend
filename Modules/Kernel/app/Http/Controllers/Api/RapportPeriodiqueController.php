@@ -4,6 +4,7 @@ namespace Modules\Kernel\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -86,7 +87,7 @@ class RapportPeriodiqueController extends Controller
     }
 
     /**
-     * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon, 2: string}
+     * @return array{0: Carbon, 1: Carbon, 2: string}
      */
     private function resoudrePeriode(array $validated): array
     {

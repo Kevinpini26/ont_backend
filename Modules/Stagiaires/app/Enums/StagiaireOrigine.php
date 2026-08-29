@@ -11,7 +11,7 @@ enum StagiaireOrigine: string
     {
         return match ($this) {
             self::SYSTEME => 'Créé par le système',
-            self::IMPORT_HISTORIQUE => "Importé (historique antérieur)",
+            self::IMPORT_HISTORIQUE => 'Importé (historique antérieur)',
         };
     }
 }

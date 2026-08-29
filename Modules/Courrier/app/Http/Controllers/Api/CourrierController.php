@@ -5,6 +5,8 @@ namespace Modules\Courrier\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Modules\Courrier\Enums\AvisDg;
+use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Http\Requests\EnregistrerCourrierRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
@@ -126,7 +128,7 @@ class CourrierController extends Controller
         $courrier = $this->circuit->rendreAvisDg(
             $courrier,
             $request->user(),
-            \Modules\Courrier\Enums\AvisDg::from($data['avis_dg']),
+            AvisDg::from($data['avis_dg']),
             $data['avis_dg_commentaire'] ?? null,
         );
 
@@ -236,7 +238,7 @@ class CourrierController extends Controller
         $courrier = $this->circuit->enregistrer(
             $courrier,
             $request->user(),
-            \Modules\Courrier\Enums\CourrierClassification::from($data['classification']),
+            CourrierClassification::from($data['classification']),
             $data['note_technique'] ?? null,
             $data['accuse_reception_partenaire'] ?? null,
         );

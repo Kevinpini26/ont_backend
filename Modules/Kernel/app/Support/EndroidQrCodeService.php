@@ -19,7 +19,7 @@ class EndroidQrCodeService implements QrCodeService
     public function genererSvgDataUri(string $donnees, int $taille = 180, int $marge = 6): string
     {
         $resultat = (new Builder(
-            writer: new SvgWriter(),
+            writer: new SvgWriter,
             data: $donnees,
             size: $taille,
             margin: $marge,

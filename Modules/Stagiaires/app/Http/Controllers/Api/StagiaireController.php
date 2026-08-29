@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Http\Requests\AffecterStagiaireRequest;
 use Modules\Stagiaires\Http\Requests\DefinirInformationsComplementairesRequest;
@@ -19,7 +20,6 @@ use Modules\Stagiaires\Http\Requests\ReaffecterStagiaireRequest;
 use Modules\Stagiaires\Http\Requests\ValiderArriveeRequest;
 use Modules\Stagiaires\Http\Resources\StagiaireResource;
 use Modules\Stagiaires\Http\Resources\StagiaireRetourResource;
-use Modules\Kernel\Enums\UserRole;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Services\StagiaireCircuitService;
 use Modules\Stagiaires\Support\VisibiliteStagiairePourCircuitCourrier;
@@ -136,7 +136,7 @@ class StagiaireController extends Controller
 
     public function examinerDossier(Stagiaire $stagiaire)
     {
-        $this->authorize('gererDossier', \Modules\Stagiaires\Models\Stagiaire::class);
+        $this->authorize('gererDossier', Stagiaire::class);
 
         return new StagiaireResource($this->circuit->examinerDossier($stagiaire)->load(['direction', 'conventionSigneeDirectionPar']));
     }
