@@ -11,6 +11,11 @@ class CourrierDatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // $this->call([]);
+        // Dossiers de démonstration (un par étape atteignable du circuit) :
+        // uniquement en local, jamais en production — voir CourrierDemoSeeder.
+        // Dépend des comptes créés par Modules\Kernel\Database\Seeders\DemoAccountsSeeder.
+        if (app()->environment('local')) {
+            $this->call(CourrierDemoSeeder::class);
+        }
     }
 }

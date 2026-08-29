@@ -102,6 +102,33 @@ class StagiaireLifecycleTest extends StagiaireTestCase
         ]);
     }
 
+    /**
+     * Trouvé en peuplant des données de démonstration réalistes
+     * (StagiaireDemoSeeder) : une double évaluation parfaite (100,0 par la
+     * direction ET par la DFP) donne une moyenne de 100,0, que la colonne
+     * note_finale (à l'origine decimal(4,2), plafonnée à 99,99) ne pouvait
+     * pas stocker — voir la migration widen_note_finale_precision.
+     */
+    public function test_une_double_evaluation_parfaite_ne_depasse_pas_la_precision_de_la_note_finale(): void
+    {
+        $direction = Direction::factory()->create(['actif' => true]);
+        $dfp = $this->dfp();
+        $responsable = User::factory()->responsableDirection($direction)->create();
+
+        $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::STAGE_EN_COURS, 'direction_id' => $direction->id]);
+
+        $this->actingAs($responsable)->postJson("/api/v1/stagiaires/{$stagiaire->id}/terminer-stage")->assertOk();
+        $this->actingAs($dfp)->postJson("/api/v1/stagiaires/{$stagiaire->id}/ouvrir-periode-evaluation")->assertOk();
+        $this->actingAs($responsable)->postJson("/api/v1/stagiaires/{$stagiaire->id}/evaluer-direction", ['grille' => $this->grille(1.0)])->assertOk();
+
+        $response = $this->actingAs($dfp)
+            ->postJson("/api/v1/stagiaires/{$stagiaire->id}/evaluer-dfp", ['grille' => $this->grille(1.0)])
+            ->assertOk()
+            ->assertJsonPath('data.statut', StagiaireStatut::CLOTURE->value);
+
+        $this->assertEquals(100.0, $response->json('data.evaluation.note_finale'));
+    }
+
     public function test_les_numeros_dattestation_sont_uniques_et_sequentiels(): void
     {
         $direction = Direction::factory()->create(['actif' => true]);

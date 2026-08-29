@@ -11,6 +11,12 @@ class StagiairesDatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // $this->call([]);
+        // Stagiaires de démonstration (un académique et un professionnel à
+        // chaque étape du cycle de vie) : uniquement en local, jamais en
+        // production — voir StagiaireDemoSeeder. Dépend des comptes créés
+        // par Modules\Kernel\Database\Seeders\DemoAccountsSeeder.
+        if (app()->environment('local')) {
+            $this->call(StagiaireDemoSeeder::class);
+        }
     }
 }
