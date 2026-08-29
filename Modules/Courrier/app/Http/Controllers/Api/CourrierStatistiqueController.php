@@ -153,11 +153,19 @@ class CourrierStatistiqueController extends Controller
         $periode = new PeriodeStatistique($request->string('periode', '30j')->toString());
         $directionId = $request->user()->direction_id;
 
+        // La DFP n'a pas de direction_id (voir UserFactory::agentDfp() et
+        // DemoAccountsSeeder) : mêmes filtres que pour un responsable de
+        // direction, sauf qu'un directionId nul ne restreint rien — vue
+        // organisation entière plutôt qu'une direction précise. Même
+        // convention déjà établie par CourriersNonTraites::compter().
+        $filtrerDestination = fn ($q) => $directionId === null ? $q : $q->where('direction_destination_id', $directionId);
+        $filtrerOrigine = fn ($q) => $directionId === null ? $q : $q->where('direction_origine_id', $directionId);
+
         // Files d'attente courantes, indépendantes de la période
         // sélectionnée ("enregistre" est le statut terminal commun aux deux
         // circuits, court et complet).
         $recusNonTraites = Courrier::query()->withoutGlobalScopes()
-            ->where('direction_destination_id', $directionId)
+            ->tap($filtrerDestination)
             ->where('statut', '!=', CourrierStatut::ENREGISTRE->value)
             ->count();
 
@@ -168,23 +176,26 @@ class CourrierStatistiqueController extends Controller
         $recusNonTraites48h = CourriersNonTraites::compter(now()->subHours(48), $directionId);
 
         $emisEnCours = Courrier::query()->withoutGlobalScopes()
-            ->where('direction_origine_id', $directionId)
+            ->tap($filtrerOrigine)
             ->where('statut', '!=', CourrierStatut::ENREGISTRE->value)
             ->count();
 
-        $recus = Courrier::query()->withoutGlobalScopes()->where('direction_destination_id', $directionId)
+        $recus = Courrier::query()->withoutGlobalScopes()->tap($filtrerDestination)
             ->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
-        $recusPrecedent = Courrier::query()->withoutGlobalScopes()->where('direction_destination_id', $directionId)
+        $recusPrecedent = Courrier::query()->withoutGlobalScopes()->tap($filtrerDestination)
             ->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
-        $emis = Courrier::query()->withoutGlobalScopes()->where('direction_origine_id', $directionId)
+        $emis = Courrier::query()->withoutGlobalScopes()->tap($filtrerOrigine)
             ->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
-        $emisPrecedent = Courrier::query()->withoutGlobalScopes()->where('direction_origine_id', $directionId)
+        $emisPrecedent = Courrier::query()->withoutGlobalScopes()->tap($filtrerOrigine)
             ->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
         $evolution = DB::table('courriers')
             ->selectRaw('date_trunc(?, created_at) as periode, count(*) as total', [$periode->granulariteSql()])
-            ->where(fn ($q) => $q->where('direction_destination_id', $directionId)->orWhere('direction_origine_id', $directionId))
+            ->when(
+                $directionId !== null,
+                fn ($q) => $q->where(fn ($q2) => $q2->where('direction_destination_id', $directionId)->orWhere('direction_origine_id', $directionId)),
+            )
             ->whereBetween('created_at', [$periode->debut, $periode->fin])
             ->groupBy('periode')
             ->orderBy('periode')

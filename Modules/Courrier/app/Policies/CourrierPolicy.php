@@ -120,16 +120,20 @@ class CourrierPolicy
     }
 
     /**
-     * Tableau de bord d'une direction d'accueil : réservé au responsable de
-     * cette direction précise, et à la DFP pour son propre périmètre
-     * courrier (la DFP est elle-même une des huit directions et peut
-     * émettre/recevoir du courrier comme les autres) — pas de cas d'usage
-     * pour l'administrateur ici (aucune direction propre à afficher), à la
-     * différence des autres tableaux de bord transverses.
+     * Tableau de bord d'une direction d'accueil : réservé au responsable
+     * d'une direction précise (qui doit alors avoir un direction_id — sans
+     * ça rien à afficher), et à la DFP pour une vue organisation entière —
+     * un compte DFP n'a structurellement pas de direction_id (voir
+     * UserFactory::agentDfp()), donc pas de garde direction_id !== null
+     * pour ce rôle : CourrierStatistiqueController::pourDirection()
+     * traite déjà ce cas comme "aucun filtre" plutôt que comme "aucun
+     * droit". Pas de cas d'usage pour l'administrateur ici (aucune
+     * direction propre à afficher), à la différence des autres tableaux
+     * de bord transverses.
      */
     public function voirTableauDeBordDirection(User $user): bool
     {
-        return ($user->role === UserRole::RESPONSABLE_DIRECTION || $user->role === UserRole::AGENT_DFP)
-            && $user->direction_id !== null;
+        return $user->role === UserRole::AGENT_DFP
+            || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id !== null);
     }
 }

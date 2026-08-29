@@ -126,14 +126,45 @@ class CourrierStatistiqueTest extends CourrierTestCase
             ->assertStatus(403);
     }
 
-    public function test_la_dfp_peut_consulter_le_tableau_de_bord_de_son_propre_perimetre_courrier(): void
+    /**
+     * Un compte DFP n'a structurellement pas de direction_id (voir
+     * UserFactory::agentDfp(), sans override ici — c'est exactement ce que
+     * produit DemoAccountsSeeder) : ce tableau de bord doit lui montrer une
+     * vue organisation entière plutôt que de le bloquer (régression
+     * corrigée : la policy exigeait auparavant un direction_id non nul même
+     * pour ce rôle, ce qui rendait cette route inatteignable pour toute
+     * DFP réelle).
+     */
+    public function test_la_dfp_peut_consulter_un_tableau_de_bord_organisation_entiere_sans_direction_id(): void
     {
-        $directionDfp = Direction::factory()->create();
-        $dfp = User::factory()->agentDfp()->create(['direction_id' => $directionDfp->id]);
+        $dfp = User::factory()->agentDfp()->create();
+        $this->assertNull($dfp->direction_id);
 
-        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $directionDfp->id, 'direction_origine_id' => null]);
+        $directionA = Direction::factory()->create();
+        $directionB = Direction::factory()->create();
+        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $directionA->id]);
+        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $directionB->id]);
 
         $response = $this->actingAs($dfp)
+            ->getJson('/api/v1/courriers/statistiques-direction')
+            ->assertOk();
+
+        // Les deux courriers comptent, bien qu'aucun n'appartienne à une
+        // direction "à elle" — c'est précisément la vue organisation
+        // entière attendue pour ce rôle.
+        $this->assertSame(2, $response->json('courriers_recus_non_traites'));
+    }
+
+    public function test_un_responsable_de_direction_ne_voit_que_sa_propre_direction_sur_ce_tableau_de_bord(): void
+    {
+        $saDirection = Direction::factory()->create();
+        $autreDirection = Direction::factory()->create();
+        $responsable = User::factory()->responsableDirection($saDirection)->create();
+
+        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $saDirection->id]);
+        \Modules\Courrier\Models\Courrier::factory()->create(['direction_destination_id' => $autreDirection->id]);
+
+        $response = $this->actingAs($responsable)
             ->getJson('/api/v1/courriers/statistiques-direction')
             ->assertOk();
 
