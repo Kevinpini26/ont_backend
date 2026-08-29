@@ -6,6 +6,7 @@ use Modules\Kernel\Http\Controllers\Api\AuditLogController;
 use Modules\Kernel\Http\Controllers\Api\AuthController;
 use Modules\Kernel\Http\Controllers\Api\DgDisponibiliteController;
 use Modules\Kernel\Http\Controllers\Api\DirectionController;
+use Modules\Kernel\Http\Controllers\Api\DocumentationController;
 use Modules\Kernel\Http\Controllers\Api\NotificationCompteurController;
 use Modules\Kernel\Http\Controllers\Api\NotificationController;
 use Modules\Kernel\Http\Controllers\Api\PasswordController;
@@ -23,6 +24,16 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/mot-de-passe/oublie', [PasswordController::class, 'envoyerLienReinitialisation']);
         Route::post('/auth/mot-de-passe/reinitialiser', [PasswordController::class, 'reinitialiser']);
     });
+
+    // Documentation OpenAPI : ouverte en développement/test pour faciliter
+    // l'intégration, protégée par auth:sanctum + role:administrateur en
+    // production (voir DocumentationController).
+    if (app()->environment('production')) {
+        Route::middleware(['auth:sanctum', 'role:administrateur'])
+            ->get('/docs/openapi.yaml', [DocumentationController::class, 'openapi']);
+    } else {
+        Route::get('/docs/openapi.yaml', [DocumentationController::class, 'openapi']);
+    }
 
     Route::middleware('auth:sanctum')->group(function () {
         // Routes volontairement exemptées du blocage

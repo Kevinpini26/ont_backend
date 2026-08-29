@@ -1,0 +1,668 @@
+openapi: 3.1.0
+info:
+  title: API — Système d'information ONT
+  version: "1.0"
+  description: |
+    API REST du Système d'information de l'Office National du Tourisme
+    (RDC) : circuit courrier interne et cycle de vie des stagiaires.
+
+    Cette spécification couvre les quatre modules (Kernel, Courrier,
+    Stagiaires, Public) avec, pour chaque module, les points d'entrée
+    principaux détaillés en exemple. Les nombreuses actions de transition
+    du circuit courrier et du cycle de vie stagiaire (`/courriers/{id}/...`,
+    `/stagiaires/{id}/...`) suivent toutes le même schéma documenté une fois
+    ci-dessous : `POST` sans corps ou avec un corps propre à l'action,
+    réponse `200` avec la ressource mise à jour, `422` si la transition
+    n'est pas autorisée à cet instant (voir `TransitionNonAutoriseeException`
+    côté backend), `403` si le poste/rôle n'est pas habilité.
+
+    Authentification : jeton Sanctum transmis dans l'en-tête
+    `Authorization: Bearer <jeton>`, obtenu via `POST /auth/login`. Toutes
+    les routes sont préfixées par `/api/v1`.
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Authentification
+  - name: Comptes
+  - name: Courrier
+  - name: Stagiaires
+  - name: Public
+
+components:
+  securitySchemes:
+    saheatchtum:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  schemas:
+    Erreur:
+      type: object
+      properties:
+        message:
+          type: string
+    ErreurValidation:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    Direction:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string, example: DRHL }
+        nom: { type: string, example: "Direction des Ressources Humaines et de la Logistique" }
+        actif: { type: boolean }
+    Utilisateur:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [administrateur, agent_dfp, responsable_direction, agent_circuit_courrier]
+        role_label: { type: string }
+        poste: { type: string, nullable: true, example: reception }
+        poste_label: { type: string, nullable: true }
+        direction: { $ref: '#/components/schemas/Direction' }
+        direction_id: { type: integer, nullable: true }
+        doit_changer_mot_de_passe: { type: boolean }
+    Courrier:
+      type: object
+      properties:
+        id: { type: integer }
+        numero_accuse_reception: { type: string, example: "AR-2026-000123" }
+        numero_enregistrement: { type: string, nullable: true, example: "2026-0045" }
+        objet: { type: string }
+        type: { type: string, enum: [demande_stage, correspondance_generale] }
+        statut:
+          type: string
+          enum: [recu, au_protocole, en_attente_avis_dg, projet_reponse_en_cours, en_attente_validation_dg, en_relecture, signe, enregistre]
+        en_transit:
+          type: boolean
+          description: >-
+            Bordereau courant non encore acquitté par son destinataire :
+            tant que vrai, aucune action de transition n'est autorisée
+            (voir POST .../accuser-reception).
+        transitions:
+          type: array
+          items:
+            type: object
+            properties:
+              statut: { type: string }
+              statut_label: { type: string }
+              emetteur: { type: string, nullable: true }
+              destinataire: { type: string, nullable: true }
+              created_at: { type: string, format: date-time }
+              accuse_reception_par: { type: string, nullable: true }
+              accuse_reception_at: { type: string, format: date-time, nullable: true }
+    Stagiaire:
+      type: object
+      properties:
+        id: { type: integer }
+        nom: { type: string }
+        statut:
+          type: string
+          enum: [dossier_recu, en_attente_affectation, affecte, stage_en_cours, evaluation_en_cours, cloture]
+        type_stage: { type: string, enum: [academique, professionnel] }
+        direction: { $ref: '#/components/schemas/Direction' }
+        date_debut_stage: { type: string, format: date, nullable: true }
+        date_fin_stage: { type: string, format: date, nullable: true }
+        note_finale: { type: number, format: float, nullable: true }
+        numero_attestation: { type: string, nullable: true }
+  responses:
+    NonAuthentifie:
+      description: Aucun jeton, ou jeton invalide/expiré.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example: { message: "Unauthenticated." }
+    NonAutorise:
+      description: Rôle/poste non habilité pour cette action.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+    Introuvable:
+      description: Ressource inexistante, ou hors du périmètre visible par l'appelant.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+    ErreurValidation:
+      description: Corps de requête invalide, ou transition de circuit non autorisée à cet instant.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErreurValidation' }
+    MotDePasseAChanger:
+      description: >-
+        Le compte doit changer son mot de passe avant de pouvoir faire
+        autre chose (voir POST /auth/mot-de-passe/changer).
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+              code: { type: string, example: doit_changer_mot_de_passe }
+
+security:
+  - saheatchtum: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [Authentification]
+      summary: Connexion
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                device_name: { type: string }
+            example:
+              email: reception@ont.cd
+              password: "Demo#ONT2026"
+      responses:
+        '200':
+          description: Connexion réussie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/Utilisateur' }
+                  token: { type: string }
+                  expires_at: { type: string, format: date-time, nullable: true }
+        '422':
+          description: Identifiants incorrects, ou compte temporairement verrouillé (cinq échecs consécutifs).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErreurValidation' }
+        '429':
+          description: Trop de tentatives (limiteur de débit par IP/e-mail).
+
+  /auth/logout:
+    post:
+      tags: [Authentification]
+      summary: Déconnexion (révoque le jeton courant)
+      responses:
+        '200': { description: Déconnecté. }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+
+  /auth/me:
+    get:
+      tags: [Authentification]
+      summary: Profil de l'utilisateur connecté
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Utilisateur' }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+
+  /auth/mot-de-passe/changer:
+    post:
+      tags: [Comptes]
+      summary: Changer son propre mot de passe
+      description: Révoque tous les autres jetons du compte ; garde le jeton courant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ancien_mot_de_passe, mot_de_passe, mot_de_passe_confirmation]
+              properties:
+                ancien_mot_de_passe: { type: string, format: password }
+                mot_de_passe: { type: string, format: password, description: "12 caractères minimum, majuscules, minuscules, chiffres, non compromis (Have I Been Pwned)." }
+                mot_de_passe_confirmation: { type: string, format: password }
+      responses:
+        '200': { description: Mot de passe changé. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /auth/mot-de-passe/oublie:
+    post:
+      tags: [Comptes]
+      summary: Demander un lien de réinitialisation
+      security: []
+      description: >-
+        Réponse strictement identique que l'e-mail corresponde ou non à un
+        compte — ne jamais s'en servir pour vérifier l'existence d'un compte.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { description: "Réponse générique, envoyée dans tous les cas." }
+
+  /auth/mot-de-passe/reinitialiser:
+    post:
+      tags: [Comptes]
+      summary: Réinitialiser le mot de passe via le lien reçu par e-mail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, token, mot_de_passe, mot_de_passe_confirmation]
+              properties:
+                email: { type: string, format: email }
+                token: { type: string }
+                mot_de_passe: { type: string, format: password }
+                mot_de_passe_confirmation: { type: string, format: password }
+      responses:
+        '200': { description: Mot de passe réinitialisé ; tous les jetons du compte révoqués. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /courriers:
+    get:
+      tags: [Courrier]
+      summary: Liste des courriers visibles par l'appelant
+      description: >-
+        Filtrée automatiquement par direction pour un responsable de
+        direction (DirectionScope) ; visible sur toutes les directions pour
+        les postes centraux du circuit courrier et l'administrateur.
+      parameters:
+        - { name: statut, in: query, schema: { type: string } }
+        - { name: direction_origine_id, in: query, schema: { type: integer } }
+        - { name: direction_destination_id, in: query, schema: { type: integer } }
+        - { name: recherche, in: query, schema: { type: string }, description: "Objet, numéro, ou nom du candidat/expéditeur." }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Courrier' }
+        '423': { $ref: '#/components/responses/MotDePasseAChanger' }
+    post:
+      tags: [Courrier]
+      summary: Enregistrer un courrier reçu (Réception) ou envoyer vers une autre direction
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [objet, type]
+              properties:
+                objet: { type: string }
+                type: { type: string, enum: [demande_stage, correspondance_generale] }
+                piece_jointe: { type: string, format: binary, description: "Obligatoire pour un courrier reçu par la Réception." }
+                direction_destination_id: { type: integer }
+                candidat_nom: { type: string }
+                candidat_email: { type: string, format: email, description: "Facultatif — sert de second facteur au suivi public et à l'envoi de l'accusé de réception." }
+      responses:
+        '201':
+          description: Créé.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Courrier' }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /courriers/{courrier}:
+    get:
+      tags: [Courrier]
+      summary: Détail d'un courrier
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Courrier' }
+        '403': { $ref: '#/components/responses/NonAutorise' }
+        '404': { $ref: '#/components/responses/Introuvable' }
+
+  /courriers/{courrier}/accuser-reception:
+    post:
+      tags: [Courrier]
+      summary: Accuser réception du bordereau courant
+      description: >-
+        Préalable obligatoire à toute action suivante sur ce courrier tant
+        qu'il est "en_transit" — voir Courrier.en_transit.
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Décharge enregistrée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Courrier' }
+        '422':
+          description: >-
+            Aucun bordereau à décharger, décharge déjà donnée, ou poste non
+            habilité pour ce statut.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErreurValidation' }
+
+  /courriers/{courrier}/annotations:
+    get:
+      tags: [Courrier]
+      summary: Annotations internes d'un courrier
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Courrier]
+      summary: Ajouter une annotation interne
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contenu]
+              properties:
+                contenu: { type: string }
+      responses:
+        '201': { description: Créée. }
+
+  /stagiaires:
+    get:
+      tags: [Stagiaires]
+      summary: Liste des stagiaires visibles par l'appelant
+      description: >-
+        Filtrée par direction (responsable) ou par périmètre de file (agent
+        du circuit courrier — visible tant que le courrier d'origine de la
+        demande de stage est encore dans sa propre file, voir
+        VisibiliteStagiairePourCircuitCourrier).
+      parameters:
+        - { name: statut, in: query, schema: { type: string } }
+        - { name: direction_id, in: query, schema: { type: integer } }
+        - { name: type_stage, in: query, schema: { type: string, enum: [academique, professionnel] } }
+        - { name: en_cours, in: query, schema: { type: boolean } }
+        - { name: recherche, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Stagiaire' }
+
+  /stagiaires/{stagiaire}:
+    get:
+      tags: [Stagiaires]
+      summary: Détail d'un dossier stagiaire
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Stagiaire' }
+        '403': { $ref: '#/components/responses/NonAutorise' }
+
+  /stagiaires/{stagiaire}/affecter:
+    post:
+      tags: [Stagiaires]
+      summary: Affecter un stagiaire à une direction d'accueil
+      description: Réservé à la DFP. Refuse si le quota de la direction est atteint, sauf `forcer=true` avec `justification`.
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [direction_id]
+              properties:
+                direction_id: { type: integer }
+                forcer: { type: boolean }
+                justification: { type: string, description: "Obligatoire si forcer=true." }
+      responses:
+        '200':
+          description: Affecté.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Stagiaire' }
+        '422':
+          description: "Quota de la direction atteint (`quota_atteint: true`), ou justification manquante."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErreurValidation' }
+
+  /stagiaires/{stagiaire}/evaluer-direction:
+    post:
+      tags: [Stagiaires]
+      summary: Soumettre la grille d'évaluation de la direction d'accueil
+      description: >-
+        Le total est toujours recalculé côté serveur, jamais fait confiance
+        à un total envoyé par le client — voir GrilleEvaluation::total()/
+        GrilleEvaluationProfessionnelle::total() selon le type de stage.
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: "Grille imbriquée par section — voir GrilleEvaluation::rules()/GrilleEvaluationProfessionnelle::rules()."
+      responses:
+        '200': { description: Évaluation enregistrée ; clôture automatique du dossier si les deux évaluations (direction et DFP) sont désormais complètes. }
+        '403':
+          description: Période d'évaluation non ouverte par la DFP pour ce dossier, ou direction non habilitée.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erreur' }
+
+  /stagiaires/{stagiaire}/presences:
+    get:
+      tags: [Stagiaires]
+      summary: Présences saisies pour ce stagiaire
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Stagiaires]
+      summary: Pointer une présence (arrivée et/ou départ)
+      description: Upsert sur (stagiaire_id, date) — un second appel le même jour complète le pointage plutôt que d'en créer un second.
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date]
+              properties:
+                date: { type: string, format: date }
+                heure_arrivee: { type: string, example: "08:30" }
+                heure_depart: { type: string, example: "15:30" }
+      responses:
+        '201': { description: Enregistré. }
+        '422': { description: "Jour de week-end, ou aucune heure fournie." }
+
+  /stagiaires/{stagiaire}/documents/{document}/telecharger:
+    get:
+      tags: [Stagiaires]
+      summary: Télécharger une pièce du dossier
+      description: >-
+        Pièce d'identité, diplômes et CV réservés à la DFP et à
+        l'administrateur ; lettre de l'université et lettre de demande de
+        stage visibles aussi par la direction d'accueil — voir
+        StagiairePolicy::telechargerDocument().
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+        - { name: document, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Fichier.
+          content:
+            application/octet-stream: {}
+        '403': { $ref: '#/components/responses/NonAutorise' }
+
+  /public/dossiers/verifier:
+    post:
+      tags: [Public]
+      summary: Suivre un dossier (candidat externe, sans authentification)
+      security: []
+      description: >-
+        Le numéro seul ne suffit plus : un second facteur (nom du déposant,
+        ou son e-mail pour un dépôt en ligne) est exigé, comparé par mots
+        sans tenir compte de la casse, des accents ni de l'ordre. Réponse
+        strictement identique (404 générique) que le numéro soit inconnu,
+        le nom erroné, ou le numéro verrouillé après cinq échecs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [numero, nom]
+              properties:
+                numero: { type: string, example: "AR-2026-000123" }
+                nom: { type: string, example: "Kabasele" }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      numero_accuse_reception: { type: string }
+                      objet: { type: string }
+                      statut_simplifie: { type: string }
+                      date_reception: { type: string, format: date }
+        '404':
+          description: "Numéro inconnu, nom incorrect, ou numéro temporairement verrouillé — réponse identique dans les trois cas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erreur' }
+
+  /public/attestations/token/{token}:
+    get:
+      tags: [Public]
+      summary: Vérifier une attestation via le jeton du QR code
+      security: []
+      description: Jeton aléatoire de 32 caractères, non énumérable — aucun second facteur exigé, contrairement à la vérification par numéro ci-dessous.
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      numero_attestation: { type: string }
+                      nom: { type: string }
+                      date_debut_stage: { type: string, format: date }
+                      date_fin_stage: { type: string, format: date }
+        '404': { $ref: '#/components/responses/Introuvable' }
+
+  /public/attestations/verifier:
+    post:
+      tags: [Public]
+      summary: Vérifier une attestation déjà imprimée via son ancien numéro
+      security: []
+      description: Voie de secours pour les attestations émises avant l'introduction du jeton — exige le nom du stagiaire en second facteur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [numero, nom]
+              properties:
+                numero: { type: string, example: "ATT-2026-000042" }
+                nom: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Introuvable' }
+
+  /public/demandes-stage:
+    post:
+      tags: [Public]
+      summary: Déposer une demande de stage en ligne
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [candidat_nom, candidat_email, candidat_etablissement, type_stage, lettre_stage]
+              properties:
+                candidat_nom: { type: string }
+                candidat_email: { type: string, format: email }
+                candidat_contact: { type: string }
+                candidat_etablissement: { type: string }
+                type_stage: { type: string, enum: [academique, professionnel] }
+                lettre_stage: { type: string, format: binary }
+                cv: { type: string, format: binary, description: "Requis pour un stage professionnel." }
+      responses:
+        '201':
+          description: Déposé — un accusé de réception est envoyé par e-mail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  numero_accuse_reception: { type: string }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
