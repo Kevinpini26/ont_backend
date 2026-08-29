@@ -1,0 +1,106 @@
+# Lance le système complet en production avec une seule commande :
+# PostgreSQL, backend (php-fpm), worker de file, planificateur, frontend
+# (nginx). Utilise les images Dockerfile.production (voir ce fichier),
+# jamais les images de développement (Dockerfile, à la racine de chaque
+# dépôt).
+#
+# Préparation :
+#   1. cp .env.docker.production.example .env.docker.production
+#   2. Renseigner .env.docker.production avec de vraies valeurs (jamais les
+#      exemples fournis) — voir SECURITY.md pour la liste des réglages
+#      obligatoires avant mise en ligne.
+#   3. docker compose up -d
+#
+# Suppose backend/ et frontend/ clonés côte à côte (même convention que
+# l'environnement de développement) : ../frontend doit exister.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env.docker.production
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # php-fpm parle FastCGI, pas HTTP : jamais exposé directement, toujours
+  # via le service api-gateway (nginx) ci-dessous, qui traduit HTTP en
+  # FastCGI (voir docker/nginx.conf, fastcgi_pass backend:9000).
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    env_file: .env.docker.production
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "9000"
+    volumes:
+      - backend_storage:/var/www/html/storage/app
+
+  # Un backend API-only ne sert aucun fichier statique via nginx (tout
+  # passe par PHP, y compris les téléchargements authentifiés — voir
+  # StagiaireDocumentController::download()) : ce service n'a donc pas
+  # besoin du code de l'application sur son propre système de fichiers,
+  # uniquement de sa configuration, qui route tout vers php-fpm.
+  api-gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8000:80"
+
+  queue-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    env_file: .env.docker.production
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["php", "artisan", "queue:work", "--tries=3"]
+    volumes:
+      - backend_storage:/var/www/html/storage/app
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    env_file: .env.docker.production
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["php", "artisan", "schedule:work"]
+    volumes:
+      - backend_storage:/var/www/html/storage/app
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.production
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+  backend_storage:

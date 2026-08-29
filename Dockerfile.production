@@ -1,0 +1,64 @@
+# Image de production — distincte de Dockerfile (développement local, PHP
+# CLI via artisan serve). Multi-étapes : les dépendances Composer sont
+# installées dans une étape séparée pour ne pas embarquer composer/git dans
+# l'image finale, et pour profiter du cache Docker (le composer.lock ne
+# change pas à chaque commit applicatif).
+#
+# php-fpm + opcache, pas `artisan serve` (mono-thread, jamais destiné à la
+# production). Le worker de file et le planificateur sont des PROCESSUS
+# SÉPARÉS, pas embarqués dans ce conteneur : voir docker-compose.yml
+# (services queue-worker / scheduler, même image, CMD différent).
+
+FROM composer:2 AS vendor
+
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install \
+        --no-dev \
+        --no-scripts \
+        --no-autoloader \
+        --prefer-dist \
+        --no-interaction
+
+COPY . .
+RUN composer dump-autoload --optimize --no-dev
+
+FROM php:8.3-fpm-alpine AS final
+
+RUN apk add --no-cache \
+        postgresql-client \
+        libpq \
+        icu-libs \
+        libzip \
+    && apk add --no-cache --virtual .build-deps \
+        postgresql-dev \
+        icu-dev \
+        libzip-dev \
+        $PHPIZE_DEPS \
+    && docker-php-ext-install pdo_pgsql pgsql zip intl bcmath opcache \
+    && apk del .build-deps
+
+# Réglages opcache de production — validate_timestamps=0 : le cache n'est
+# jamais invalidé automatiquement, un déploiement doit redémarrer php-fpm
+# (c'est le comportement attendu d'une image immuable, pas un oubli).
+RUN { \
+        echo 'opcache.enable=1'; \
+        echo 'opcache.memory_consumption=128'; \
+        echo 'opcache.max_accelerated_files=10000'; \
+        echo 'opcache.validate_timestamps=0'; \
+        echo 'opcache.jit=tracing'; \
+        echo 'opcache.jit_buffer_size=64M'; \
+    } > /usr/local/etc/php/conf.d/opcache-production.ini
+
+WORKDIR /var/www/html
+
+COPY --from=vendor /app /var/www/html
+
+COPY docker/entrypoint.production.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh \
+    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+
+USER www-data
+
+ENTRYPOINT ["entrypoint.sh"]
+CMD ["php-fpm"]
