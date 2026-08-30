@@ -12,6 +12,8 @@ enum DocumentType: string
     case DIPLOME_ETAT = 'diplome_etat';
     case DERNIER_DIPLOME = 'dernier_diplome';
     case LETTRE_DEMANDE_STAGE = 'lettre_demande_stage';
+    case PHOTO = 'photo';
+    case RAPPORT_FIN_STAGE = 'rapport_fin_stage';
 
     public function label(): string
     {
@@ -24,6 +26,8 @@ enum DocumentType: string
             self::DIPLOME_ETAT => "Diplôme d'État",
             self::DERNIER_DIPLOME => 'Dernier diplôme obtenu',
             self::LETTRE_DEMANDE_STAGE => 'Lettre de demande de stage',
+            self::PHOTO => "Photo d'identité",
+            self::RAPPORT_FIN_STAGE => 'Rapport de fin de stage',
         };
     }
 }

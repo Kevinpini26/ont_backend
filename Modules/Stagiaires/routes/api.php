@@ -2,11 +2,13 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Stagiaires\Http\Controllers\Api\DisponibiliteDemandesStageController;
+use Modules\Stagiaires\Http\Controllers\Api\EtablissementFormationController;
 use Modules\Stagiaires\Http\Controllers\Api\ImportHistoriqueController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireDocumentController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiairePresenceController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireStatistiqueController;
+use Modules\Stagiaires\Http\Controllers\Api\StagiaireSuiviController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::middleware('role:administrateur')->group(function () {
@@ -17,6 +19,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/stagiaires/alertes', [StagiaireStatistiqueController::class, 'alertes']);
     Route::get('/stagiaires/disponibilite-demandes', [DisponibiliteDemandesStageController::class, 'show']);
     Route::post('/stagiaires/disponibilite-demandes', [DisponibiliteDemandesStageController::class, 'update']);
+    Route::get('/etablissements-formation', [EtablissementFormationController::class, 'index']);
+    Route::post('/etablissements-formation', [EtablissementFormationController::class, 'store']);
     Route::get('/stagiaires', [StagiaireController::class, 'index']);
     Route::get('/stagiaires/{stagiaire}', [StagiaireController::class, 'show']);
 
@@ -40,6 +44,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/stagiaires/{stagiaire}/presences', [StagiairePresenceController::class, 'store']);
     Route::delete('/stagiaires/{stagiaire}/presences/{date}', [StagiairePresenceController::class, 'destroy'])
         ->where('date', '\d{4}-\d{2}-\d{2}');
+
+    Route::get('/stagiaires/{stagiaire}/suivis', [StagiaireSuiviController::class, 'index']);
+    Route::post('/stagiaires/{stagiaire}/suivis', [StagiaireSuiviController::class, 'store']);
 
     Route::get('/stagiaires/{stagiaire}/documents', [StagiaireDocumentController::class, 'index']);
     Route::post('/stagiaires/{stagiaire}/documents', [StagiaireDocumentController::class, 'store'])

@@ -24,6 +24,7 @@ class UploadDocumentRequest extends FormRequest
                 DocumentType::DIPLOME_ETAT->value,
                 DocumentType::DERNIER_DIPLOME->value,
                 DocumentType::LETTRE_DEMANDE_STAGE->value,
+                DocumentType::PHOTO->value,
             ])],
             // 'mimes' et 'mimetypes' sont tous deux évalués par Laravel à
             // partir du contenu réel du fichier (finfo), jamais de

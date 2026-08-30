@@ -27,7 +27,9 @@ use Modules\Stagiaires\Models\StagiaireDocument;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
 use Modules\Stagiaires\Models\StagiairePresence;
 use Modules\Stagiaires\Models\StagiaireProlongation;
+use Modules\Stagiaires\Models\StagiaireSuivi;
 use Modules\Stagiaires\Notifications\ConventionASignerNotification;
+use Modules\Stagiaires\Notifications\RapportStageDemandeNotification;
 use Modules\Stagiaires\Notifications\RetourExperienceDemandeNotification;
 use Modules\Stagiaires\Notifications\StagiaireAffecteNotification;
 
@@ -83,6 +85,16 @@ class StagiaireCircuitService
             $stagiaire->affecte_at = now();
             $stagiaire->statut = StagiaireStatut::AFFECTE;
             $stagiaire->affecte_hors_quota = $horsQuota;
+            // Attribué à l'affectation, jamais avant : un dossier encore en
+            // attente n'a pas d'existence administrative dans une direction,
+            // donc pas encore d'identifiant stable.
+            if ($stagiaire->matricule === null) {
+                $stagiaire->matricule = sprintf(
+                    config('stagiaires.format_matricule'),
+                    now()->year,
+                    $this->sequences->suivant('matricule', now()->year),
+                );
+            }
             $stagiaire->save();
 
             $this->audit->enregistrer('stagiaire.affectation', $stagiaire, $dfp, [
@@ -488,6 +500,15 @@ class StagiaireCircuitService
 
         $this->audit->enregistrer('stagiaire.periode_evaluation_ouverte', $stagiaire, $dfp);
 
+        // Le stagiaire doit déposer son rapport de fin de stage avant que
+        // l'évaluation ne soit rendue : envoyé au même moment que
+        // l'ouverture du formulaire d'évaluation de la direction, pas
+        // seulement à la clôture (voir RETOUR_EXPERIENCE, qui lui est
+        // volontairement post-clôture — un sondage de satisfaction, pas
+        // un livrable attendu).
+        $lien = StagiaireLienPublic::genererPour($stagiaire, TypeLienPublic::RAPPORT_STAGE);
+        $this->envoyerLienParEmailSiPossible($stagiaire, $lien, new RapportStageDemandeNotification($lien));
+
         return $stagiaire;
     }
 
@@ -579,14 +600,31 @@ class StagiaireCircuitService
         $stagiaire->presences()->where('date', $date->toDateString())->delete();
     }
 
-    public function ajouterDocument(Stagiaire $stagiaire, User $uploadePar, DocumentType $type, string $nomOriginal, string $chemin): StagiaireDocument
+    /**
+     * $uploadePar reste nul pour un dépôt public (rapport de fin de stage
+     * déposé par le stagiaire lui-même, sans compte Sanctum) — même
+     * principe que created_by nul sur CourrierCircuitService::creerDepuisPublic().
+     */
+    public function ajouterDocument(Stagiaire $stagiaire, ?User $uploadePar, DocumentType $type, string $nomOriginal, string $chemin): StagiaireDocument
     {
         /** @var StagiaireDocument */
         return $stagiaire->documents()->create([
             'type' => $type,
             'nom_original' => $nomOriginal,
             'chemin' => $chemin,
-            'uploaded_by_id' => $uploadePar->id,
+            'uploaded_by_id' => $uploadePar?->id,
+        ]);
+    }
+
+    /**
+     * @param  array{date_suivi: string, observations: string, difficultes_signalees?: ?string}  $donnees
+     */
+    public function ajouterSuivi(Stagiaire $stagiaire, User $redacteur, array $donnees): StagiaireSuivi
+    {
+        /** @var StagiaireSuivi */
+        return $stagiaire->suivis()->create([
+            ...$donnees,
+            'redige_par_id' => $redacteur->id,
         ]);
     }
 }

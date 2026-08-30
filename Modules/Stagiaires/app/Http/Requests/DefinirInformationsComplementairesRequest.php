@@ -18,7 +18,10 @@ class DefinirInformationsComplementairesRequest extends FormRequest
             'lieu_naissance' => ['nullable', 'string', 'max:255'],
             'filiere_formation' => ['nullable', 'string', 'max:255'],
             'niveau_formation' => ['nullable', 'string', 'max:255'],
+            'session_promotion' => ['nullable', 'string', 'max:255'],
+            'etablissement_id' => ['nullable', 'integer', 'exists:etablissements_formation,id'],
             'maitre_stage' => ['nullable', 'string', 'max:255'],
+            'maitre_stage_id' => ['nullable', 'integer', 'exists:users,id'],
             'conseiller_stage' => ['nullable', 'string', 'max:255'],
         ];
     }

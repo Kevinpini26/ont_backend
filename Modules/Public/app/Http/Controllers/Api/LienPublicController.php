@@ -4,8 +4,10 @@ namespace Modules\Public\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
+use Modules\Public\Http\Requests\SoumettreRapportStageRequest;
 use Modules\Public\Http\Requests\SoumettreRetourRequest;
 use Modules\Public\Http\Resources\LienPublicResource;
+use Modules\Stagiaires\Enums\DocumentType;
 use Modules\Stagiaires\Enums\TypeLienPublic;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
@@ -91,5 +93,30 @@ class LienPublicController extends Controller
         $lien->consommer();
 
         return response()->json(['message' => 'Merci pour votre retour.']);
+    }
+
+    public function soumettreRapportStage(SoumettreRapportStageRequest $request, string $token)
+    {
+        $lien = $this->trouverLienValide($token, TypeLienPublic::RAPPORT_STAGE);
+
+        /** @var Stagiaire $stagiaire */
+        $stagiaire = $lien->stagiaire;
+        $fichier = $request->file('fichier');
+        $chemin = $fichier->store("stagiaires/{$stagiaire->id}", 'local');
+
+        // Aucun utilisateur ONT authentifié n'est à l'origine d'un dépôt
+        // public : uploaded_by_id reste nul, comme creerDepuisPublic() côté
+        // courrier (created_by null).
+        $this->circuit->ajouterDocument(
+            $stagiaire,
+            null,
+            DocumentType::RAPPORT_FIN_STAGE,
+            $fichier->getClientOriginalName(),
+            $chemin,
+        );
+
+        $lien->consommer();
+
+        return response()->json(['message' => 'Rapport de fin de stage déposé avec succès.']);
     }
 }

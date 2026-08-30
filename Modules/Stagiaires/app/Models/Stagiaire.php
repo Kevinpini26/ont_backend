@@ -23,14 +23,18 @@ class Stagiaire extends Model
 
     protected $fillable = [
         'courrier_id',
+        'matricule',
         'nom',
         'contact',
         'etablissement_origine',
+        'etablissement_id',
         'type_stage',
         'lieu_naissance',
         'filiere_formation',
         'niveau_formation',
+        'session_promotion',
         'maitre_stage',
+        'maitre_stage_id',
         'conseiller_stage',
         'periode_debut_demandee',
         'periode_fin_demandee',
@@ -114,9 +118,19 @@ class Stagiaire extends Model
         return $this->belongsTo(Direction::class);
     }
 
+    public function etablissement(): BelongsTo
+    {
+        return $this->belongsTo(EtablissementFormation::class, 'etablissement_id');
+    }
+
     public function affectePar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'affecte_par_id');
+    }
+
+    public function maitreStageUtilisateur(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'maitre_stage_id');
     }
 
     public function periodeEvaluationOuvertePar(): BelongsTo
@@ -132,6 +146,11 @@ class Stagiaire extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(StagiaireDocument::class);
+    }
+
+    public function suivis(): HasMany
+    {
+        return $this->hasMany(StagiaireSuivi::class)->latest('date_suivi');
     }
 
     public function doublonStagiaire(): BelongsTo

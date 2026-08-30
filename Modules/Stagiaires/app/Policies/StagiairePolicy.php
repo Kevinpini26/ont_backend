@@ -154,6 +154,19 @@ class StagiairePolicy
         return $user->role === UserRole::AGENT_DFP;
     }
 
+    /**
+     * Fiche de suivi périodique : la direction d'accueil, ou le maître de
+     * stage désigné quand il est lui-même un utilisateur du système (voir
+     * Stagiaire::maitre_stage_id) — pas de rôle "maître de stage" dédié à
+     * ce jour, voir docs/questions-ont.md.
+     */
+    public function gererSuivi(User $user, Stagiaire $stagiaire): bool
+    {
+        return ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id)
+            || $user->id === $stagiaire->maitre_stage_id
+            || $user->role === UserRole::AGENT_DFP;
+    }
+
     public function gererDocument(User $user, Stagiaire $stagiaire): bool
     {
         return $user->role === UserRole::AGENT_DFP
@@ -179,7 +192,8 @@ class StagiairePolicy
         return match ($type) {
             DocumentType::PIECE_IDENTITE, DocumentType::DIPLOME_ETAT, DocumentType::DERNIER_DIPLOME,
             DocumentType::CV, DocumentType::ATTESTATION_INSCRIPTION => $user->role === UserRole::AGENT_DFP,
-            DocumentType::LETTRE_STAGE_UNIVERSITE, DocumentType::LETTRE_DEMANDE_STAGE => $user->role === UserRole::AGENT_DFP
+            DocumentType::LETTRE_STAGE_UNIVERSITE, DocumentType::LETTRE_DEMANDE_STAGE,
+            DocumentType::PHOTO, DocumentType::RAPPORT_FIN_STAGE => $user->role === UserRole::AGENT_DFP
                 || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id),
             DocumentType::ATTESTATION_STAGE => $this->voirEvaluationFinale($user),
         };

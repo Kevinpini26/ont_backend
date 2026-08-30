@@ -105,3 +105,45 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   visibilité, pas un remplacement de cette colonne. Une migration des
   données existantes vers une imputation principale équivalente reste une
   étape ultérieure possible, non faite dans ce lot.
+
+## Lot 4 — dossier stagiaire
+
+- **Format du matricule.** Implémenté `%d-STG-%04d` (ex: `2026-STG-0001`),
+  attribué à l'affectation (`config('stagiaires.format_matricule')`) — même
+  logique que le numéro d'attestation. Aucune convention officielle connue :
+  à confirmer, notamment si le matricule doit au contraire être attribué dès
+  la réception du dossier plutôt qu'à l'affectation.
+
+- **Maître de stage comme "utilisateur réel".** Implémenté comme un simple
+  `maitre_stage_id` (FK nullable vers `users`, n'importe quel rôle), le
+  champ texte `maitre_stage` restant disponible quand ce n'est pas un
+  utilisateur du système. Aucun rôle `UserRole` dédié n'a été créé : un
+  maître de stage n'a donc pas de compte de connexion propre à ce jour, il
+  ne peut agir (déposer une fiche de suivi) que s'il possède déjà un compte
+  pour une autre raison (ex: responsable de direction). Faut-il un vrai
+  rôle "maître de stage" avec ses propres accès, ou est-ce volontairement
+  hors périmètre ?
+
+- **Session/promotion.** Simple champ texte libre (`session_promotion`,
+  ex: "2026-2027"), sans référentiel ni format imposé — aucune convention
+  ONT connue à ce sujet.
+
+- **Qui alimente le référentiel des établissements.** Réservé à la DFP
+  (même garde que `gererInformationsComplementaires()`), la liste étant
+  simplement consultable par tout utilisateur authentifié pour remplir un
+  formulaire. `etablissement_origine` (texte libre) reste disponible en
+  parallèle pour un établissement pas encore référencé.
+
+- **Fiche de suivi périodique : qui peut la consulter/créer.** Implémenté :
+  la direction d'accueil, le maître de stage lié (`maitre_stage_id`), et la
+  DFP. Aucune périodicité minimale n'est imposée (une fiche par semaine ?
+  par mois ?) — à préciser si un rythme réglementaire existe.
+
+- **Déclenchement du dépôt du rapport de fin de stage.** Le lien à usage
+  unique est généré au moment où la DFP ouvre la période d'évaluation
+  (`ouvrirPeriodeEvaluation()`), pas à la clôture (contrairement au retour
+  d'expérience, qui est un sondage post-clôture) — hypothèse : le rapport
+  doit être disponible avant que l'évaluation ne soit rendue. À confirmer,
+  et à préciser si le contenu du rapport doit être formellement rattaché à
+  l'évaluation (actuellement un simple document, sans lien structurel avec
+  `evaluation_direction_grille`/`evaluation_dfp_grille`).

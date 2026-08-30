@@ -30,4 +30,5 @@ Route::prefix('v1/public')->middleware('throttle:sensitive')->group(function () 
     Route::get('/liens/{token}/convention.pdf', [LienPublicController::class, 'telechargerConvention']);
     Route::post('/liens/{token}/signer-convention', [LienPublicController::class, 'signerConvention']);
     Route::post('/liens/{token}/retour', [LienPublicController::class, 'soumettreRetour']);
+    Route::post('/liens/{token}/rapport-stage', [LienPublicController::class, 'soumettreRapportStage']);
 });
