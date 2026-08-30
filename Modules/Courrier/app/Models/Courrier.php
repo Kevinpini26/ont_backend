@@ -6,11 +6,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Modules\Courrier\Database\Factories\CourrierFactory;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\ModeReception;
+use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Scopes\CourrierDirectionScope;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -19,6 +23,21 @@ class Courrier extends Model
 {
     /** @use HasFactory<CourrierFactory> */
     use HasFactory;
+
+    /**
+     * Défaut applicatif, pas seulement la valeur par défaut de la colonne
+     * (voir migration) : Eloquent ne recharge jamais depuis la base les
+     * valeurs par défaut posées côté SQL après un create() (seul l'id
+     * auto-incrémenté l'est) — sans ce défaut ici, l'instance en mémoire
+     * renvoyée immédiatement après la création (donc la réponse API) a
+     * `nombre_annexes` à null tant qu'on ne recharge pas explicitement le
+     * modèle, alors que la ligne en base contient bien 0.
+     */
+    protected $attributes = [
+        'nombre_annexes' => 0,
+        'degre_urgence' => 'normal',
+        'niveau_confidentialite' => 'ordinaire',
+    ];
 
     protected $fillable = [
         'numero_accuse_reception',
@@ -68,6 +87,15 @@ class Courrier extends Model
         'created_by',
         'relance_avis_dg_envoyee_at',
         'anonymise_at',
+        'date_courrier',
+        'reference_expediteur',
+        'qualite_expediteur',
+        'mode_reception',
+        'nombre_annexes',
+        'degre_urgence',
+        'niveau_confidentialite',
+        'cote_classement',
+        'emplacement_physique',
     ];
 
     protected static function booted(): void
@@ -102,6 +130,11 @@ class Courrier extends Model
             'relance_avis_dg_envoyee_at' => 'datetime',
             'avis_dg_rendu_at' => 'datetime',
             'anonymise_at' => 'datetime',
+            'date_courrier' => 'date',
+            'mode_reception' => ModeReception::class,
+            'nombre_annexes' => 'integer',
+            'degre_urgence' => DegreUrgence::class,
+            'niveau_confidentialite' => NiveauConfidentialite::class,
         ];
     }
 
@@ -138,6 +171,39 @@ class Courrier extends Model
     public function annotations(): HasMany
     {
         return $this->hasMany(CourrierAnnotation::class)->latest();
+    }
+
+    public function imputations(): HasMany
+    {
+        return $this->hasMany(CourrierImputation::class);
+    }
+
+    /**
+     * Annexes multiples — voir courrier_pieces_jointes. Coexiste avec
+     * piece_jointe_chemin (toujours lue ailleurs, voir la migration de
+     * création de cette table) plutôt que de la remplacer d'un coup.
+     */
+    public function piecesJointes(): HasMany
+    {
+        return $this->hasMany(CourrierPieceJointe::class)->orderBy('ordre');
+    }
+
+    /**
+     * La direction imputée à titre principal — celle qui doit agir,
+     * distincte des directions simplement mises en copie (voir
+     * directionsEnCopie()).
+     */
+    public function directionPrincipale(): ?CourrierImputation
+    {
+        return $this->imputations->firstWhere('est_principale', true);
+    }
+
+    /**
+     * @return Collection<int, CourrierImputation>
+     */
+    public function directionsEnCopie()
+    {
+        return $this->imputations->where('est_principale', false);
     }
 
     /**

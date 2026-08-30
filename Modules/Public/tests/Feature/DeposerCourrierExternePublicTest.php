@@ -47,6 +47,9 @@ class DeposerCourrierExternePublicTest extends TestCase
             'expediteur_externe_email' => 'contact@agence-exemple.cd',
             'created_by' => null,
             'necessite_avis_dg' => true,
+            // Jamais laissé au choix du déposant : déterminé par le canal
+            // d'entrée (voir CourrierCircuitService::creerCourrierExterneDepuisPublic).
+            'mode_reception' => 'depot_en_ligne',
         ]);
 
         $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->firstOrFail();

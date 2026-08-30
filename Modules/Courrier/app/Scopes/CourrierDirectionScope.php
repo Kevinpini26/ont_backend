@@ -32,7 +32,13 @@ class CourrierDirectionScope implements Scope
 
         $builder->where(function (Builder $query) use ($model, $user) {
             $query->where($model->qualifyColumn('direction_origine_id'), $user->direction_id)
-                ->orWhere($model->qualifyColumn('direction_destination_id'), $user->direction_id);
+                ->orWhere($model->qualifyColumn('direction_destination_id'), $user->direction_id)
+                ->orWhereExists(function ($sous) use ($model, $user) {
+                    $sous->selectRaw('1')
+                        ->from('courrier_imputations')
+                        ->whereColumn('courrier_imputations.courrier_id', $model->qualifyColumn('id'))
+                        ->where('courrier_imputations.direction_id', $user->direction_id);
+                });
         });
     }
 }

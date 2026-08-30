@@ -74,6 +74,40 @@ class DefaultNumeroGeneratorTest extends TestCase
         $this->assertSame('AR-2031-000001', $this->generateur(1)->genererAccuseReception());
     }
 
+    /**
+     * Format provisoire (voir docs/questions-ont.md — le format exact du
+     * numéro de départ reste à valider avec le Secrétariat Général) :
+     * configurable via config('courrier.format_numero_depart'), défaut
+     * "%d-D%04d" qui reprend la forme de numero_enregistrement avec un D
+     * distinctif.
+     */
+    public function test_le_numero_de_depart_suit_le_format_configure(): void
+    {
+        Date::setTestNow('2026-11-01');
+
+        $this->assertSame('2026-D0007', $this->generateur(7)->genererNumeroDepart());
+    }
+
+    public function test_le_numero_de_depart_est_demande_a_la_sequence_depart(): void
+    {
+        Date::setTestNow('2026-06-01');
+        $sequences = new class implements SequenceGenerator
+        {
+            public array $appels = [];
+
+            public function suivant(string $cle, int $annee): int
+            {
+                $this->appels[] = [$cle, $annee];
+
+                return 1;
+            }
+        };
+
+        (new DefaultNumeroGenerator($sequences))->genererNumeroDepart();
+
+        $this->assertSame([['depart', 2026]], $sequences->appels);
+    }
+
     public function test_la_sequence_est_demandee_pour_la_bonne_cle_et_la_bonne_annee(): void
     {
         Date::setTestNow('2026-06-01');

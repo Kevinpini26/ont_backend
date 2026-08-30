@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Events\CourrierStageAvisFavorable;
 use Modules\Courrier\Exceptions\RelectureNonValideeException;
 use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
@@ -119,6 +120,10 @@ class CourrierCircuitService
                 'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
                 'created_by' => null,
+                // Le mode de réception d'un dépôt via le portail public
+                // n'est jamais laissé au choix du candidat : c'est un fait
+                // déterminé par le canal d'entrée, pas une déclaration.
+                'mode_reception' => ModeReception::DEPOT_EN_LIGNE,
             ]);
 
             $this->tracerTransition($courrier, null);
@@ -152,6 +157,7 @@ class CourrierCircuitService
                 'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
                 'created_by' => null,
+                'mode_reception' => ModeReception::DEPOT_EN_LIGNE,
             ]);
 
             $this->tracerTransition($courrier, null);
@@ -305,6 +311,24 @@ class CourrierCircuitService
     private function lockCourrierFrais(Courrier $courrier): Courrier
     {
         return Courrier::query()->lockForUpdate()->findOrFail($courrier->id);
+    }
+
+    /**
+     * Règle de cotation provisoire, voir docs/questions-ont.md : la règle
+     * réelle du classement physique reste à confirmer avec le Secrétariat
+     * Général. "ONT" en repli quand aucune direction n'est imputée
+     * (courrier interne à la DG, par exemple) — jamais une cote vide.
+     */
+    private function genererCoteClassement(Courrier $courrier): string
+    {
+        $codeDirection = $courrier->directionPrincipale()?->direction?->code ?? 'ONT';
+        [$annee, $sequence] = array_pad(explode('-', (string) $courrier->numero_enregistrement, 2), 2, '0000');
+
+        return strtr(config('courrier.format_cote_classement', '{direction}-{annee}-{sequence}'), [
+            '{direction}' => $codeDirection,
+            '{annee}' => $annee,
+            '{sequence}' => $sequence,
+        ]);
     }
 
     private function assertDechargeDonnee(Courrier $courrier): void
@@ -544,6 +568,7 @@ class CourrierCircuitService
             $courrier->note_technique = $noteTechnique;
             $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
             $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
+            $courrier->cote_classement = $this->genererCoteClassement($courrier);
             $courrier->enregistre_at = now();
             $courrier->statut = CourrierStatut::ENREGISTRE;
             $courrier->save();

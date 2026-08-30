@@ -132,4 +132,19 @@ return [
      * Poste habilité à créer un courrier entrant (statut initial "recu").
      */
     'poste_creation' => Poste::RECEPTION->value,
+
+    /**
+     * Format du numéro de départ (registre sortant) — provisoire, voir
+     * docs/questions-ont.md : le format exact reste à valider avec le
+     * Secrétariat Général. %d = année, %04d = séquence annuelle.
+     */
+    'format_numero_depart' => '%d-D%04d',
+
+    /**
+     * Règle de cotation du classement physique — provisoire, voir
+     * docs/questions-ont.md. Jetons disponibles : {direction} (code de la
+     * direction imputée, ou "ONT" si aucune), {annee}, {sequence}
+     * (numéro d'enregistrement seul, sans l'année).
+     */
+    'format_cote_classement' => '{direction}-{annee}-{sequence}',
 ];

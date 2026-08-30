@@ -45,6 +45,7 @@ class DeposerDemandeStagePublicTest extends TestCase
             'candidat_nom' => 'Jean Kabila',
             'candidat_email' => 'jean.kabila@example.com',
             'created_by' => null,
+            'mode_reception' => 'depot_en_ligne',
         ]);
 
         $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->firstOrFail();

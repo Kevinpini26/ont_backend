@@ -4,10 +4,13 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
+use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Http\Requests\EnregistrerCourrierRequest;
+use Modules\Courrier\Http\Requests\ImputerCourrierRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
@@ -15,11 +18,16 @@ use Modules\Courrier\Http\Requests\StoreCourrierRequest;
 use Modules\Courrier\Http\Requests\ValiderRelectureRequest;
 use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
+use Modules\Kernel\Contracts\AuditLogger;
 
 class CourrierController extends Controller
 {
-    public function __construct(private readonly CourrierCircuitService $circuit) {}
+    public function __construct(
+        private readonly CourrierCircuitService $circuit,
+        private readonly AuditLogger $audit,
+    ) {}
 
     public function index(Request $request)
     {
@@ -35,6 +43,10 @@ class CourrierController extends Controller
 
         if ($request->filled('direction_destination_id')) {
             $query->where('direction_destination_id', $request->integer('direction_destination_id'));
+        }
+
+        if ($request->filled('cote_classement')) {
+            $query->where('cote_classement', $request->string('cote_classement'));
         }
 
         if ($request->filled('periode_debut')) {
@@ -56,9 +68,15 @@ class CourrierController extends Controller
         return CourrierResource::collection($query->latest()->paginate(20));
     }
 
-    public function show(Courrier $courrier)
+    public function show(Request $request, Courrier $courrier)
     {
         $this->authorize('view', $courrier);
+
+        if ($courrier->niveau_confidentialite !== NiveauConfidentialite::ORDINAIRE) {
+            $this->audit->enregistrer('courrier.acces_confidentiel', $courrier, $request->user(), [
+                'niveau_confidentialite' => $courrier->niveau_confidentialite->value,
+            ]);
+        }
 
         return $this->ressource($courrier);
     }
@@ -68,12 +86,43 @@ class CourrierController extends Controller
         $donnees = $request->validated();
 
         $pieceJointe = $donnees['piece_jointe'] ?? null;
-        unset($donnees['piece_jointe']);
+        $piecesSupplementaires = $donnees['pieces_jointes'] ?? [];
+        unset($donnees['piece_jointe'], $donnees['pieces_jointes']);
+
+        $cheminPiecePrincipale = null;
         if ($pieceJointe) {
-            $donnees['piece_jointe_chemin'] = $pieceJointe->store('courriers', 'local');
+            $cheminPiecePrincipale = $pieceJointe->store('courriers', 'local');
+            $donnees['piece_jointe_chemin'] = $cheminPiecePrincipale;
         }
 
         $courrier = $this->circuit->creer($request->user(), $donnees);
+
+        // Alimente courrier_pieces_jointes en plus de piece_jointe_chemin
+        // (voir Courrier::piecesJointes()) : la pièce principale devient la
+        // première annexe (même fichier déjà stocké ci-dessus, pas une
+        // deuxième copie sur disque), suivie des annexes supplémentaires.
+        if ($pieceJointe) {
+            CourrierPieceJointe::query()->create([
+                'courrier_id' => $courrier->id,
+                'libelle' => 'Pièce jointe',
+                'chemin' => $cheminPiecePrincipale,
+                'type_mime' => $pieceJointe->getMimeType(),
+                'taille_octets' => $pieceJointe->getSize(),
+                'ordre' => 1,
+                'uploaded_by_id' => $request->user()?->id,
+            ]);
+        }
+        foreach ($piecesSupplementaires as $index => $piece) {
+            CourrierPieceJointe::query()->create([
+                'courrier_id' => $courrier->id,
+                'libelle' => 'Annexe '.($index + 1),
+                'chemin' => $piece->store('courriers', 'local'),
+                'type_mime' => $piece->getMimeType(),
+                'taille_octets' => $piece->getSize(),
+                'ordre' => $index + 2,
+                'uploaded_by_id' => $request->user()?->id,
+            ]);
+        }
 
         return $this->ressource($courrier)->response()->setStatusCode(201);
     }
@@ -105,6 +154,29 @@ class CourrierController extends Controller
         $this->authorize('accuserReception', $courrier);
 
         return $this->ressource($this->circuit->accuserReception($courrier, $request->user()));
+    }
+
+    /**
+     * Remplace l'ensemble des imputations du courrier (pas un ajout
+     * incrémental) : plus simple et plus sûr à raisonner qu'un diff quand
+     * le volume par courrier reste faible (quelques directions au plus).
+     */
+    public function imputer(ImputerCourrierRequest $request, Courrier $courrier)
+    {
+        DB::transaction(function () use ($request, $courrier) {
+            $courrier->imputations()->delete();
+
+            foreach ($request->validated('imputations') as $imputation) {
+                $courrier->imputations()->create([
+                    'direction_id' => $imputation['direction_id'],
+                    'mention' => $imputation['mention'],
+                    'est_principale' => $imputation['est_principale'],
+                    'imputee_par_id' => $request->user()->id,
+                ]);
+            }
+        });
+
+        return $this->ressource($courrier->fresh());
     }
 
     public function transmettreProtocole(Request $request, Courrier $courrier)
@@ -231,6 +303,25 @@ class CourrierController extends Controller
         );
     }
 
+    /**
+     * Téléchargement d'une annexe précise (voir courrier_pieces_jointes) —
+     * distinct de telechargerPieceJointe() ci-dessus, qui ne sait servir
+     * que la pièce jointe historique unique.
+     */
+    public function telechargerPiece(Courrier $courrier, CourrierPieceJointe $piece)
+    {
+        $this->authorize('view', $courrier);
+
+        abort_unless($piece->courrier_id === $courrier->id, 404);
+
+        $extension = pathinfo($piece->chemin, PATHINFO_EXTENSION);
+
+        return Storage::disk('local')->download(
+            $piece->chemin,
+            "{$piece->libelle}-{$courrier->numero_accuse_reception}.{$extension}"
+        );
+    }
+
     public function enregistrer(EnregistrerCourrierRequest $request, Courrier $courrier)
     {
         $data = $request->validated();
@@ -259,6 +350,8 @@ class CourrierController extends Controller
         return new CourrierResource($courrier->load([
             'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
+            'imputations.direction', 'imputations.imputeePar',
+            'piecesJointes',
         ]));
     }
 }

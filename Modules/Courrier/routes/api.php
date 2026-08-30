@@ -4,17 +4,20 @@ use Illuminate\Support\Facades\Route;
 use Modules\Courrier\Http\Controllers\Api\CourrierAnnotationController;
 use Modules\Courrier\Http\Controllers\Api\CourrierController;
 use Modules\Courrier\Http\Controllers\Api\CourrierStatistiqueController;
+use Modules\Courrier\Http\Controllers\Api\RegistreCourrierController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/statistiques', [CourrierStatistiqueController::class, 'index']);
     Route::get('/courriers/statistiques-dg', [CourrierStatistiqueController::class, 'dg']);
     Route::get('/courriers/statistiques-direction', [CourrierStatistiqueController::class, 'pourDirection']);
+    Route::get('/courriers/registre', [RegistreCourrierController::class, 'telecharger']);
     Route::get('/courriers', [CourrierController::class, 'index']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);
     Route::get('/courriers/{courrier}', [CourrierController::class, 'show']);
 
     Route::post('/courriers/{courrier}/accuser-reception', [CourrierController::class, 'accuserReception']);
+    Route::post('/courriers/{courrier}/imputer', [CourrierController::class, 'imputer']);
     Route::post('/courriers/{courrier}/transmettre-protocole', [CourrierController::class, 'transmettreProtocole']);
     Route::post('/courriers/{courrier}/valider-avant-diffusion', [CourrierController::class, 'validerAvantDiffusion']);
     Route::post('/courriers/{courrier}/transmettre-avis-dg', [CourrierController::class, 'transmettreAvisDg']);
@@ -27,6 +30,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/{courrier}/lettre-stage', [CourrierController::class, 'telechargerLettreStage']);
     Route::get('/courriers/{courrier}/pieces/{piece}', [CourrierController::class, 'telechargerPieceCandidat']);
     Route::get('/courriers/{courrier}/piece-jointe', [CourrierController::class, 'telechargerPieceJointe']);
+    Route::get('/courriers/{courrier}/pieces-jointes/{piece}', [CourrierController::class, 'telechargerPiece']);
 
     Route::get('/courriers/{courrier}/annotations', [CourrierAnnotationController::class, 'index']);
     Route::post('/courriers/{courrier}/annotations', [CourrierAnnotationController::class, 'store']);

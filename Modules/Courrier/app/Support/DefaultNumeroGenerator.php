@@ -25,4 +25,12 @@ class DefaultNumeroGenerator implements NumeroGenerator
 
         return sprintf('%d-%04d', $annee, $sequence);
     }
+
+    public function genererNumeroDepart(): string
+    {
+        $annee = Date::now()->year;
+        $sequence = $this->sequences->suivant('depart', $annee);
+
+        return sprintf(config('courrier.format_numero_depart', '%d-D%04d'), $annee, $sequence);
+    }
 }

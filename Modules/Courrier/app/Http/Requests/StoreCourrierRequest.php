@@ -5,6 +5,9 @@ namespace Modules\Courrier\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\ModeReception;
+use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Models\Courrier;
 
 class StoreCourrierRequest extends FormRequest
@@ -61,6 +64,25 @@ class StoreCourrierRequest extends FormRequest
             'candidat_etablissement' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'string', 'max:255'],
             'periode_souhaitee_debut' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'date'],
             'periode_souhaitee_fin' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'date', 'after:periode_souhaitee_debut'],
+
+            // Métadonnées de la lettre elle-même, distinctes de sa
+            // réception — facultatives : un courrier initié par une
+            // direction (rédigé directement, pas de lettre physique reçue)
+            // n'en a simplement aucune.
+            'date_courrier' => ['nullable', 'date'],
+            'reference_expediteur' => ['nullable', 'string', 'max:255'],
+            'qualite_expediteur' => ['nullable', 'string', 'max:255'],
+            'mode_reception' => ['nullable', Rule::enum(ModeReception::class)],
+            'nombre_annexes' => ['nullable', 'integer', 'min:0'],
+
+            // Annexes au-delà de la pièce jointe principale — voir
+            // Courrier::piecesJointes(). Facultatives, un courrier officiel
+            // n'a pas toujours d'annexe distincte de son document principal.
+            'pieces_jointes' => ['nullable', 'array', 'max:20'],
+            'pieces_jointes.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png', 'mimetypes:application/pdf,image/jpeg,image/png'],
+
+            'degre_urgence' => ['nullable', Rule::enum(DegreUrgence::class)],
+            'niveau_confidentialite' => ['nullable', Rule::enum(NiveauConfidentialite::class)],
         ];
     }
 }

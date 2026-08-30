@@ -4,6 +4,7 @@ namespace Modules\Courrier\Policies;
 
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
@@ -18,9 +19,27 @@ class CourrierPolicy
         return true;
     }
 
+    /**
+     * Un courrier ordinaire reste visible dès lors que le
+     * CourrierDirectionScope l'a laissé passer (c'est déjà le vrai filtre,
+     * voir la docblock de la classe). Confidentiel/secret ajoute une garde
+     * réelle : restreint aux postes du circuit central, à l'administrateur,
+     * et à la direction imputée (principale ou en copie) — pas à
+     * n'importe quelle direction qui aurait un lien historique via
+     * direction_origine_id/direction_destination_id sans être imputée.
+     * Périmètre exact à confirmer, voir docs/questions-ont.md.
+     */
     public function view(User $user, Courrier $courrier): bool
     {
-        return true;
+        if ($courrier->niveau_confidentialite === NiveauConfidentialite::ORDINAIRE) {
+            return true;
+        }
+
+        if ($user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER) {
+            return true;
+        }
+
+        return $user->direction_id !== null && $courrier->imputations->contains('direction_id', $user->direction_id);
     }
 
     /**
@@ -100,11 +119,36 @@ class CourrierPolicy
     }
 
     /**
+     * Qui impute un courrier vers une ou plusieurs directions — restreint
+     * aux postes du circuit central et à l'administrateur, comme
+     * voirStatistiques(). Périmètre volontairement large en attendant
+     * confirmation (voir docs/questions-ont.md) : dans la pratique décrite,
+     * c'est la DG qui impute, mais rien n'empêche le Protocole de le faire
+     * en amont — à restreindre si la DFP/le Secrétariat Général précise
+     * que ce doit être un poste unique.
+     */
+    public function imputer(User $user, Courrier $courrier): bool
+    {
+        return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+    }
+
+    /**
      * Tableau de bord du circuit : par nature transverse aux directions,
      * réservé aux postes du circuit courrier et à l'administrateur (la DG
      * y a accès en tant que poste du circuit hiérarchique).
      */
     public function voirStatistiques(User $user): bool
+    {
+        return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+    }
+
+    /**
+     * Le registre PDF est un document opposable (celui que le Secrétariat
+     * Général signe, que la tutelle réclame) : même périmètre que
+     * voirStatistiques en attendant confirmation (voir docs/questions-ont.md
+     * — qui doit réellement avoir accès au registre).
+     */
+    public function voirRegistre(User $user): bool
     {
         return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
     }
