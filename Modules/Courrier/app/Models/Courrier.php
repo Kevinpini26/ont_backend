@@ -2,6 +2,7 @@
 
 namespace Modules\Courrier\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -277,6 +278,30 @@ class Courrier extends Model
     public function relectureEstValidee(): bool
     {
         return $this->relecture_validee_at !== null;
+    }
+
+    /**
+     * Recherche plein texte réelle (PostgreSQL, configuration française),
+     * pas un simple ILIKE — voir la migration
+     * add_recherche_tsvector_to_courriers pour la colonne alimentée par
+     * trigger. Un numéro qui correspond exactement (enregistrement, accusé
+     * de réception, départ, cote de classement) est toujours priorisé en
+     * tête : c'est un code, jamais raciniser comme du texte.
+     */
+    public function scopeRecherchePleinTexte(Builder $query, string $terme): Builder
+    {
+        return $query
+            ->where(function (Builder $q) use ($terme) {
+                $q->whereRaw('recherche_tsvector @@ plainto_tsquery(\'french\', ?)', [$terme])
+                    ->orWhere('numero_enregistrement', $terme)
+                    ->orWhere('numero_accuse_reception', $terme)
+                    ->orWhere('numero_depart', $terme)
+                    ->orWhere('cote_classement', $terme);
+            })
+            ->orderByRaw(
+                '(case when numero_enregistrement = ? or numero_accuse_reception = ? or numero_depart = ? or cote_classement = ? then 0 else 1 end) asc, ts_rank(recherche_tsvector, plainto_tsquery(\'french\', ?)) desc',
+                [$terme, $terme, $terme, $terme, $terme]
+            );
     }
 
     /**

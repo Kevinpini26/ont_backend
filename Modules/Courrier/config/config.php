@@ -172,4 +172,18 @@ return [
      * (numéro d'enregistrement seul, sans l'année).
      */
     'format_cote_classement' => '{direction}-{annee}-{sequence}',
+
+    /**
+     * Délai indicatif (en heures) avant qu'un courrier soit considéré "en
+     * souffrance" à son étape courante — voir Modules\Courrier\Support\CourrierEnSouffrance.
+     * Valeur par défaut appliquée à tout statut sans entrée spécifique
+     * ci-dessous. Ces durées sont un choix de présentation raisonnable,
+     * pas une norme métier confirmée — voir docs/questions-ont.md.
+     */
+    'delai_indicatif_heures_par_defaut' => 48,
+    'delais_indicatifs_heures' => [
+        'en_attente_avis_dg' => 48,
+        'en_relecture' => 24,
+        'projet_reponse_en_cours' => 72,
+    ],
 ];

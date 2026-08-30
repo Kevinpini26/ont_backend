@@ -3,7 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Courrier\Http\Controllers\Api\CourrierAnnotationController;
 use Modules\Courrier\Http\Controllers\Api\CourrierController;
+use Modules\Courrier\Http\Controllers\Api\CourrierEnSouffranceController;
 use Modules\Courrier\Http\Controllers\Api\CourrierStatistiqueController;
+use Modules\Courrier\Http\Controllers\Api\DelegationPosteController;
 use Modules\Courrier\Http\Controllers\Api\RegistreCourrierController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
@@ -11,6 +13,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/statistiques-dg', [CourrierStatistiqueController::class, 'dg']);
     Route::get('/courriers/statistiques-direction', [CourrierStatistiqueController::class, 'pourDirection']);
     Route::get('/courriers/registre', [RegistreCourrierController::class, 'telecharger']);
+    Route::get('/courriers/en-souffrance', [CourrierEnSouffranceController::class, 'index']);
+    Route::get('/delegations-poste', [DelegationPosteController::class, 'index']);
+    Route::post('/delegations-poste', [DelegationPosteController::class, 'store']);
     Route::get('/courriers', [CourrierController::class, 'index']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);

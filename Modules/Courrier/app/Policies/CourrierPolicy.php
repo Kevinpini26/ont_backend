@@ -10,10 +10,14 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DelegationResolver;
 
 class CourrierPolicy
 {
-    public function __construct(private readonly CircuitTransitionRules $regles) {}
+    public function __construct(
+        private readonly CircuitTransitionRules $regles,
+        private readonly DelegationResolver $delegations,
+    ) {}
 
     public function viewAny(User $user): bool
     {
@@ -64,8 +68,9 @@ class CourrierPolicy
     public function transmettre(User $user, Courrier $courrier): bool
     {
         $estSortant = $courrier->sens === SensCourrier::SORTANT;
+        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant), true);
+        return $this->delegations->utilisateurHabilite($user, $postesAutorises);
     }
 
     public function validerRelecture(User $user, Courrier $courrier): bool
@@ -86,8 +91,9 @@ class CourrierPolicy
         }
 
         $estSortant = $courrier->sens === SensCourrier::SORTANT;
+        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant), true);
+        return $this->delegations->utilisateurHabilite($user, $postesAutorises);
     }
 
     /**
@@ -116,8 +122,9 @@ class CourrierPolicy
     public function signer(User $user, Courrier $courrier): bool
     {
         $estSortant = $courrier->sens === SensCourrier::SORTANT;
+        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant), true);
+        return $this->delegations->utilisateurHabilite($user, $postesAutorises);
     }
 
     public function annoter(User $user, Courrier $courrier): bool
@@ -152,7 +159,9 @@ class CourrierPolicy
 
     public function envoyer(User $user, Courrier $courrier): bool
     {
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, true), true);
+        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, true);
+
+        return $this->delegations->utilisateurHabilite($user, $postesAutorises);
     }
 
     public function enregistrerRemise(User $user, Courrier $courrier): bool

@@ -62,11 +62,9 @@ class CourrierController extends Controller
         }
 
         if ($request->filled('recherche')) {
-            $terme = '%'.$request->string('recherche').'%';
-            $query->where(fn ($q) => $q->where('objet', 'ilike', $terme)
-                ->orWhere('numero_accuse_reception', 'ilike', $terme)
-                ->orWhere('candidat_nom', 'ilike', $terme)
-                ->orWhere('expediteur_externe_nom', 'ilike', $terme));
+            $query->recherchePleinTexte($request->string('recherche')->toString());
+
+            return CourrierResource::collection($query->paginate(20));
         }
 
         return CourrierResource::collection($query->latest()->paginate(20));

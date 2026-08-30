@@ -26,6 +26,7 @@ use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgDisponibilite;
 
 /**
@@ -42,6 +43,7 @@ class CourrierCircuitService
         private readonly CourrierPdfGenerator $pdf,
         private readonly AuditLogger $audit,
         private readonly NotificationService $notifications,
+        private readonly DelegationResolver $delegations,
     ) {}
 
     public function creer(User $auteur, array $donnees): Courrier
@@ -286,6 +288,14 @@ class CourrierCircuitService
             'courrier_id' => $courrier->id,
             'statut' => $courrier->statut,
             'changed_by_id' => $utilisateur?->id,
+            // Proxy volontairement simple : "cet utilisateur détient une
+            // délégation active aujourd'hui", pas une vérification que
+            // CETTE transition précise en dépendait — reconstituer ce fait
+            // précis demanderait de faire transiter le résultat
+            // d'assertTransitionAutorisee() jusqu'ici. Assez fidèle en
+            // pratique : un utilisateur en délégation agit rarement aussi
+            // sous son propre poste le même jour.
+            'agi_en_interim' => $utilisateur !== null && $this->delegations->posteDelegueAujourdhui($utilisateur) !== null,
             'destinataire_poste' => $destinatairePoste,
             'destinataire_user_id' => $destinataireUserId,
             'created_at' => now(),
@@ -352,7 +362,12 @@ class CourrierCircuitService
 
         $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
-        if ($utilisateur->poste === null || ! in_array($utilisateur->poste, $postesAutorises, true)) {
+        // Un utilisateur qui n'occupe pas lui-même l'un des postes
+        // autorisés peut malgré tout agir s'il en détient une délégation
+        // active aujourd'hui (voir DelegationPoste) — aucun poste du
+        // circuit ne doit bloquer le flux par la seule absence de son
+        // titulaire.
+        if (! $this->delegations->utilisateurHabilite($utilisateur, $postesAutorises)) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
     }
@@ -389,7 +404,7 @@ class CourrierCircuitService
                 $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
                 $enInterim = $utilisateur->poste === Poste::DGA;
 
-                if ($utilisateur->poste === null || ! in_array($utilisateur->poste, $postesAutorises, true)) {
+                if (! $this->delegations->utilisateurHabilite($utilisateur, $postesAutorises)) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
 

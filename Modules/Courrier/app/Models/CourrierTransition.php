@@ -22,6 +22,7 @@ class CourrierTransition extends Model
         'courrier_id',
         'statut',
         'changed_by_id',
+        'agi_en_interim',
         'destinataire_poste',
         'destinataire_user_id',
         'accuse_reception_par_id',
@@ -35,6 +36,7 @@ class CourrierTransition extends Model
             'statut' => CourrierStatut::class,
             'created_at' => 'datetime',
             'accuse_reception_at' => 'datetime',
+            'agi_en_interim' => 'boolean',
         ];
     }
 

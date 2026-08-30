@@ -55,6 +55,39 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   courriers déjà existants avant l'introduction de ce niveau (tous créés
   "ordinaire" par défaut, donc non affectés).
 
+- **Qui peut créer une délégation de poste.** Implémenté : réservé à
+  l'administrateur (voir `CreerDelegationPosteRequest`), sur le même
+  principe conservateur que `imputer()`/`voirRegistre()`. En pratique,
+  c'est vraisemblablement le titulaire d'un poste (ou son supérieur
+  hiérarchique direct) qui devrait pouvoir désigner son propre
+  remplaçant en cas d'absence — mais aucune notion de hiérarchie entre
+  postes n'existe dans le système pour arbitrer ça automatiquement. À
+  confirmer avec la DFP/le Secrétariat Général.
+
+- **Délégation de poste et niveau d'ancienneté/permissions du délégataire.**
+  `DelegationPoste` ne vérifie pas que le délégataire a le rôle
+  `agent_circuit_courrier` — un utilisateur de n'importe quel rôle peut en
+  théorie recevoir une délégation de poste circuit. Est-ce voulu (par
+  exemple un responsable de direction couvrant temporairement le
+  Secrétariat 02), ou faut-il restreindre aux seuls agents du circuit
+  courrier ?
+
+- **Périmètre de la visibilité inter-directions accordée par délégation.**
+  `DefaultDirectionScopeBypassResolver` accorde désormais la même
+  visibilité "toutes directions" à un délégataire qu'au titulaire du
+  poste délégué (voir `DelegationResolver::posteDelegueAujourdhui()`),
+  sans quoi il ne pourrait matériellement pas voir les dossiers sur
+  lesquels il est habilité à agir. Choix jugé nécessaire, pas neutre : à
+  confirmer qu'une délégation ne doit pas être limitée à un sous-ensemble
+  de directions.
+
+- **Champs couverts par la recherche plein texte (`recherche_tsvector`).**
+  Implémenté sur `objet`, `candidat_nom`, `expediteur_externe_nom`,
+  `destinataire_externe_nom`, `reference_expediteur` — pas sur
+  `contenu` (corps du projet de réponse, structuré en JSON) ni sur les
+  annotations. À étendre si la pratique montre que ces recherches sont
+  attendues.
+
 ## Points à surveiller pour les lots suivants
 
 - **Colonne `piece_jointe_chemin` sur `courriers`.** Toujours lue par
