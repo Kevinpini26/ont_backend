@@ -15,14 +15,19 @@
         h3 { font-size: 12px; text-transform: uppercase; margin: 18px 0 6px; }
         ol { padding-left: 18px; line-height: 1.7; }
         .signatures { margin-top: 40px; width: 100%; }
-        .signatures td { width: 50%; vertical-align: top; padding: 8px; }
+        .signatures td { width: 33%; vertical-align: top; padding: 8px; }
         .case { display: inline-block; width: 10px; height: 10px; border: 1px solid #333; margin-right: 6px; }
     </style>
 </head>
 <body>
     @include('stagiaires::partials.entete')
 
-    <div class="titre">Convention de stage</div>
+    <div class="titre">Convention de stage tripartite</div>
+
+    <p style="margin-bottom: 18px; line-height: 1.6;">
+        Établie entre l'Office National du Tourisme (direction {{ $stagiaire->direction?->nom }}),
+        l'établissement de formation ({{ $stagiaire->etablissement_origine }}) et le stagiaire.
+    </p>
 
     <table class="tableau">
         <tr>
@@ -31,7 +36,12 @@
         </tr>
         <tr>
             <td>Établissement d'origine</td>
-            <td>{{ $stagiaire->etablissement_origine }}</td>
+            <td>
+                {{ $stagiaire->etablissement_origine }}
+                @if($stagiaire->etablissement?->ville)
+                    ({{ $stagiaire->etablissement->ville }})
+                @endif
+            </td>
         </tr>
         <tr>
             <td>Direction d'accueil</td>
@@ -88,6 +98,17 @@
                 @else
                     <p>Non signé à ce jour.</p>
                 @endif
+            </td>
+            <td>
+                {{--
+                    Troisième partie de la convention tripartite : signature
+                    manuscrite, hors système — l'établissement de formation
+                    n'a pas de compte utilisateur ONT et aucun mécanisme de
+                    signature électronique n'existe pour lui à ce jour (voir
+                    docs/questions-ont.md).
+                --}}
+                <p><span class="case"></span> Pour l'établissement de formation</p>
+                <p>{{ $stagiaire->etablissement_origine }}</p>
             </td>
         </tr>
     </table>

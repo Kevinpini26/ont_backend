@@ -147,3 +147,43 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   et à préciser si le contenu du rapport doit être formellement rattaché à
   l'évaluation (actuellement un simple document, sans lien structurel avec
   `evaluation_direction_grille`/`evaluation_dfp_grille`).
+
+## Lot 5 — documents officiels manquants
+
+- **Note d'affectation.** Générée automatiquement à l'affectation, stockée
+  comme `StagiaireDocument` (type `note_affectation`) — modèle de document
+  volontairement simple (identité, direction, date), à faire relire par le
+  service compétent comme les autres modèles PDF déjà signalés (voir la
+  mention "modèle standard" sur la convention).
+
+- **Badge de stagiaire.** Généré à la demande (jamais stocké, réimprimable
+  à tout moment), refusé tant que le stagiaire n'a pas de matricule
+  (c.-à-d. avant affectation). Sans photo déposée (type `DocumentType::PHOTO`),
+  affiche un encart "Photo non fournie" plutôt que d'échouer — à confirmer
+  si la photo doit au contraire être obligatoire avant affectation.
+
+- **Engagement de confidentialité comme document distinct de la
+  convention.** Implémenté avec son propre mécanisme de génération et de
+  signature (lien public à usage unique, comme la convention), généré au
+  même moment que la convention (validation de l'arrivée). La convention
+  contient déjà, elle, une clause de confidentialité générale (dans les
+  obligations du stagiaire) — les deux coexistent donc : à confirmer que
+  ce n'est pas une redondance à supprimer d'un côté ou de l'autre.
+
+- **Certificat de fin de stage distinct de l'attestation.** Généré à la
+  clôture, en parallèle de l'attestation existante — ne mentionne jamais
+  la note finale, donc consultable par la direction d'accueil (contrairement
+  à l'attestation, réservée à `voirEvaluationFinale()`). Aucun mécanisme de
+  vérification publique par QR code n'a été ajouté pour ce document
+  (contrairement à l'attestation) : à ajouter si ce certificat doit
+  également être vérifiable par un tiers.
+
+- **Convention tripartite.** La convention existante mentionne désormais
+  l'établissement de formation comme troisième partie et prévoit un
+  troisième encart de signature — mais celle-ci reste manuscrite/hors
+  système : l'établissement n'a pas de compte utilisateur ONT et aucun
+  mécanisme de signature électronique n'a été prévu pour lui. Si
+  l'établissement doit pouvoir signer électroniquement (comme le stagiaire
+  via lien public), un mécanisme équivalent reste à construire — nécessite
+  probablement un contact/email par établissement, absent du référentiel
+  `EtablissementFormation` actuel (seulement nom + ville).

@@ -14,6 +14,9 @@ enum DocumentType: string
     case LETTRE_DEMANDE_STAGE = 'lettre_demande_stage';
     case PHOTO = 'photo';
     case RAPPORT_FIN_STAGE = 'rapport_fin_stage';
+    case NOTE_AFFECTATION = 'note_affectation';
+    case CERTIFICAT_FIN_STAGE = 'certificat_fin_stage';
+    case ENGAGEMENT_CONFIDENTIALITE = 'engagement_confidentialite';
 
     public function label(): string
     {
@@ -28,6 +31,9 @@ enum DocumentType: string
             self::LETTRE_DEMANDE_STAGE => 'Lettre de demande de stage',
             self::PHOTO => "Photo d'identité",
             self::RAPPORT_FIN_STAGE => 'Rapport de fin de stage',
+            self::NOTE_AFFECTATION => "Note d'affectation",
+            self::CERTIFICAT_FIN_STAGE => 'Certificat de fin de stage',
+            self::ENGAGEMENT_CONFIDENTIALITE => 'Engagement de confidentialité',
         };
     }
 }

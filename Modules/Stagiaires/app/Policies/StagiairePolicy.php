@@ -193,7 +193,9 @@ class StagiairePolicy
             DocumentType::PIECE_IDENTITE, DocumentType::DIPLOME_ETAT, DocumentType::DERNIER_DIPLOME,
             DocumentType::CV, DocumentType::ATTESTATION_INSCRIPTION => $user->role === UserRole::AGENT_DFP,
             DocumentType::LETTRE_STAGE_UNIVERSITE, DocumentType::LETTRE_DEMANDE_STAGE,
-            DocumentType::PHOTO, DocumentType::RAPPORT_FIN_STAGE => $user->role === UserRole::AGENT_DFP
+            DocumentType::PHOTO, DocumentType::RAPPORT_FIN_STAGE,
+            DocumentType::NOTE_AFFECTATION, DocumentType::CERTIFICAT_FIN_STAGE,
+            DocumentType::ENGAGEMENT_CONFIDENTIALITE => $user->role === UserRole::AGENT_DFP
                 || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id),
             DocumentType::ATTESTATION_STAGE => $this->voirEvaluationFinale($user),
         };

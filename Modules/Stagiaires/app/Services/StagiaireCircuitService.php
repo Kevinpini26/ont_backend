@@ -13,7 +13,10 @@ use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\AttestationGenerator;
 use Modules\Stagiaires\Contracts\CalculateurNoteFinale;
+use Modules\Stagiaires\Contracts\CertificatGenerator;
 use Modules\Stagiaires\Contracts\ConventionGenerator;
+use Modules\Stagiaires\Contracts\EngagementConfidentialiteGenerator;
+use Modules\Stagiaires\Contracts\NoteAffectationGenerator;
 use Modules\Stagiaires\Contracts\SequenceGenerator;
 use Modules\Stagiaires\Enums\DocumentType;
 use Modules\Stagiaires\Enums\StagiaireStatut;
@@ -29,6 +32,7 @@ use Modules\Stagiaires\Models\StagiairePresence;
 use Modules\Stagiaires\Models\StagiaireProlongation;
 use Modules\Stagiaires\Models\StagiaireSuivi;
 use Modules\Stagiaires\Notifications\ConventionASignerNotification;
+use Modules\Stagiaires\Notifications\EngagementConfidentialiteASignerNotification;
 use Modules\Stagiaires\Notifications\RapportStageDemandeNotification;
 use Modules\Stagiaires\Notifications\RetourExperienceDemandeNotification;
 use Modules\Stagiaires\Notifications\StagiaireAffecteNotification;
@@ -40,6 +44,9 @@ class StagiaireCircuitService
         private readonly CalculateurNoteFinale $calculateur,
         private readonly AttestationGenerator $attestations,
         private readonly ConventionGenerator $conventions,
+        private readonly NoteAffectationGenerator $notesAffectation,
+        private readonly CertificatGenerator $certificats,
+        private readonly EngagementConfidentialiteGenerator $engagementsConfidentialite,
         private readonly SequenceGenerator $sequences,
         private readonly AuditLogger $audit,
         private readonly NotificationService $notifications,
@@ -96,6 +103,13 @@ class StagiaireCircuitService
                 );
             }
             $stagiaire->save();
+
+            $stagiaire->documents()->create([
+                'type' => DocumentType::NOTE_AFFECTATION,
+                'nom_original' => "note-affectation-{$stagiaire->nom}.pdf",
+                'chemin' => $this->notesAffectation->generer($stagiaire),
+                'uploaded_by_id' => $dfp->id,
+            ]);
 
             $this->audit->enregistrer('stagiaire.affectation', $stagiaire, $dfp, [
                 'direction_id' => $directionId,
@@ -235,6 +249,35 @@ class StagiaireCircuitService
 
         $lien = StagiaireLienPublic::genererPour($stagiaire, TypeLienPublic::CONVENTION);
         $this->envoyerLienParEmailSiPossible($stagiaire, $lien, new ConventionASignerNotification($lien));
+
+        // Document distinct de la convention (voir docs/questions-ont.md) :
+        // sa propre signature, son propre lien à usage unique.
+        $stagiaire->engagement_confidentialite_chemin = $this->engagementsConfidentialite->generer($stagiaire);
+        $stagiaire->engagement_confidentialite_genere_at = now();
+        $stagiaire->save();
+
+        $lienEngagement = StagiaireLienPublic::genererPour($stagiaire, TypeLienPublic::ENGAGEMENT_CONFIDENTIALITE);
+        $this->envoyerLienParEmailSiPossible($stagiaire, $lienEngagement, new EngagementConfidentialiteASignerNotification($lienEngagement));
+
+        return $stagiaire;
+    }
+
+    public function signerEngagementConfidentialite(Stagiaire $stagiaire): Stagiaire
+    {
+        if (! $stagiaire->engagement_confidentialite_chemin) {
+            throw new StagiaireTransitionException("Aucun engagement de confidentialité n'a encore été généré pour ce dossier.");
+        }
+
+        if ($stagiaire->engagement_confidentialite_signe_at) {
+            throw new StagiaireTransitionException("L'engagement de confidentialité a déjà été signé.");
+        }
+
+        $stagiaire->engagement_confidentialite_signe_at = now();
+        $stagiaire->save();
+
+        $this->audit->enregistrer('stagiaire.engagement_confidentialite_signature', $stagiaire, null, [
+            'description' => "Signature de l'engagement de confidentialité par le stagiaire {$stagiaire->nom} via lien public",
+        ]);
 
         return $stagiaire;
     }
@@ -539,6 +582,16 @@ class StagiaireCircuitService
             'type' => DocumentType::ATTESTATION_STAGE,
             'nom_original' => "attestation-{$stagiaire->nom}.pdf",
             'chemin' => $chemin,
+        ]);
+
+        // Certificat distinct de l'attestation : ne mentionne jamais la
+        // note finale (voir CertificatGenerator), donc consultable par la
+        // direction d'accueil sans exposer une information confidentielle.
+        StagiaireDocument::query()->create([
+            'stagiaire_id' => $stagiaire->id,
+            'type' => DocumentType::CERTIFICAT_FIN_STAGE,
+            'nom_original' => "certificat-fin-stage-{$stagiaire->nom}.pdf",
+            'chemin' => $this->certificats->generer($stagiaire),
         ]);
 
         $lien = StagiaireLienPublic::genererPour($stagiaire, TypeLienPublic::RETOUR_EXPERIENCE);

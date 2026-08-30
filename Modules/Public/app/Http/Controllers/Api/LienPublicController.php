@@ -95,6 +95,18 @@ class LienPublicController extends Controller
         return response()->json(['message' => 'Merci pour votre retour.']);
     }
 
+    public function signerEngagementConfidentialite(string $token)
+    {
+        $lien = $this->trouverLienValide($token, TypeLienPublic::ENGAGEMENT_CONFIDENTIALITE);
+
+        /** @var Stagiaire $stagiaire */
+        $stagiaire = $lien->stagiaire;
+        $this->circuit->signerEngagementConfidentialite($stagiaire);
+        $lien->consommer();
+
+        return response()->json(['message' => 'Engagement de confidentialité signé avec succès.']);
+    }
+
     public function soumettreRapportStage(SoumettreRapportStageRequest $request, string $token)
     {
         $lien = $this->trouverLienValide($token, TypeLienPublic::RAPPORT_STAGE);

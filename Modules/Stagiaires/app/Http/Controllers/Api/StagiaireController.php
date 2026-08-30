@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Stagiaires\Contracts\BadgeStagiairePdfGenerator;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Http\Requests\AffecterStagiaireRequest;
 use Modules\Stagiaires\Http\Requests\DefinirInformationsComplementairesRequest;
@@ -29,6 +30,7 @@ class StagiaireController extends Controller
     public function __construct(
         private readonly StagiaireCircuitService $circuit,
         private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier,
+        private readonly BadgeStagiairePdfGenerator $badges,
     ) {}
 
     public function index(Request $request)
@@ -249,6 +251,22 @@ class StagiaireController extends Controller
         abort_unless($stagiaire->convention_chemin, 404);
 
         return Storage::disk('local')->download($stagiaire->convention_chemin, "convention-stage-{$stagiaire->nom}.pdf");
+    }
+
+    public function badge(Stagiaire $stagiaire)
+    {
+        $this->authorize('view', $stagiaire);
+
+        // Un badge n'a de sens qu'une fois affecté (matricule et direction
+        // connus) — voir Stagiaire::matricule, attribué à l'affectation.
+        abort_unless($stagiaire->matricule !== null, 422);
+
+        $pdf = $this->badges->generer($stagiaire->load('documents'));
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "attachment; filename=\"badge-{$stagiaire->matricule}.pdf\"",
+        ]);
     }
 
     public function retour(Stagiaire $stagiaire)

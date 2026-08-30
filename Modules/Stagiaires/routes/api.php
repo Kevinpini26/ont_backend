@@ -38,6 +38,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/stagiaires/{stagiaire}/informations-complementaires', [StagiaireController::class, 'definirInformationsComplementaires']);
     Route::post('/stagiaires/{stagiaire}/convention/signer-direction', [StagiaireController::class, 'signerConventionDirection']);
     Route::get('/stagiaires/{stagiaire}/convention/telecharger', [StagiaireController::class, 'telechargerConvention']);
+    Route::get('/stagiaires/{stagiaire}/badge', [StagiaireController::class, 'badge']);
     Route::get('/stagiaires/{stagiaire}/retour', [StagiaireController::class, 'retour']);
 
     Route::get('/stagiaires/{stagiaire}/presences', [StagiairePresenceController::class, 'index']);

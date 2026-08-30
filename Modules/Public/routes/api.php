@@ -31,4 +31,5 @@ Route::prefix('v1/public')->middleware('throttle:sensitive')->group(function () 
     Route::post('/liens/{token}/signer-convention', [LienPublicController::class, 'signerConvention']);
     Route::post('/liens/{token}/retour', [LienPublicController::class, 'soumettreRetour']);
     Route::post('/liens/{token}/rapport-stage', [LienPublicController::class, 'soumettreRapportStage']);
+    Route::post('/liens/{token}/signer-engagement-confidentialite', [LienPublicController::class, 'signerEngagementConfidentialite']);
 });

@@ -66,6 +66,9 @@ class Stagiaire extends Model
         'convention_signee_direction_at',
         'convention_signee_direction_par_id',
         'convention_signee_stagiaire_at',
+        'engagement_confidentialite_chemin',
+        'engagement_confidentialite_genere_at',
+        'engagement_confidentialite_signe_at',
         'affecte_hors_quota',
         'origine',
         'importe_par_id',
@@ -103,6 +106,8 @@ class Stagiaire extends Model
             'convention_genere_at' => 'datetime',
             'convention_signee_direction_at' => 'datetime',
             'convention_signee_stagiaire_at' => 'datetime',
+            'engagement_confidentialite_genere_at' => 'datetime',
+            'engagement_confidentialite_signe_at' => 'datetime',
             'affecte_hors_quota' => 'boolean',
             'importe_at' => 'datetime',
         ];
