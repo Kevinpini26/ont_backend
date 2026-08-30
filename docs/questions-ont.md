@@ -187,3 +187,33 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   via lien public), un mécanisme équivalent reste à construire — nécessite
   probablement un contact/email par établissement, absent du référentiel
   `EtablissementFormation` actuel (seulement nom + ville).
+
+## Lot 6 — pilotage et rapport à la tutelle
+
+- **Format de l'export tableur.** Implémenté en CSV (aucune dépendance de
+  génération de tableur binaire n'était présente dans le projet — voir
+  `composer.json`, seul `barryvdh/laravel-dompdf` existe pour le PDF). Un
+  export `.xlsx` natif avec mise en forme réelle nécessiterait d'ajouter
+  une librairie dédiée (ex: `phpoffice/phpspreadsheet`) : à faire si un
+  fichier tableur natif (pas un CSV) est spécifiquement exigé par la
+  tutelle.
+
+- **Colonnes de l'export et filtres disponibles.** Volontairement réduits
+  aux filtres déjà exposés par les listes existantes (statut, direction) —
+  pas de réplique exhaustive de tous les filtres d'`index()` (ex:
+  `recherche`, `periode_debut/fin` pour les courriers). À étendre si
+  besoin.
+
+- **Contenu du rapport annuel consolidé.** Limité aux stages *clôturés
+  dans l'année* (pas aux dossiers simplement reçus) pour les ventilations
+  par direction/type de stage, avec la note moyenne — périmètre exact
+  (faut-il aussi les stages encore en cours en fin d'année, un taux de
+  réussite avec seuil de note, une ventilation par établissement ?) à
+  confirmer avec la DFP/le Secrétariat Général. Généré à la demande (comme
+  le registre courrier), pas automatiquement en fin d'année.
+
+- **Qui a accès au rapport annuel.** Restreint à la DFP et à
+  l'administrateur (`voirRapportAnnuel()`) — plus étroit que
+  `voirStatistiques()` qui inclut aussi un responsable de direction (pour
+  ses propres chiffres) et la DG : un rapport consolidé destiné à la
+  tutelle n'a, par nature, pas vocation à être vu direction par direction.

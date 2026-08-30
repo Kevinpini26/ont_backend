@@ -21,6 +21,14 @@
         </include>
     </source>
     <php>
+        <!-- Le nombre de PDF (Dompdf) générés par les tests de cycle de vie
+             stagiaire a augmenté au fil des lots (note d'affectation,
+             engagement de confidentialité, certificat, attestation,
+             convention...) au point d'épuiser la limite par défaut de 128M
+             cumulée sur tout le process PHPUnit — pas une fuite mémoire
+             corrigible côté code applicatif, juste plus de PDF réels par
+             test qu'auparavant. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

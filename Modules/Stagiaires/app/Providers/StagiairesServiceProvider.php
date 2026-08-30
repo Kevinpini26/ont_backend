@@ -4,6 +4,7 @@ namespace Modules\Stagiaires\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Gate;
+use Modules\Stagiaires\Console\GenererRapportAnnuelCommand;
 use Modules\Stagiaires\Console\VerifierEcheancesStageCommand;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\AttestationGenerator;
@@ -14,6 +15,7 @@ use Modules\Stagiaires\Contracts\ConventionGenerator;
 use Modules\Stagiaires\Contracts\DoublonDetector;
 use Modules\Stagiaires\Contracts\EngagementConfidentialiteGenerator;
 use Modules\Stagiaires\Contracts\NoteAffectationGenerator;
+use Modules\Stagiaires\Contracts\RapportAnnuelGenerator;
 use Modules\Stagiaires\Contracts\SequenceGenerator;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Policies\StagiairePolicy;
@@ -25,6 +27,7 @@ use Modules\Stagiaires\Support\DompdfCertificatGenerator;
 use Modules\Stagiaires\Support\DompdfConventionGenerator;
 use Modules\Stagiaires\Support\DompdfEngagementConfidentialiteGenerator;
 use Modules\Stagiaires\Support\DompdfNoteAffectationGenerator;
+use Modules\Stagiaires\Support\DompdfRapportAnnuelGenerator;
 use Modules\Stagiaires\Support\MoyenneCalculateurNoteFinale;
 use Modules\Stagiaires\Support\SimilarTextDoublonDetector;
 use Nwidart\Modules\Support\ModuleServiceProvider;
@@ -48,6 +51,7 @@ class StagiairesServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         VerifierEcheancesStageCommand::class,
+        GenererRapportAnnuelCommand::class,
     ];
 
     /**
@@ -72,6 +76,7 @@ class StagiairesServiceProvider extends ModuleServiceProvider
         $this->app->bind(CertificatGenerator::class, DompdfCertificatGenerator::class);
         $this->app->bind(BadgeStagiairePdfGenerator::class, DompdfBadgeStagiairePdfGenerator::class);
         $this->app->bind(EngagementConfidentialiteGenerator::class, DompdfEngagementConfidentialiteGenerator::class);
+        $this->app->bind(RapportAnnuelGenerator::class, DompdfRapportAnnuelGenerator::class);
         $this->app->bind(DoublonDetector::class, SimilarTextDoublonDetector::class);
         $this->app->bind(SequenceGenerator::class, DatabaseSequenceGenerator::class);
     }

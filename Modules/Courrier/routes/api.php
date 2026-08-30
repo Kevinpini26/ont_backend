@@ -16,6 +16,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/en-souffrance', [CourrierEnSouffranceController::class, 'index']);
     Route::get('/delegations-poste', [DelegationPosteController::class, 'index']);
     Route::post('/delegations-poste', [DelegationPosteController::class, 'store']);
+    Route::get('/courriers/export', [CourrierController::class, 'export']);
     Route::get('/courriers', [CourrierController::class, 'index']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);

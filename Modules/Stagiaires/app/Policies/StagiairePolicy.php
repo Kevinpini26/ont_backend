@@ -244,6 +244,18 @@ class StagiairePolicy
     }
 
     /**
+     * Rapport annuel consolidé à la tutelle : document transverse à toutes
+     * les directions, réservé à la DFP et à l'administrateur — même
+     * périmètre que CourrierPolicy::voirRegistre(), plus restreint que
+     * voirStatistiques() (qui inclut aussi un responsable de direction et
+     * la DG pour leurs propres tableaux de bord).
+     */
+    public function voirRapportAnnuel(User $user): bool
+    {
+        return $user->role === UserRole::AGENT_DFP || $user->role === UserRole::ADMINISTRATEUR;
+    }
+
+    /**
      * Ouverture/fermeture des demandes de stage par type : réservée à la
      * DFP, qui pilote seule le calendrier des candidatures.
      */

@@ -10,6 +10,7 @@ use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Support\PeriodeStatistique;
 use Modules\Stagiaires\Enums\StagiaireStatut;
+use Modules\Stagiaires\Enums\StagiaireTypeStage;
 use Modules\Stagiaires\Models\Stagiaire;
 
 class StagiaireStatistiqueController extends Controller
@@ -81,6 +82,19 @@ class StagiaireStatistiqueController extends Controller
         $stagesClotures = Stagiaire::query()->whereBetween('cloture_at', [$periode->debut, $periode->fin])->count();
         $stagesCloturesPrecedent = Stagiaire::query()->whereBetween('cloture_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
+        $parTypeStage = Stagiaire::query()
+            ->selectRaw('type_stage, count(*) as total')
+            ->groupBy('type_stage')
+            ->pluck('total', 'type_stage');
+
+        $parEtablissement = Stagiaire::query()
+            ->whereNotNull('etablissement_id')
+            ->join('etablissements_formation', 'etablissements_formation.id', '=', 'stagiaires.etablissement_id')
+            ->selectRaw('etablissements_formation.id as etablissement_id, etablissements_formation.nom as etablissement_nom, count(*) as total')
+            ->groupBy('etablissements_formation.id', 'etablissements_formation.nom')
+            ->orderByDesc('total')
+            ->get();
+
         $evolution = DB::table('stagiaires')
             ->selectRaw('date_trunc(?, created_at) as periode, count(*) as total', [$periode->granulariteSql()])
             ->whereBetween('created_at', [$periode->debut, $periode->fin])
@@ -120,6 +134,16 @@ class StagiaireStatistiqueController extends Controller
             'par_direction' => $parDirection->map(fn ($ligne) => [
                 'direction_id' => $ligne->direction_id,
                 'direction_nom' => $ligne->direction_nom,
+                'total' => (int) $ligne->total,
+            ])->values(),
+            'par_type_stage' => collect(StagiaireTypeStage::cases())->map(fn (StagiaireTypeStage $type) => [
+                'type_stage' => $type->value,
+                'label' => $type->label(),
+                'total' => (int) ($parTypeStage[$type->value] ?? 0),
+            ])->values(),
+            'par_etablissement' => $parEtablissement->map(fn ($ligne) => [
+                'etablissement_id' => $ligne->etablissement_id,
+                'etablissement_nom' => $ligne->etablissement_nom,
                 'total' => (int) $ligne->total,
             ])->values(),
         ]);

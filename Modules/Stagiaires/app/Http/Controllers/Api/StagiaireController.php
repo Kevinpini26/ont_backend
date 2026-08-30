@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Support\CsvExporter;
 use Modules\Stagiaires\Contracts\BadgeStagiairePdfGenerator;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Http\Requests\AffecterStagiaireRequest;
@@ -251,6 +252,38 @@ class StagiaireController extends Controller
         abort_unless($stagiaire->convention_chemin, 404);
 
         return Storage::disk('local')->download($stagiaire->convention_chemin, "convention-stage-{$stagiaire->nom}.pdf");
+    }
+
+    public function export(Request $request)
+    {
+        $this->authorize('voirStatistiques', Stagiaire::class);
+
+        $query = Stagiaire::query()->with(['direction', 'etablissement']);
+
+        if ($request->filled('direction_id')) {
+            $query->where('direction_id', $request->integer('direction_id'));
+        }
+
+        if ($request->filled('statut')) {
+            $query->where('statut', $request->string('statut'));
+        }
+
+        $lignes = $query->orderBy('id')->cursor()->map(fn (Stagiaire $s) => [
+            $s->matricule,
+            $s->nom,
+            $s->etablissement?->nom ?? $s->etablissement_origine,
+            $s->type_stage?->label(),
+            $s->direction?->nom,
+            $s->statut->label(),
+            $s->date_debut_stage?->toDateString(),
+            $s->date_fin_stage?->toDateString(),
+            $s->created_at->toDateString(),
+        ]);
+
+        return CsvExporter::streamer('stagiaires.csv', [
+            'Matricule', 'Nom', 'Établissement', 'Type de stage', 'Direction',
+            'Statut', 'Début', 'Fin', 'Date de réception du dossier',
+        ], $lignes);
     }
 
     public function badge(Stagiaire $stagiaire)

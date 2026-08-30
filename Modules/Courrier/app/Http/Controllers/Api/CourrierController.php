@@ -25,6 +25,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Support\CsvExporter;
 
 class CourrierController extends Controller
 {
@@ -68,6 +69,49 @@ class CourrierController extends Controller
         }
 
         return CourrierResource::collection($query->latest()->paginate(20));
+    }
+
+    public function export(Request $request)
+    {
+        $query = Courrier::query()->with(['directionOrigine', 'directionDestination']);
+
+        if ($request->filled('statut')) {
+            $query->where('statut', $request->string('statut'));
+        }
+
+        if ($request->filled('direction_origine_id')) {
+            $query->where('direction_origine_id', $request->integer('direction_origine_id'));
+        }
+
+        if ($request->filled('direction_destination_id')) {
+            $query->where('direction_destination_id', $request->integer('direction_destination_id'));
+        }
+
+        if ($request->filled('periode_debut')) {
+            $query->whereDate('created_at', '>=', $request->string('periode_debut'));
+        }
+
+        if ($request->filled('periode_fin')) {
+            $query->whereDate('created_at', '<=', $request->string('periode_fin'));
+        }
+
+        $lignes = $query->orderBy('id')->cursor()->map(fn (Courrier $c) => [
+            $c->numero_enregistrement,
+            $c->numero_accuse_reception,
+            $c->objet,
+            $c->type->label(),
+            $c->statut->label(),
+            $c->directionOrigine?->nom,
+            $c->directionDestination?->nom,
+            $c->degre_urgence?->label(),
+            $c->date_courrier?->toDateString(),
+            $c->created_at->toDateString(),
+        ]);
+
+        return CsvExporter::streamer('courriers.csv', [
+            "Numéro d'enregistrement", "Numéro d'accusé de réception", 'Objet', 'Type', 'Statut',
+            'Direction origine', 'Direction destination', 'Urgence', 'Date du courrier', 'Date de réception',
+        ], $lignes);
     }
 
     public function show(Request $request, Courrier $courrier)

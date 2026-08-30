@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Stagiaires\Http\Controllers\Api\DisponibiliteDemandesStageController;
 use Modules\Stagiaires\Http\Controllers\Api\EtablissementFormationController;
 use Modules\Stagiaires\Http\Controllers\Api\ImportHistoriqueController;
+use Modules\Stagiaires\Http\Controllers\Api\RapportAnnuelController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireDocumentController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiairePresenceController;
@@ -17,6 +18,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     Route::get('/stagiaires/statistiques', [StagiaireStatistiqueController::class, 'index']);
     Route::get('/stagiaires/alertes', [StagiaireStatistiqueController::class, 'alertes']);
+    Route::get('/stagiaires/export', [StagiaireController::class, 'export']);
+    Route::get('/stagiaires/rapport-annuel', [RapportAnnuelController::class, 'telecharger']);
     Route::get('/stagiaires/disponibilite-demandes', [DisponibiliteDemandesStageController::class, 'show']);
     Route::post('/stagiaires/disponibilite-demandes', [DisponibiliteDemandesStageController::class, 'update']);
     Route::get('/etablissements-formation', [EtablissementFormationController::class, 'index']);
