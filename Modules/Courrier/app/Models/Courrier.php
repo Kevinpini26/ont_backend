@@ -13,8 +13,11 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\ModeExpedition;
 use Modules\Courrier\Enums\ModeReception;
+use Modules\Courrier\Enums\ModeRemise;
 use Modules\Courrier\Enums\NiveauConfidentialite;
+use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Scopes\CourrierDirectionScope;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -37,6 +40,7 @@ class Courrier extends Model
         'nombre_annexes' => 0,
         'degre_urgence' => 'normal',
         'niveau_confidentialite' => 'ordinaire',
+        'sens' => 'entrant',
     ];
 
     protected $fillable = [
@@ -96,6 +100,17 @@ class Courrier extends Model
         'niveau_confidentialite',
         'cote_classement',
         'emplacement_physique',
+        'sens',
+        'en_reponse_a_courrier_id',
+        'destinataire_externe_nom',
+        'destinataire_externe_email',
+        'mode_expedition',
+        'date_envoi',
+        'numero_depart',
+        'remis_le',
+        'remis_a',
+        'mode_remise',
+        'decharge_remise_chemin',
     ];
 
     protected static function booted(): void
@@ -135,6 +150,11 @@ class Courrier extends Model
             'nombre_annexes' => 'integer',
             'degre_urgence' => DegreUrgence::class,
             'niveau_confidentialite' => NiveauConfidentialite::class,
+            'sens' => SensCourrier::class,
+            'mode_expedition' => ModeExpedition::class,
+            'date_envoi' => 'date',
+            'remis_le' => 'datetime',
+            'mode_remise' => ModeRemise::class,
         ];
     }
 
@@ -183,6 +203,20 @@ class Courrier extends Model
      * piece_jointe_chemin (toujours lue ailleurs, voir la migration de
      * création de cette table) plutôt que de la remplacer d'un coup.
      */
+    /**
+     * Fil de correspondance : les courriers sortants créés en réponse à
+     * celui-ci (voir CourrierCircuitService::initierReponseSortante()).
+     */
+    public function reponses(): HasMany
+    {
+        return $this->hasMany(Courrier::class, 'en_reponse_a_courrier_id')->oldest('created_at');
+    }
+
+    public function courrierOrigine(): BelongsTo
+    {
+        return $this->belongsTo(Courrier::class, 'en_reponse_a_courrier_id');
+    }
+
     public function piecesJointes(): HasMany
     {
         return $this->hasMany(CourrierPieceJointe::class)->orderBy('ordre');

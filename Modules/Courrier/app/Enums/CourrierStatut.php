@@ -34,6 +34,13 @@ enum CourrierStatut: string
     case SIGNE = 'signe';
     case ENREGISTRE = 'enregistre';
 
+    /**
+     * État terminal d'un courrier sortant (Courrier::sens = sortant, voir
+     * config('courrier.circuit_transitions.sortant')) — jamais atteint par
+     * un courrier entrant, qui se termine à ENREGISTRE.
+     */
+    case ENVOYE = 'envoye';
+
     public function label(): string
     {
         return match ($this) {
@@ -46,6 +53,7 @@ enum CourrierStatut: string
             self::EN_RELECTURE => 'En relecture',
             self::SIGNE => 'Signé',
             self::ENREGISTRE => 'Enregistré',
+            self::ENVOYE => 'Envoyé',
         };
     }
 

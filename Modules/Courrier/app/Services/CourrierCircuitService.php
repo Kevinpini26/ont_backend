@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\ModeReception;
+use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Events\CourrierStageAvisFavorable;
 use Modules\Courrier\Exceptions\RelectureNonValideeException;
 use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
@@ -342,13 +343,14 @@ class CourrierCircuitService
     {
         $this->assertDechargeDonnee($courrier);
 
-        $statutAttendu = $this->regles->statutSuivant($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg);
+        $estSortant = $courrier->sens === SensCourrier::SORTANT;
+        $statutAttendu = $this->regles->statutSuivant($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
         if ($statutAttendu === null || $statutAttendu !== $statutCible) {
             throw TransitionNonAutoriseeException::sautDetape();
         }
 
-        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg);
+        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
         if ($utilisateur->poste === null || ! in_array($utilisateur->poste, $postesAutorises, true)) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
@@ -383,7 +385,8 @@ class CourrierCircuitService
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
             } else {
-                $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg);
+                $estSortant = $courrier->sens === SensCourrier::SORTANT;
+                $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
                 $enInterim = $utilisateur->poste === Poste::DGA;
 
                 if ($utilisateur->poste === null || ! in_array($utilisateur->poste, $postesAutorises, true)) {
@@ -536,6 +539,14 @@ class CourrierCircuitService
             $courrier->signe_at = now();
             $courrier->statut = CourrierStatut::SIGNE;
 
+            // Numéro de départ attribué exactement à la signature (pas à
+            // l'envoi effectif, voir docs/lot 2) : un courrier sortant
+            // signé porte déjà sa référence officielle, même si sa remise
+            // matérielle suit de quelques heures ou jours.
+            if ($courrier->sens === SensCourrier::SORTANT) {
+                $courrier->numero_depart = $this->numeros->genererNumeroDepart();
+            }
+
             // PDF définitif généré exactement ici, jamais avant (le contenu du
             // projet de réponse reste modifiable jusqu'à cet instant précis) et
             // jamais régénéré ensuite : posé dans la même sauvegarde que la
@@ -576,6 +587,119 @@ class CourrierCircuitService
 
             return $courrier;
         });
+    }
+
+    /**
+     * Crée le courrier de réponse comme enregistrement à part entière
+     * (sens=sortant), lié à l'original par en_reponse_a_courrier_id —
+     * plutôt qu'un simple champ de l'original (voir docs, lot 2). Démarre
+     * directement à en_relecture, le relecteur étant désigné à la
+     * création (même principe que soumettreProjetReponse() pour la
+     * réponse historique) : rédiger sans relecteur désigné n'a pas de sens,
+     * il n'y aurait personne à qui la transition suivante serait destinée.
+     */
+    public function initierReponseSortante(User $auteur, Courrier $original, array $donnees): Courrier
+    {
+        $estResponsableConcerne = $auteur->role === UserRole::RESPONSABLE_DIRECTION
+            && in_array($auteur->direction_id, [$original->direction_origine_id, $original->direction_destination_id], true);
+        $estSecretariat1 = $auteur->poste === Poste::SECRETARIAT_1;
+
+        if (! $estResponsableConcerne && ! $estSecretariat1) {
+            throw TransitionNonAutoriseeException::posteNonHabilite();
+        }
+
+        return $this->creerCourrierSortant($auteur, $donnees, $original);
+    }
+
+    /**
+     * Courrier sortant proactif, sans courrier d'arrivée déclencheur — une
+     * direction qui écrit de sa propre initiative à un partenaire externe
+     * (pas seulement en réponse à quelque chose déjà reçu). Même circuit
+     * de relecture et de signature que initierReponseSortante().
+     */
+    public function initierCourrierSortant(User $auteur, array $donnees): Courrier
+    {
+        if ($auteur->role !== UserRole::RESPONSABLE_DIRECTION && $auteur->poste !== Poste::SECRETARIAT_1) {
+            throw TransitionNonAutoriseeException::posteNonHabilite();
+        }
+
+        return $this->creerCourrierSortant($auteur, $donnees, null);
+    }
+
+    private function creerCourrierSortant(User $auteur, array $donnees, ?Courrier $original): Courrier
+    {
+        return DB::transaction(function () use ($auteur, $donnees, $original) {
+            $courrier = Courrier::query()->create([
+                ...$donnees,
+                'objet' => $donnees['objet'] ?? ($original ? 'Réponse à : '.$original->objet : $donnees['objet'] ?? null),
+                'type' => CourrierType::CORRESPONDANCE_GENERALE,
+                'sens' => SensCourrier::SORTANT,
+                'en_reponse_a_courrier_id' => $original?->id,
+                // Visible par la même direction que le rédacteur (ou celle
+                // de l'original s'il y en a un) — jamais
+                // direction_destination_id : le destinataire est externe,
+                // suivi via destinataire_externe_nom, pas une direction.
+                'direction_origine_id' => $original?->direction_origine_id ?? $auteur->direction_id,
+                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'statut' => CourrierStatut::EN_RELECTURE,
+                'necessite_avis_dg' => false,
+                'initie_par_dg' => false,
+                'created_by' => $auteur->id,
+            ]);
+
+            $this->tracerTransition($courrier, $auteur);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Marque l'envoi effectif d'un courrier sortant signé : numéro de
+     * départ, destinataire externe, mode d'expédition, date d'envoi.
+     * Distinct d'enregistrer() (qui numérote un courrier ENTRANT) — un
+     * courrier sortant n'entre jamais dans le registre arrivée.
+     */
+    public function envoyer(Courrier $courrier, User $utilisateur, array $donnees): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur, $donnees) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENVOYE);
+
+            $courrier->destinataire_externe_nom = $donnees['destinataire_externe_nom'] ?? null;
+            $courrier->destinataire_externe_email = $donnees['destinataire_externe_email'] ?? null;
+            $courrier->mode_expedition = $donnees['mode_expedition'] ?? null;
+            $courrier->date_envoi = now();
+            $courrier->statut = CourrierStatut::ENVOYE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Preuve de remise — un courrier sortant confié à un porteur n'est
+     * réellement délivré qu'une fois la décharge signée rapportée.
+     * Distinct de l'envoi lui-même : un courrier peut être "envoyé" (parti
+     * de l'Office) sans que la remise soit encore confirmée.
+     */
+    public function enregistrerRemise(Courrier $courrier, User $utilisateur, array $donnees): Courrier
+    {
+        if ($courrier->statut !== CourrierStatut::ENVOYE) {
+            throw TransitionNonAutoriseeException::sautDetape();
+        }
+
+        $courrier->remis_le = now();
+        $courrier->remis_a = $donnees['remis_a'];
+        $courrier->mode_remise = $donnees['mode_remise'];
+        $courrier->decharge_remise_chemin = $donnees['decharge_remise_chemin'] ?? null;
+        $courrier->save();
+
+        $this->audit->enregistrer('courrier.remise_confirmee', $courrier, $utilisateur, [
+            'description' => "Remise confirmée pour le courrier {$courrier->numero_depart}",
+        ]);
+
+        return $courrier;
     }
 
     public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation

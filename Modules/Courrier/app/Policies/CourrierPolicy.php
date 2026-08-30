@@ -5,6 +5,7 @@ namespace Modules\Courrier\Policies;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\NiveauConfidentialite;
+use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
@@ -62,7 +63,9 @@ class CourrierPolicy
      */
     public function transmettre(User $user, Courrier $courrier): bool
     {
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg), true);
+        $estSortant = $courrier->sens === SensCourrier::SORTANT;
+
+        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant), true);
     }
 
     public function validerRelecture(User $user, Courrier $courrier): bool
@@ -82,7 +85,9 @@ class CourrierPolicy
             return $courrier->relecteur_id === $user->id;
         }
 
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg), true);
+        $estSortant = $courrier->sens === SensCourrier::SORTANT;
+
+        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant), true);
     }
 
     /**
@@ -110,7 +115,9 @@ class CourrierPolicy
      */
     public function signer(User $user, Courrier $courrier): bool
     {
-        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg), true);
+        $estSortant = $courrier->sens === SensCourrier::SORTANT;
+
+        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant), true);
     }
 
     public function annoter(User $user, Courrier $courrier): bool
@@ -130,6 +137,27 @@ class CourrierPolicy
     public function imputer(User $user, Courrier $courrier): bool
     {
         return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+    }
+
+    /**
+     * Filtre grossier, comme transmettre() : le responsable d'une direction
+     * concernée par l'original, ou secretariat_1 (qui rédige déjà les
+     * projets de réponse aujourd'hui). Vérification précise (laquelle des
+     * deux directions de l'original) dans le service.
+     */
+    public function initierReponse(User $user, Courrier $courrier): bool
+    {
+        return $user->role === UserRole::RESPONSABLE_DIRECTION || $user->poste === Poste::SECRETARIAT_1;
+    }
+
+    public function envoyer(User $user, Courrier $courrier): bool
+    {
+        return in_array($user->poste, $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, true), true);
+    }
+
+    public function enregistrerRemise(User $user, Courrier $courrier): bool
+    {
+        return $user->poste === Poste::SECRETARIAT_2 || $user->role === UserRole::ADMINISTRATEUR;
     }
 
     /**

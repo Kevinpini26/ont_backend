@@ -10,8 +10,12 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Http\Requests\EnregistrerCourrierRequest;
+use Modules\Courrier\Http\Requests\EnregistrerRemiseRequest;
+use Modules\Courrier\Http\Requests\EnvoyerCourrierRequest;
 use Modules\Courrier\Http\Requests\ImputerCourrierRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
+use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
+use Modules\Courrier\Http\Requests\InitierReponseSortanteRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
 use Modules\Courrier\Http\Requests\StoreCourrierRequest;
@@ -322,6 +326,41 @@ class CourrierController extends Controller
         );
     }
 
+    public function initierReponse(InitierReponseSortanteRequest $request, Courrier $courrier)
+    {
+        $reponse = $this->circuit->initierReponseSortante($request->user(), $courrier, $request->validated());
+
+        return $this->ressource($reponse)->response()->setStatusCode(201);
+    }
+
+    /**
+     * Courrier sortant proactif (pas une réponse à un courrier précis) —
+     * une direction écrit de sa propre initiative à un partenaire externe.
+     */
+    public function initierSortant(InitierCourrierSortantRequest $request)
+    {
+        $courrier = $this->circuit->initierCourrierSortant($request->user(), $request->validated());
+
+        return $this->ressource($courrier)->response()->setStatusCode(201);
+    }
+
+    public function envoyer(EnvoyerCourrierRequest $request, Courrier $courrier)
+    {
+        return $this->ressource($this->circuit->envoyer($courrier, $request->user(), $request->validated()));
+    }
+
+    public function enregistrerRemise(EnregistrerRemiseRequest $request, Courrier $courrier)
+    {
+        $donnees = $request->validated();
+        $decharge = $donnees['decharge_remise'] ?? null;
+        unset($donnees['decharge_remise']);
+        if ($decharge) {
+            $donnees['decharge_remise_chemin'] = $decharge->store('courriers-decharges', 'local');
+        }
+
+        return $this->ressource($this->circuit->enregistrerRemise($courrier, $request->user(), $donnees));
+    }
+
     public function enregistrer(EnregistrerCourrierRequest $request, Courrier $courrier)
     {
         $data = $request->validated();
@@ -351,7 +390,7 @@ class CourrierController extends Controller
             'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
             'imputations.direction', 'imputations.imputeePar',
-            'piecesJointes',
+            'piecesJointes', 'reponses', 'courrierOrigine',
         ]));
     }
 }

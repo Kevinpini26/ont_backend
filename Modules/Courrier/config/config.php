@@ -126,6 +126,31 @@ return [
                 'postes' => [],
             ],
         ],
+
+        /**
+         * 'sortant' : courrier de réponse à un courrier d'arrivée
+         * (Courrier::sens = sortant, voir CourrierCircuitService::initierReponseSortante()) —
+         * créé directement à en_relecture (le relecteur est désigné à la
+         * création, comme soumettreProjetReponse() le fait déjà pour la
+         * réponse historique). La DG signe, puis le Secrétariat 02 marque
+         * l'envoi effectif (numéro de départ, date d'envoi) — "envoye"
+         * remplace "enregistre" comme état terminal, un courrier sortant
+         * n'est jamais "enregistré" au sens du registre arrivée.
+         */
+        'sortant' => [
+            'en_relecture' => [
+                'suivant' => 'signe',
+                'postes' => [Poste::DG->value],
+            ],
+            'signe' => [
+                'suivant' => 'envoye',
+                'postes' => [Poste::SECRETARIAT_2->value],
+            ],
+            'envoye' => [
+                'suivant' => null,
+                'postes' => [],
+            ],
+        ],
     ],
 
     /**

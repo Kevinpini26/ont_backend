@@ -14,10 +14,14 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers', [CourrierController::class, 'index']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);
+    Route::post('/courriers/initier-sortant', [CourrierController::class, 'initierSortant']);
     Route::get('/courriers/{courrier}', [CourrierController::class, 'show']);
 
     Route::post('/courriers/{courrier}/accuser-reception', [CourrierController::class, 'accuserReception']);
     Route::post('/courriers/{courrier}/imputer', [CourrierController::class, 'imputer']);
+    Route::post('/courriers/{courrier}/initier-reponse', [CourrierController::class, 'initierReponse']);
+    Route::post('/courriers/{courrier}/envoyer', [CourrierController::class, 'envoyer']);
+    Route::post('/courriers/{courrier}/enregistrer-remise', [CourrierController::class, 'enregistrerRemise']);
     Route::post('/courriers/{courrier}/transmettre-protocole', [CourrierController::class, 'transmettreProtocole']);
     Route::post('/courriers/{courrier}/valider-avant-diffusion', [CourrierController::class, 'validerAvantDiffusion']);
     Route::post('/courriers/{courrier}/transmettre-avis-dg', [CourrierController::class, 'transmettreAvisDg']);

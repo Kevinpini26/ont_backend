@@ -13,12 +13,12 @@ use Modules\Kernel\Enums\Poste;
  */
 interface CircuitTransitionRules
 {
-    public function statutSuivant(CourrierStatut $statut, bool $necessiteAvisDg, bool $initieParDg = false): ?CourrierStatut;
+    public function statutSuivant(CourrierStatut $statut, bool $necessiteAvisDg, bool $initieParDg = false, bool $sortant = false): ?CourrierStatut;
 
     /**
      * @return Poste[]
      */
-    public function postesAutorises(CourrierStatut $statutCourant, bool $necessiteAvisDg, bool $initieParDg = false): array;
+    public function postesAutorises(CourrierStatut $statutCourant, bool $necessiteAvisDg, bool $initieParDg = false, bool $sortant = false): array;
 
     public function posteDeCreation(): Poste;
 }
