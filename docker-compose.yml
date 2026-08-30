@@ -9,7 +9,18 @@
 #   2. Renseigner .env.docker.production avec de vraies valeurs (jamais les
 #      exemples fournis) — voir SECURITY.md pour la liste des réglages
 #      obligatoires avant mise en ligne.
-#   3. docker compose up -d
+#   3. docker compose --env-file .env.docker.production up -d --build
+#
+# --env-file est OBLIGATOIRE, jamais un simple "docker compose up" : les
+# ${DB_DATABASE}/${DB_USERNAME}/${DB_PASSWORD} ci-dessous (service db) sont
+# résolus par Compose lui-même, à partir d'un fichier ".env" par défaut —
+# PAS par env_file: .env.docker.production (qui ne peuple que l'environnement
+# du CONTENEUR, jamais les ${...} du YAML). Sur ce dépôt, backend/.env
+# existe couramment pour le développement natif (composer install local) et
+# porte lui aussi une clé DB_PASSWORD : sans --env-file explicite, Compose y
+# pioche silencieusement un mot de passe différent de celui réellement
+# transmis au conteneur backend, et l'authentification échoue au démarrage
+# (trouvé en testant ce fichier de bout en bout, pas une hypothèse).
 #
 # Suppose backend/ et frontend/ clonés côte à côte (même convention que
 # l'environnement de développement) : ../frontend doit exister.

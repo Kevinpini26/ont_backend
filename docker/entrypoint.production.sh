@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# La découverte des paquets (bootstrap/cache/packages.php et services.php)
+# démarre Laravel en entier — jamais faite à la construction de l'image
+# (voir Dockerfile.production, --no-scripts sur composer dump-autoload) :
+# ici, l'environnement réel du conteneur (.env.docker.production) est
+# effectivement chargé.
+echo "[entrypoint] Découverte des paquets…"
+php artisan package:discover --ansi
+
 # config:cache/route:cache dépendent des variables d'environnement réelles
 # (DB_HOST, FRONTEND_URL...), connues seulement au démarrage du conteneur,
 # jamais à la construction de l'image (qui doit rester indépendante de

@@ -1,10 +1,23 @@
 /vendor
 /node_modules
+# Contenu généré à l'exécution (pièces jointes, PDF, sauvegardes...) :
+# jamais dans l'image, toujours un volume monté dessus (voir
+# docker-compose.yml, service backend). L'inclure exposerait aussi des
+# fichiers hérités de permissions locales incohérentes (ex. certains
+# sous-dossiers créés root par un conteneur de développement) qui font
+# échouer le transfert du contexte de build.
+/storage/app/*
 /storage/*.key
 /storage/framework/cache/*
 /storage/framework/sessions/*
+/storage/framework/testing/*
 /storage/framework/views/*
 /storage/logs/*
+# Caches locaux régénérés à chaque build (jamais figés depuis le poste du
+# développeur) : un bootstrap/cache/packages.php généré en local avec les
+# dépendances de dev présentes (barryvdh/laravel-ide-helper...) ferait
+# planter `composer dump-autoload` dans l'image, construite elle en --no-dev.
+/bootstrap/cache/*.php
 /.phpunit.cache
 .git
 .env

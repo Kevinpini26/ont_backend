@@ -21,7 +21,28 @@ RUN composer install \
         --no-interaction
 
 COPY . .
-RUN composer dump-autoload --optimize --no-dev
+
+# Doivent exister (même vides), pour tout artisan/composer script exécuté
+# plus tard (y compris à l'exécution) : le config par défaut de Laravel
+# résout view.compiled via realpath(storage_path('framework/views')), qui
+# renvoie false si le dossier n'existe pas — Blade refuse alors même une
+# valeur de cache. .dockerignore exclut le contenu de ces dossiers (jamais
+# des fichiers d'exécution figés dans l'image), pas les dossiers eux-mêmes,
+# mais ne garantit pas leur présence : on les recrée explicitement.
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
+        storage/logs storage/app/private bootstrap/cache
+
+# --no-scripts : composer dump-autoload déclenche par défaut
+# `package:discover`, qui démarre Laravel en entier — donc avec les
+# variables d'environnement de CE build (aucune, .env n'est jamais copié
+# dans l'image), jamais celles de l'environnement cible réel. Un garde de
+# démarrage sensible à l'environnement (ex. BackupDiskProductionGuard,
+# APP_ENV valant "production" par défaut en l'absence de .env) ferait alors
+# échouer la construction de l'image quel que soit le déploiement visé.
+# Même principe que config:cache/route:cache/view:cache ci-dessous : tout
+# ce qui dépend de l'environnement réel est reporté à entrypoint.sh, jamais
+# fait à la construction (voir son commentaire).
+RUN composer dump-autoload --optimize --no-dev --no-scripts
 
 FROM php:8.3-fpm-alpine AS final
 
