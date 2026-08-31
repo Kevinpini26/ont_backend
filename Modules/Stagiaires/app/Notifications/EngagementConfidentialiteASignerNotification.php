@@ -6,9 +6,10 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Modules\Stagiaires\Contracts\NotificationAvecSms;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
 
-class EngagementConfidentialiteASignerNotification extends Notification implements ShouldQueue
+class EngagementConfidentialiteASignerNotification extends Notification implements NotificationAvecSms, ShouldQueue
 {
     use Queueable;
 
@@ -17,6 +18,13 @@ class EngagementConfidentialiteASignerNotification extends Notification implemen
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    public function messageSms(): string
+    {
+        $url = rtrim(config('app.frontend_url'), '/')."/liens/{$this->lien->token}";
+
+        return "ONT : merci de signer votre engagement de confidentialité. {$url}";
     }
 
     public function toMail(object $notifiable): MailMessage

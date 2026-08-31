@@ -4,6 +4,7 @@ namespace Modules\Kernel\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Kernel\Database\Factories\DirectionFactory;
 
@@ -12,7 +13,7 @@ class Direction extends Model
     /** @use HasFactory<DirectionFactory> */
     use HasFactory;
 
-    protected $fillable = ['code', 'nom', 'actif', 'capacite_max'];
+    protected $fillable = ['code', 'nom', 'actif', 'capacite_max', 'site_id'];
 
     protected function casts(): array
     {
@@ -30,5 +31,10 @@ class Direction extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    public function site(): BelongsTo
+    {
+        return $this->belongsTo(Site::class);
     }
 }

@@ -19,6 +19,7 @@ class StoreDirectionRequest extends FormRequest
             'nom' => ['required', 'string', 'max:255'],
             'actif' => ['sometimes', 'boolean'],
             'capacite_max' => ['nullable', 'integer', 'min:0'],
+            'site_id' => ['nullable', 'integer', 'exists:sites,id'],
         ];
     }
 }

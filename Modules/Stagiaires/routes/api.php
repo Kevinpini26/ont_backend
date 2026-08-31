@@ -44,10 +44,12 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/stagiaires/{stagiaire}/convention/signer-direction', [StagiaireController::class, 'signerConventionDirection']);
     Route::get('/stagiaires/{stagiaire}/convention/telecharger', [StagiaireController::class, 'telechargerConvention']);
     Route::get('/stagiaires/{stagiaire}/badge', [StagiaireController::class, 'badge']);
+    Route::get('/stagiaires/{stagiaire}/imprimer', [StagiaireController::class, 'imprimer']);
     Route::get('/stagiaires/{stagiaire}/retour', [StagiaireController::class, 'retour']);
 
     Route::get('/stagiaires/{stagiaire}/presences', [StagiairePresenceController::class, 'index']);
     Route::post('/stagiaires/{stagiaire}/presences', [StagiairePresenceController::class, 'store']);
+    Route::post('/stagiaires/{stagiaire}/presences/reconciliation', [StagiairePresenceController::class, 'reconciliation']);
     Route::delete('/stagiaires/{stagiaire}/presences/{date}', [StagiairePresenceController::class, 'destroy'])
         ->where('date', '\d{4}-\d{2}-\d{2}');
 

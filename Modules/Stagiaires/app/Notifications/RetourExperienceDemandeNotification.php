@@ -6,10 +6,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Modules\Stagiaires\Contracts\NotificationAvecSms;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
 
 // ShouldQueue : l'envoi ne doit jamais ralentir la réponse HTTP.
-class RetourExperienceDemandeNotification extends Notification implements ShouldQueue
+class RetourExperienceDemandeNotification extends Notification implements NotificationAvecSms, ShouldQueue
 {
     use Queueable;
 
@@ -18,6 +19,13 @@ class RetourExperienceDemandeNotification extends Notification implements Should
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    public function messageSms(): string
+    {
+        $url = rtrim(config('app.frontend_url'), '/')."/liens/{$this->lien->token}";
+
+        return "ONT : donnez votre avis sur votre stage (confidentiel). {$url}";
     }
 
     public function toMail(object $notifiable): MailMessage

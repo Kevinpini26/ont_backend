@@ -19,6 +19,7 @@ class UpdateDirectionRequest extends FormRequest
             'nom' => ['sometimes', 'required', 'string', 'max:255'],
             'actif' => ['sometimes', 'boolean'],
             'capacite_max' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'site_id' => ['sometimes', 'nullable', 'integer', 'exists:sites,id'],
         ];
     }
 }

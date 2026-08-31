@@ -25,6 +25,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Support\CsvExporter;
 
 class CourrierController extends Controller
@@ -32,6 +33,7 @@ class CourrierController extends Controller
     public function __construct(
         private readonly CourrierCircuitService $circuit,
         private readonly AuditLogger $audit,
+        private readonly PdfGenerationService $pdf,
     ) {}
 
     public function index(Request $request)
@@ -283,6 +285,27 @@ class CourrierController extends Controller
         $this->authorize('signer', $courrier);
 
         return $this->ressource($this->circuit->signer($courrier, $request->user()));
+    }
+
+    /**
+     * Impression généralisée : contrairement à telechargerPdf() (le PDF
+     * définitif, seulement une fois le courrier signé), cette fiche est
+     * générée à la volée depuis l'état courant du dossier, à n'importe
+     * quelle étape du circuit — utile en pratique de terrain où
+     * l'impression papier reste le principal support de suivi.
+     */
+    public function imprimer(Courrier $courrier)
+    {
+        $this->authorize('view', $courrier);
+
+        $pdf = $this->pdf->genererDepuisVue('courrier::fiche-imprimable', [
+            'courrier' => $courrier->load(['directionOrigine', 'directionDestination', 'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar']),
+        ]);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"fiche-{$courrier->numero_accuse_reception}.pdf\"",
+        ]);
     }
 
     public function telechargerPdf(Courrier $courrier)

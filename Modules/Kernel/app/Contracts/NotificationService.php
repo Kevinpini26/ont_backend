@@ -39,4 +39,11 @@ interface NotificationService
      * associé (destinataire "à la demande").
      */
     public function notifierParEmail(string $email, Notification $notification): void;
+
+    /**
+     * Envoie un message texte court par SMS — complément du courriel pour
+     * un contact qui n'a renseigné qu'un numéro de téléphone (voir
+     * Modules\Kernel\Support\SmsNotificationCanal).
+     */
+    public function notifierParSms(string $numero, string $message): void;
 }

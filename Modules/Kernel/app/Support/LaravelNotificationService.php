@@ -6,6 +6,7 @@ use Illuminate\Contracts\Mail\Mailable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
+use Modules\Kernel\Contracts\NotificationCanal;
 use Modules\Kernel\Contracts\NotificationService;
 
 /**
@@ -22,6 +23,8 @@ use Modules\Kernel\Contracts\NotificationService;
  */
 class LaravelNotificationService implements NotificationService
 {
+    public function __construct(private readonly NotificationCanal $smsCanal) {}
+
     public function envoyerMail(string $email, Mailable $mailable): void
     {
         Mail::to($email)->queue($mailable);
@@ -35,5 +38,10 @@ class LaravelNotificationService implements NotificationService
     public function notifierParEmail(string $email, Notification $notification): void
     {
         NotificationFacade::route('mail', $email)->notify($notification);
+    }
+
+    public function notifierParSms(string $numero, string $message): void
+    {
+        $this->smsCanal->envoyer($numero, $message);
     }
 }

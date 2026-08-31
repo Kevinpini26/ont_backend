@@ -7,6 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Contracts\NotificationCanal;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -18,6 +19,7 @@ use Modules\Stagiaires\Contracts\CertificatGenerator;
 use Modules\Stagiaires\Contracts\ConventionGenerator;
 use Modules\Stagiaires\Contracts\EngagementConfidentialiteGenerator;
 use Modules\Stagiaires\Contracts\NoteAffectationGenerator;
+use Modules\Stagiaires\Contracts\NotificationAvecSms;
 use Modules\Stagiaires\Contracts\SequenceGenerator;
 use Modules\Stagiaires\Enums\DocumentType;
 use Modules\Stagiaires\Enums\StagiaireStatut;
@@ -51,6 +53,7 @@ class StagiaireCircuitService
         private readonly SequenceGenerator $sequences,
         private readonly AuditLogger $audit,
         private readonly NotificationService $notifications,
+        private readonly NotificationCanal $smsCanal,
     ) {}
 
     private function assertStatut(Stagiaire $stagiaire, StagiaireStatut $attendu): void
@@ -383,14 +386,24 @@ class StagiaireCircuitService
 
     /**
      * Le stagiaire n'a pas de compte utilisateur : l'envoi se fait par
-     * e-mail (routage à la demande) uniquement si `contact` ressemble à une
-     * adresse valide. Dans tous les cas, le lien reste consultable via
+     * e-mail (routage à la demande) si `contact` ressemble à une adresse
+     * valide, par SMS s'il ressemble plutôt à un numéro de téléphone (voir
+     * Modules\Kernel\Support\SmsNotificationCanal) — un complément, pas un
+     * remplacement : `contact` ne distingue pas les deux formats à la
+     * saisie, si bien qu'un contact téléphone n'était auparavant notifié
+     * par aucun canal. Dans tous les cas, le lien reste consultable via
      * StagiaireResource pour une transmission manuelle par la direction.
      */
     private function envoyerLienParEmailSiPossible(Stagiaire $stagiaire, StagiaireLienPublic $lien, $notification): void
     {
         if (filter_var($stagiaire->contact, FILTER_VALIDATE_EMAIL)) {
             $this->notifications->notifierParEmail($stagiaire->contact, $notification);
+
+            return;
+        }
+
+        if ($notification instanceof NotificationAvecSms && $this->smsCanal->gere($stagiaire->contact ?? '')) {
+            $this->notifications->notifierParSms($stagiaire->contact, $notification->messageSms());
         }
     }
 
@@ -661,6 +674,65 @@ class StagiaireCircuitService
     public function supprimerPresence(Stagiaire $stagiaire, Carbon $date): void
     {
         $stagiaire->presences()->where('date', $date->toDateString())->delete();
+    }
+
+    /**
+     * Réconciliation d'un lot de présences saisies hors connexion (mode
+     * dégradé — une direction dans une représentation provinciale sans
+     * accès réseau continu, qui note l'assiduité sur papier ou dans une
+     * application locale, puis transmet le tout une fois la connexion
+     * rétablie). Contrairement à enregistrerPresence() (un jour à la fois,
+     * toujours appliqué), une entrée dont la date porte déjà une valeur
+     * différente de celle transmise est un CONFLIT — jamais écrasée
+     * silencieusement, sauf `$forcer` explicite — car la ligne existante a
+     * pu être saisie entre-temps par quelqu'un d'autre, en ligne.
+     *
+     * @param  array<int, array{date: string, heure_arrivee: ?string, heure_depart: ?string}>  $entrees
+     * @return array<int, array{date: string, statut: string, champs_conflit: array<int, string>}>
+     */
+    public function reconcilierPresences(Stagiaire $stagiaire, User $saisiPar, array $entrees, bool $forcer = false): array
+    {
+        return DB::transaction(function () use ($stagiaire, $saisiPar, $entrees, $forcer) {
+            $rapport = [];
+
+            foreach ($entrees as $entree) {
+                $existante = $stagiaire->presences()->where('date', $entree['date'])->lockForUpdate()->first();
+
+                $champsConflit = [];
+                if ($existante !== null && ! $forcer) {
+                    foreach (['heure_arrivee', 'heure_depart'] as $champ) {
+                        $entrant = $entree[$champ] ?? null;
+                        if ($entrant !== null && $existante->{$champ} !== null && $existante->{$champ} !== $entrant) {
+                            $champsConflit[] = $champ;
+                        }
+                    }
+                }
+
+                if ($champsConflit !== []) {
+                    $rapport[] = ['date' => $entree['date'], 'statut' => 'conflit', 'champs_conflit' => $champsConflit];
+
+                    continue;
+                }
+
+                $this->enregistrerPresence(
+                    $stagiaire,
+                    $saisiPar,
+                    Carbon::parse($entree['date']),
+                    $entree['heure_arrivee'] ?? null,
+                    $entree['heure_depart'] ?? null,
+                );
+
+                $rapport[] = ['date' => $entree['date'], 'statut' => 'applique', 'champs_conflit' => []];
+            }
+
+            $this->audit->enregistrer('stagiaire.presences_reconciliees', $stagiaire, $saisiPar, [
+                'nombre_entrees' => count($entrees),
+                'nombre_conflits' => count(array_filter($rapport, fn ($r) => $r['statut'] === 'conflit')),
+                'forcer' => $forcer,
+            ]);
+
+            return $rapport;
+        });
     }
 
     /**

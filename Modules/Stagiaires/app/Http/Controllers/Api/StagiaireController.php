@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Support\CsvExporter;
 use Modules\Stagiaires\Contracts\BadgeStagiairePdfGenerator;
@@ -32,6 +33,7 @@ class StagiaireController extends Controller
         private readonly StagiaireCircuitService $circuit,
         private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier,
         private readonly BadgeStagiairePdfGenerator $badges,
+        private readonly PdfGenerationService $pdf,
     ) {}
 
     public function index(Request $request)
@@ -284,6 +286,25 @@ class StagiaireController extends Controller
             'Matricule', 'Nom', 'Établissement', 'Type de stage', 'Direction',
             'Statut', 'Début', 'Fin', 'Date de réception du dossier',
         ], $lignes);
+    }
+
+    /**
+     * Impression généralisée : fiche de synthèse imprimable à n'importe
+     * quelle étape du dossier, sans exposer le détail des évaluations ni
+     * le retour d'expérience (voir fiche-imprimable.blade.php).
+     */
+    public function imprimer(Stagiaire $stagiaire)
+    {
+        $this->authorize('view', $stagiaire);
+
+        $pdf = $this->pdf->genererDepuisVue('stagiaires::fiche-imprimable', [
+            'stagiaire' => $stagiaire->load(['direction', 'documents', 'maitreStageUtilisateur']),
+        ]);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"fiche-{$stagiaire->nom}.pdf\"",
+        ]);
     }
 
     public function badge(Stagiaire $stagiaire)

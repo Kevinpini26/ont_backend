@@ -11,6 +11,7 @@ use Modules\Kernel\Http\Controllers\Api\NotificationCompteurController;
 use Modules\Kernel\Http\Controllers\Api\NotificationController;
 use Modules\Kernel\Http\Controllers\Api\PasswordController;
 use Modules\Kernel\Http\Controllers\Api\RapportPeriodiqueController;
+use Modules\Kernel\Http\Controllers\Api\SiteController;
 use Modules\Kernel\Http\Controllers\Api\UserController;
 use Modules\Kernel\Http\Middleware\EnsureMotDePasseAJour;
 
@@ -58,6 +59,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/directions', [DirectionController::class, 'index']);
         Route::get('/directions/{direction}', [DirectionController::class, 'show']);
 
+        Route::get('/sites', [SiteController::class, 'index']);
+
         Route::get('/dg-disponibilite', [DgDisponibiliteController::class, 'show']);
         Route::post('/dg-disponibilite', [DgDisponibiliteController::class, 'update']);
 
@@ -71,6 +74,8 @@ Route::prefix('v1')->group(function () {
             Route::put('/directions/{direction}', [DirectionController::class, 'update']);
             Route::patch('/directions/{direction}', [DirectionController::class, 'update']);
             Route::delete('/directions/{direction}', [DirectionController::class, 'destroy']);
+
+            Route::post('/sites', [SiteController::class, 'store']);
 
             Route::apiResource('users', UserController::class);
             Route::delete('/users/{user}/tokens', [UserController::class, 'revoquerJetons']);

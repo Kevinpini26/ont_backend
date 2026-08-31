@@ -271,3 +271,50 @@ périmètre du code :
   preuve technique complémentaire d'intégrité. Une intégration avec un
   prestataire de services de confiance agréé resterait à construire si
   une valeur probante pleine est requise pour ces documents.
+
+## Lot 8 — réalités de terrain
+
+- **Fournisseur SMS.** Aucun fournisseur n'est choisi par l'ONT à ce jour.
+  `Modules\Kernel\Support\SmsNotificationCanal` consigne les SMS sans les
+  envoyer réellement (`config('kernel.sms.driver') = 'log'`) tant qu'un
+  fournisseur n'est pas retenu ; passer à `'http'` et renseigner
+  `SMS_HTTP_URL`/les noms de champs une fois un fournisseur choisi (Africa's
+  Talking et Twilio sont deux options courantes en Afrique centrale, à
+  confirmer selon la couverture réseau des zones concernées).
+
+- **Format des numéros de téléphone.** `Stagiaire::contact` (et
+  `Courrier::candidat_contact`) ne distinguent pas email et téléphone à la
+  saisie, ni ne valident un format international précis — l'heuristique de
+  détection (`SmsNotificationCanal::gere()`) reste simple (8 chiffres ou
+  plus, pas un email). Un champ dédié et validé (`+243...`) serait plus
+  fiable si le volume de notifications SMS le justifie.
+
+- **Périmètre de la réconciliation hors ligne.** Implémenté seulement pour
+  les présences (`POST /stagiaires/{id}/presences/reconciliation`) — le cas
+  d'usage le plus manifestement concerné par un mode dégradé (saisie
+  d'assiduité en province, sans connexion continue). D'autres écrans
+  pourraient avoir le même besoin (annotations de courrier, fiches de
+  suivi) : à étendre si la pratique de terrain le confirme, plutôt que
+  généraliser sans un besoin identifié.
+
+- **Impression généralisée : périmètre couvert.** Deux nouvelles fiches
+  imprimables (`GET /courriers/{id}/imprimer`, `GET /stagiaires/{id}/imprimer`),
+  générées à la volée depuis l'état courant du dossier — en plus des
+  documents déjà imprimables existants (registre, attestation, convention,
+  badge, certificat). D'autres écrans (liste de la file de traitement,
+  tableau de bord) pourraient aussi mériter une version imprimable : non
+  couvert dans ce lot, à étendre si besoin exprimé.
+
+- **Préparation multi-site : ce qui reste hors périmètre.** Un référentiel
+  `Site` existe désormais (`GET/POST /api/v1/sites`) et chaque `Direction`
+  peut lui être rattachée (`site_id`, par défaut le siège de Kinshasa) —
+  mais **rien d'autre ne dépend du site** dans ce lot : les séquences de
+  numérotation (courrier, matricule, attestation), les quotas de
+  directions, le routage du circuit courrier et la visibilité des
+  utilisateurs restent tous nationaux, sans aucune segmentation par site.
+  Une vraie préparation multi-site opérationnelle demanderait de trancher,
+  avec la DFP/le Secrétariat Général : les représentations provinciales
+  ont-elles leurs propres séquences de numérotation ? Un agent d'une
+  représentation provinciale voit-il uniquement les dossiers de son site,
+  ou tout le national comme aujourd'hui ? Ce lot pose le référentiel sans
+  préjuger de ces réponses.

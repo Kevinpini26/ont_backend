@@ -44,4 +44,18 @@ return [
         'transfert_etat_tiers' => "Aucun transfert de données vers un État tiers n'est effectué dans le cadre de ces traitements.",
         'caractere_obligatoire' => "Les informations demandées sont nécessaires à l'instruction du dossier ; un refus de les communiquer empêche son traitement.",
     ],
+
+    /**
+     * Passerelle SMS — voir Modules\Kernel\Support\SmsNotificationCanal.
+     * Aucun fournisseur n'est choisi par l'ONT à ce jour : 'log' (défaut)
+     * consigne sans envoyer réellement. Passer à 'http' et renseigner les
+     * clés ci-dessous une fois un fournisseur retenu (voir docs/questions-ont.md).
+     */
+    'sms' => [
+        'driver' => env('SMS_DRIVER', 'log'),
+        'http_url' => env('SMS_HTTP_URL'),
+        'http_champ_destinataire' => env('SMS_HTTP_CHAMP_DESTINATAIRE', 'to'),
+        'http_champ_message' => env('SMS_HTTP_CHAMP_MESSAGE', 'message'),
+        'http_params_supplementaires' => [],
+    ],
 ];

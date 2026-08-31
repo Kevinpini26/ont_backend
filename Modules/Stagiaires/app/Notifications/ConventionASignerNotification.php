@@ -6,6 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Modules\Stagiaires\Contracts\NotificationAvecSms;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
 
 /**
@@ -14,7 +15,7 @@ use Modules\Stagiaires\Models\StagiaireLienPublic;
  * pour l'inviter à signer sa convention de stage via un lien à usage unique.
  * ShouldQueue : l'envoi ne doit jamais ralentir la réponse HTTP.
  */
-class ConventionASignerNotification extends Notification implements ShouldQueue
+class ConventionASignerNotification extends Notification implements NotificationAvecSms, ShouldQueue
 {
     use Queueable;
 
@@ -23,6 +24,13 @@ class ConventionASignerNotification extends Notification implements ShouldQueue
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    public function messageSms(): string
+    {
+        $url = rtrim(config('app.frontend_url'), '/')."/liens/{$this->lien->token}";
+
+        return "ONT : votre convention de stage est prête à être signée. {$url}";
     }
 
     public function toMail(object $notifiable): MailMessage

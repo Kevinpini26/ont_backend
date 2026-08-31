@@ -5,6 +5,7 @@ namespace Modules\Stagiaires\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Carbon;
 use Modules\Stagiaires\Http\Requests\EnregistrerPresenceRequest;
+use Modules\Stagiaires\Http\Requests\ReconcilierPresencesRequest;
 use Modules\Stagiaires\Http\Resources\StagiairePresenceResource;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Services\StagiaireCircuitService;
@@ -35,6 +36,26 @@ class StagiairePresenceController extends Controller
         );
 
         return (new StagiairePresenceResource($presence->load('saisiPar')))->response()->setStatusCode(201);
+    }
+
+    /**
+     * Réconciliation d'un lot de présences saisies hors connexion — voir
+     * StagiaireCircuitService::reconcilierPresences(). Renvoie le détail
+     * par date (appliqué ou en conflit), jamais une simple réussite
+     * globale : l'appelant (application hors-ligne) doit savoir
+     * précisément quelles entrées nécessitent une décision explicite
+     * (`forcer`) avant de les considérer synchronisées.
+     */
+    public function reconciliation(ReconcilierPresencesRequest $request, Stagiaire $stagiaire)
+    {
+        $rapport = $this->circuit->reconcilierPresences(
+            $stagiaire,
+            $request->user(),
+            $request->validated('entrees'),
+            $request->boolean('forcer'),
+        );
+
+        return response()->json(['data' => $rapport]);
     }
 
     public function destroy(Stagiaire $stagiaire, string $date)

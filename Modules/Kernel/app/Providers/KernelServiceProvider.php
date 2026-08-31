@@ -8,6 +8,7 @@ use Modules\Kernel\Console\RestaurerBaseDeDonneesCommand;
 use Modules\Kernel\Console\SauvegarderBaseDeDonneesCommand;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\DirectionScopeBypassResolver;
+use Modules\Kernel\Contracts\NotificationCanal;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Contracts\QrCodeService;
@@ -24,6 +25,7 @@ use Modules\Kernel\Support\DefaultDirectionScopeBypassResolver;
 use Modules\Kernel\Support\DompdfPdfGenerationService;
 use Modules\Kernel\Support\EndroidQrCodeService;
 use Modules\Kernel\Support\LaravelNotificationService;
+use Modules\Kernel\Support\SmsNotificationCanal;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class KernelServiceProvider extends ModuleServiceProvider
@@ -66,6 +68,7 @@ class KernelServiceProvider extends ModuleServiceProvider
         $this->app->bind(AuditLogger::class, DatabaseAuditLogger::class);
         $this->app->bind(PdfGenerationService::class, DompdfPdfGenerationService::class);
         $this->app->bind(QrCodeService::class, EndroidQrCodeService::class);
+        $this->app->bind(NotificationCanal::class, SmsNotificationCanal::class);
         $this->app->bind(NotificationService::class, LaravelNotificationService::class);
     }
 
