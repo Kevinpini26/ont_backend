@@ -73,6 +73,30 @@ simple branchement le jour où l'ONT confirme son copieur.
   `courrier_pieces_jointes` restent en l'état (compatibilité, annexes
   multiples), mais ne sont plus le seul reflet du scan d'arrivée.
 
+## Lot 5 — le lien entre le fichier et le papier
+
+- **Localisation de l'original.** `emplacement_physique` existait déjà
+  (Lot 1 du chantier fonctionnel), mais n'était réglable par aucun point
+  d'accès et n'apparaissait dans aucun filtre. Désormais rempli à
+  l'enregistrement (`EnregistrerCourrierRequest`, en cohérence avec
+  `cote_classement`, généré au même moment) et filtrable
+  (`GET /courriers?emplacement_physique=...`).
+- **Sortie/retour de l'original** (`emprunts_originaux`, distinct de
+  `documents_numerises` — un emprunt physique, pas une version numérisée) :
+  `POST /courriers/{id}/sortir-original` (refuse une nouvelle sortie tant
+  que la précédente n'est pas restituée), `POST /courriers/{id}/restituer-original`,
+  et `GET /courriers/originaux-empruntes` (alerte au-delà de 7 jours),
+  réservé aux mêmes postes que le registre.
+- **QR de vérification.** Ajouté sur la feuille de couverture et sur la
+  fiche imprimable (celle-ci sert d'accusé de réception imprimable : aucun
+  document PDF distinct portant ce nom n'existait dans le code avant ce
+  lot). Encode uniquement le numéro d'accusé de réception vers
+  `{frontend_url}/verification-dossier?numero=...` — **route frontend
+  supposée, à confirmer/créer côté dépôt frontend** — jamais un accès
+  direct aux données : le nom du déposant reste exigé en second facteur
+  sur cette page (voir `DossierPublicController`), le QR ne contourne donc
+  pas cette protection déjà en place.
+
 ## Points à trancher avant les lots suivants
 
 - **Format et bibliothèque de génération du code-barres** (Lot 3a) :

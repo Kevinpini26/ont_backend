@@ -20,6 +20,7 @@ use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
 use Modules\Courrier\Http\Requests\InitierReponseSortanteRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
+use Modules\Courrier\Http\Requests\SortirOriginalRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
 use Modules\Courrier\Http\Requests\StoreCourrierRequest;
 use Modules\Courrier\Http\Requests\ValiderRelectureRequest;
@@ -67,6 +68,10 @@ class CourrierController extends Controller
 
         if ($request->filled('cote_classement')) {
             $query->where('cote_classement', $request->string('cote_classement'));
+        }
+
+        if ($request->filled('emplacement_physique')) {
+            $query->where('emplacement_physique', 'ilike', '%'.$request->string('emplacement_physique').'%');
         }
 
         if ($request->filled('periode_debut')) {
@@ -421,12 +426,45 @@ class CourrierController extends Controller
         ], 201);
     }
 
+    /**
+     * Sortie/retour de l'original physique — voir
+     * docs/numerisation-courrier.md (Lot 5).
+     */
+    public function sortirOriginal(SortirOriginalRequest $request, Courrier $courrier)
+    {
+        $emprunt = $this->circuit->sortirOriginal($courrier, $request->user(), $request->string('motif')->toString());
+
+        return response()->json(['data' => [
+            'id' => $emprunt->id,
+            'emprunte_par' => $emprunt->empruntePar->name,
+            'emprunte_le' => $emprunt->emprunte_le,
+            'motif' => $emprunt->motif,
+        ]], 201);
+    }
+
+    public function restituerOriginal(Request $request, Courrier $courrier)
+    {
+        $this->authorize('view', $courrier);
+
+        $emprunt = $this->circuit->restituerOriginal($courrier, $request->user());
+
+        return response()->json(['data' => [
+            'id' => $emprunt->id,
+            'restitue_par' => $emprunt->restituePar->name,
+            'restitue_le' => $emprunt->restitue_le,
+        ]]);
+    }
+
     public function imprimer(Courrier $courrier)
     {
         $this->authorize('view', $courrier);
 
         $pdf = $this->pdf->genererDepuisVue('courrier::fiche-imprimable', [
             'courrier' => $courrier->load(['directionOrigine', 'directionDestination', 'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar']),
+            'qr_verification_data_uri' => $this->qrCode->genererSvgDataUri(
+                rtrim(config('app.frontend_url'), '/')."/verification-dossier?numero={$courrier->numero_accuse_reception}",
+                120,
+            ),
         ]);
 
         return response($pdf, 200, [
@@ -563,6 +601,7 @@ class CourrierController extends Controller
             CourrierClassification::from($data['classification']),
             $data['note_technique'] ?? null,
             $data['accuse_reception_partenaire'] ?? null,
+            $data['emplacement_physique'] ?? null,
         );
 
         return $this->ressource($courrier);

@@ -65,5 +65,10 @@
         Document imprimé le {{ now()->translatedFormat('d F Y à H:i') }} — reflète l'état du dossier à cet instant,
         pas un document officiel définitif (voir le PDF signé une fois le courrier abouti, s'il y a lieu).
     </p>
+
+    <div style="text-align: center; margin-top: 16px;">
+        <img src="{{ $qr_verification_data_uri }}" alt="QR de vérification" width="80" height="80">
+        <p style="font-size: 9px; color: #555; margin-top: 4px;">Vérifier ce dossier en ligne</p>
+    </div>
 </body>
 </html>

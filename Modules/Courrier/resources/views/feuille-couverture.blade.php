@@ -61,6 +61,11 @@
                 À poser sur le dessus de la liasse avant numérisation — le code-barres permet de
                 rattacher le scan à ce courrier sans ressaisie.
             </p>
+
+            <div class="code-barres">
+                <img src="{{ $ligne['qr_verification_data_uri'] }}" alt="QR de vérification" width="80" height="80">
+                <p class="mention" style="margin-top: 4px;">Vérifier ce dossier en ligne</p>
+            </div>
         </div>
     @endforeach
 </body>

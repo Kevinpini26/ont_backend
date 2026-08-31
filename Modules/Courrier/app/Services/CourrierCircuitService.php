@@ -14,6 +14,7 @@ use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Events\CourrierStageAvisFavorable;
+use Modules\Courrier\Exceptions\EmpruntOriginalException;
 use Modules\Courrier\Exceptions\RelectureNonValideeException;
 use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
 use Modules\Courrier\Mail\AccuseReceptionCandidatMail;
@@ -22,6 +23,7 @@ use Modules\Courrier\Mail\CourrierRecuMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
+use Modules\Courrier\Models\EmpruntOriginal;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
@@ -601,8 +603,9 @@ class CourrierCircuitService
         CourrierClassification $classification,
         ?string $noteTechnique,
         ?string $accuseReceptionPartenaire,
+        ?string $emplacementPhysique = null,
     ): Courrier {
-        return DB::transaction(function () use ($courrier, $utilisateur, $classification, $noteTechnique, $accuseReceptionPartenaire) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $classification, $noteTechnique, $accuseReceptionPartenaire, $emplacementPhysique) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENREGISTRE);
 
@@ -611,6 +614,9 @@ class CourrierCircuitService
             $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
             $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
             $courrier->cote_classement = $this->genererCoteClassement($courrier);
+            if ($emplacementPhysique !== null) {
+                $courrier->emplacement_physique = $emplacementPhysique;
+            }
             $courrier->enregistre_at = now();
             $courrier->statut = CourrierStatut::ENREGISTRE;
             $courrier->save();
@@ -740,5 +746,38 @@ class CourrierCircuitService
             'auteur_id' => $auteur->id,
             'contenu' => $contenu,
         ]);
+    }
+
+    /**
+     * Sortie de l'original physique — voir docs/numerisation-courrier.md
+     * (Lot 5). Refuse une nouvelle sortie tant que la précédente n'a pas
+     * été restituée : un original ne peut matériellement être qu'à un seul
+     * endroit à la fois.
+     */
+    public function sortirOriginal(Courrier $courrier, User $utilisateur, string $motif): EmpruntOriginal
+    {
+        if ($courrier->empruntEnCours() !== null) {
+            throw EmpruntOriginalException::dejaEmprunte();
+        }
+
+        /** @var EmpruntOriginal */
+        return $courrier->empruntsOriginaux()->create([
+            'emprunte_par_id' => $utilisateur->id,
+            'emprunte_le' => now(),
+            'motif' => $motif,
+        ]);
+    }
+
+    public function restituerOriginal(Courrier $courrier, User $utilisateur): EmpruntOriginal
+    {
+        $emprunt = $courrier->empruntEnCours();
+
+        if ($emprunt === null) {
+            throw EmpruntOriginalException::aucunEmpruntEnCours();
+        }
+
+        $emprunt->update(['restitue_le' => now(), 'restitue_par_id' => $utilisateur->id]);
+
+        return $emprunt;
     }
 }

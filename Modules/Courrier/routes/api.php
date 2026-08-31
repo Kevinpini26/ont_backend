@@ -7,6 +7,7 @@ use Modules\Courrier\Http\Controllers\Api\CourrierEnSouffranceController;
 use Modules\Courrier\Http\Controllers\Api\CourrierRattrapageNumerisationController;
 use Modules\Courrier\Http\Controllers\Api\CourrierStatistiqueController;
 use Modules\Courrier\Http\Controllers\Api\DelegationPosteController;
+use Modules\Courrier\Http\Controllers\Api\EmpruntOriginalController;
 use Modules\Courrier\Http\Controllers\Api\RegistreCourrierController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
@@ -21,6 +22,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/export', [CourrierController::class, 'export']);
     Route::get('/courriers/feuilles-couverture-lot', [CourrierController::class, 'feuilleCouvertureLot']);
     Route::post('/courriers/import-lot', [CourrierController::class, 'importerLot']);
+    Route::get('/courriers/originaux-empruntes', [EmpruntOriginalController::class, 'index']);
     Route::get('/courriers', [CourrierController::class, 'index']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);
@@ -44,6 +46,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/{courrier}/imprimer', [CourrierController::class, 'imprimer']);
     Route::post('/courriers/{courrier}/jeton-capture', [CourrierController::class, 'genererJetonCapture']);
     Route::get('/courriers/{courrier}/feuille-couverture', [CourrierController::class, 'feuilleCouverture']);
+    Route::post('/courriers/{courrier}/sortir-original', [CourrierController::class, 'sortirOriginal']);
+    Route::post('/courriers/{courrier}/restituer-original', [CourrierController::class, 'restituerOriginal']);
     Route::get('/courriers/{courrier}/lettre-stage', [CourrierController::class, 'telechargerLettreStage']);
     Route::get('/courriers/{courrier}/pieces/{piece}', [CourrierController::class, 'telechargerPieceCandidat']);
     Route::get('/courriers/{courrier}/piece-jointe', [CourrierController::class, 'telechargerPieceJointe']);

@@ -20,6 +20,10 @@ class EnregistrerCourrierRequest extends FormRequest
             'classification' => ['required', Rule::enum(CourrierClassification::class)],
             'note_technique' => [Rule::requiredIf(fn () => $this->input('classification') === CourrierClassification::INTERNE->value), 'nullable', 'string'],
             'accuse_reception_partenaire' => [Rule::requiredIf(fn () => $this->input('classification') === CourrierClassification::EXTERNE->value), 'nullable', 'string', 'max:255'],
+            // Localisation de l'original (armoire, chrono, année — voir
+            // docs/numerisation-courrier.md) : renseignée à l'enregistrement,
+            // en cohérence avec cote_classement généré au même moment.
+            'emplacement_physique' => ['nullable', 'string', 'max:255'],
         ];
     }
 

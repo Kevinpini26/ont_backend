@@ -245,6 +245,20 @@ class Courrier extends Model
     }
 
     /**
+     * Historique des sorties/retours de l'original physique — voir
+     * docs/numerisation-courrier.md (Lot 5).
+     */
+    public function empruntsOriginaux(): HasMany
+    {
+        return $this->hasMany(EmpruntOriginal::class)->latest('emprunte_le');
+    }
+
+    public function empruntEnCours(): ?EmpruntOriginal
+    {
+        return $this->empruntsOriginaux->firstWhere('restitue_le', null);
+    }
+
+    /**
      * La direction imputée à titre principal — celle qui doit agir,
      * distincte des directions simplement mises en copie (voir
      * directionsEnCopie()).

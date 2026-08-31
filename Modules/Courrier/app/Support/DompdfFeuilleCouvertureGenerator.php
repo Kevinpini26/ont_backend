@@ -6,6 +6,7 @@ use Illuminate\Support\Collection;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
+use Modules\Kernel\Contracts\QrCodeService;
 use Picqer\Barcode\BarcodeGeneratorSVG;
 
 /**
@@ -15,7 +16,10 @@ use Picqer\Barcode\BarcodeGeneratorSVG;
  */
 class DompdfFeuilleCouvertureGenerator implements FeuilleCouvertureGenerator
 {
-    public function __construct(private readonly PdfGenerationService $pdf) {}
+    public function __construct(
+        private readonly PdfGenerationService $pdf,
+        private readonly QrCodeService $qrCode,
+    ) {}
 
     public function generer(Courrier $courrier, ?int $nombrePagesAttendues = null): string
     {
@@ -37,6 +41,14 @@ class DompdfFeuilleCouvertureGenerator implements FeuilleCouvertureGenerator
             'courrier' => $courrier,
             'nombre_pages_attendues' => $nombrePagesAttendues,
             'code_barres_data_uri' => $this->genererCodeBarresDataUri($courrier->numero_accuse_reception),
+            // Numéro seul (déjà imprimé en clair juste au-dessus) : le nom
+            // du déposant reste exigé en second facteur sur la page de
+            // vérification elle-même (voir DossierPublicController), le QR
+            // ne contourne donc pas cette protection.
+            'qr_verification_data_uri' => $this->qrCode->genererSvgDataUri(
+                rtrim(config('app.frontend_url'), '/')."/verification-dossier?numero={$courrier->numero_accuse_reception}",
+                120,
+            ),
         ];
     }
 
