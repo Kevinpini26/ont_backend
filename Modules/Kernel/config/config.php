@@ -75,4 +75,20 @@ return [
         // silencieusement accepté en mauvaise qualité.
         'seuil_octets_par_page' => 20 * 1024,
     ],
+
+    /**
+     * Reconnaissance de caractères (OCR) sur les documents numérisés qui ne
+     * contiennent aucun texte embarqué (scan image pur) — voir
+     * Modules\Kernel\Support\ExtracteurTexteDocumentNumerise et
+     * docs/numerisation-courrier.md. Désactivée par défaut : exige les
+     * binaires système `pdftoppm` (paquet poppler-utils) et `tesseract` +
+     * `tesseract-ocr-fra` (paquets tesseract-ocr, tesseract-ocr-fra),
+     * absents de l'image Docker actuelle — à ajouter explicitement avant
+     * d'activer OCR_ACTIVE en production. Le système reste pleinement
+     * utilisable sans (recherche limitée au texte déjà embarqué dans les
+     * PDF, à l'objet et aux métadonnées).
+     */
+    'ocr' => [
+        'active' => env('OCR_ACTIVE', false),
+    ],
 ];

@@ -323,15 +323,32 @@ class Courrier extends Model
      * de réception, départ, cote de classement) est toujours priorisé en
      * tête : c'est un code, jamais raciniser comme du texte.
      */
+    /**
+     * Étend aussi la recherche au contenu extrait des documents numérisés
+     * rattachés (voir Modules\Kernel\Models\DocumentNumerise, lot 4 de la
+     * numérisation du courrier) — `trouve_dans_contenu_numerise` permet à
+     * l'appelant de savoir qu'un résultat vient du scan plutôt que de
+     * l'objet, sans requête supplémentaire (colonne calculée dans la même
+     * requête).
+     */
     public function scopeRecherchePleinTexte(Builder $query, string $terme): Builder
     {
+        $sousRequeteScan = "exists(
+            select 1 from documents_numerises dn
+            where dn.numerisable_type = ? and dn.numerisable_id = courriers.id
+            and dn.contenu_tsvector @@ plainto_tsquery('french', ?)
+        )";
+
         return $query
-            ->where(function (Builder $q) use ($terme) {
+            ->select('courriers.*')
+            ->selectRaw("{$sousRequeteScan} as trouve_dans_contenu_numerise", [self::class, $terme])
+            ->where(function (Builder $q) use ($terme, $sousRequeteScan) {
                 $q->whereRaw('recherche_tsvector @@ plainto_tsquery(\'french\', ?)', [$terme])
                     ->orWhere('numero_enregistrement', $terme)
                     ->orWhere('numero_accuse_reception', $terme)
                     ->orWhere('numero_depart', $terme)
-                    ->orWhere('cote_classement', $terme);
+                    ->orWhere('cote_classement', $terme)
+                    ->orWhereRaw($sousRequeteScan, [self::class, $terme]);
             })
             ->orderByRaw(
                 '(case when numero_enregistrement = ? or numero_accuse_reception = ? or numero_depart = ? or cote_classement = ? then 0 else 1 end) asc, ts_rank(recherche_tsvector, plainto_tsquery(\'french\', ?)) desc',

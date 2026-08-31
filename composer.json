@@ -14,7 +14,9 @@
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
         "nwidart/laravel-modules": "*",
-        "picqer/php-barcode-generator": "^3.3"
+        "picqer/php-barcode-generator": "^3.3",
+        "smalot/pdfparser": "^2.12",
+        "symfony/process": "^7.4"
     },
     "require-dev": {
         "barryvdh/laravel-ide-helper": "^3.7",

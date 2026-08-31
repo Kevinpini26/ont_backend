@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Kernel\Enums\QualiteDocumentNumerise;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Exceptions\DocumentNumeriseRejeteException;
+use Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob;
 use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
 
@@ -53,8 +54,8 @@ class GestionnaireDocumentNumerise
         // leur propre enum : la valeur brute suffit ici comme simple
         // libellé d'étape, sans avoir besoin de connaître le type concret
         // de $numerisable.
-        /** @var DocumentNumerise */
-        return $numerisable->numerisations()->create([
+        /** @var DocumentNumerise $document */
+        $document = $numerisable->numerisations()->create([
             'version' => $versionSuivante,
             'etape_circuit' => $numerisable->statut?->value,
             'chemin' => $chemin,
@@ -65,5 +66,11 @@ class GestionnaireDocumentNumerise
             'qualite' => $qualite,
             'capture_par_id' => $capturePar?->id,
         ]);
+
+        // Jamais dans la requête HTTP : un OCR peut prendre plusieurs
+        // secondes par page (voir docs/numerisation-courrier.md, Lot 4).
+        ExtraireTexteDocumentNumeriseJob::dispatch($document->id);
+
+        return $document;
     }
 }

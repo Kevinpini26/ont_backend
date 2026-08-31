@@ -22,6 +22,7 @@ class CourrierResource extends JsonResource
             'pdf_sha256' => $this->pdf_sha256,
             'numerisation_statut' => $this->numerisation_statut?->value,
             'numerisation_statut_label' => $this->numerisation_statut?->label(),
+            'trouve_dans_contenu_numerise' => (bool) ($this->trouve_dans_contenu_numerise ?? false),
             'cote_classement' => $this->cote_classement,
             'emplacement_physique' => $this->emplacement_physique,
             'sens' => $this->sens?->value,

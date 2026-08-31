@@ -33,6 +33,7 @@ class DocumentNumerise extends Model
         'sha256',
         'qualite',
         'capture_par_id',
+        'contenu_texte',
     ];
 
     protected function casts(): array

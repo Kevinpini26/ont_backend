@@ -97,6 +97,44 @@ simple branchement le jour où l'ONT confirme son copieur.
   sur cette page (voir `DossierPublicController`), le QR ne contourne donc
   pas cette protection déjà en place.
 
+## Lot 4 — retrouver ce qui a été numérisé
+
+- **Extraction du texte, en deux étages, jamais dans la requête HTTP**
+  (`Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob`, dispatché
+  depuis `GestionnaireDocumentNumerise::enregistrerVersion()` — un seul
+  point d'entrée, quelle que soit la source du document) :
+  1. Texte déjà embarqué dans le PDF (`smalot/pdfparser`, pur PHP, ajouté
+     au `composer.json`, aucune extension image) — couvre un fichier déjà
+     numérique (téléversement direct), mais rend un texte vide pour un
+     PDF composé uniquement d'images (capture mobile, import USB — le cas
+     le plus fréquent en pratique).
+  2. Reconnaissance de caractères (OCR), **désactivée par défaut**
+     (`config('kernel.ocr.active')`, variable d'environnement
+     `OCR_ACTIVE`). **Ce qu'elle exige précisément sur le serveur, non
+     encore installé dans l'image Docker actuelle** : les binaires
+     système (pas des extensions PHP, donc aucun conflit avec l'absence
+     volontaire de gd/imagick) `poppler-utils` (fournit `pdftoppm`,
+     rastérisation des pages PDF en image) et `tesseract-ocr` +
+     `tesseract-ocr-fra` (reconnaissance de caractères avec dictionnaire
+     français). Sans ces paquets ajoutés au Dockerfile, activer
+     `OCR_ACTIVE=true` échoue proprement (avertissement journalisé,
+     texte non disponible) plutôt que de planter la file de traitement —
+     **le système reste pleinement utilisable sans l'OCR**, avec une
+     recherche limitée au texte déjà embarqué, à l'objet et aux
+     métadonnées. Ajouter ces paquets au Dockerfile est une décision
+     d'infrastructure volontairement non prise dans ce lot.
+- **Recherche** : `Courrier::scopeRecherchePleinTexte()` interroge
+  désormais aussi `documents_numerises.contenu_tsvector` (même mécanisme
+  de trigger Postgres que `courriers.recherche_tsvector`) et expose
+  `trouve_dans_contenu_numerise` sur chaque résultat, pour que le
+  frontend indique explicitement quand une correspondance vient du scan
+  plutôt que de l'objet.
+- **Navigation dans la modale de prévisualisation** (pages, zoom,
+  rotation à l'affichage, changement de version) : écran du dépôt
+  frontend, hors périmètre de ce dépôt — les données nécessaires
+  (`numerisations`, avec version/qualité/source) sont déjà exposées par
+  `CourrierResource`.
+
 ## Points à trancher avant les lots suivants
 
 - **Format et bibliothèque de génération du code-barres** (Lot 3a) :
