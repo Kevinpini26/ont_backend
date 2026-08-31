@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\NiveauConfidentialite;
+use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Http\Requests\EnregistrerCourrierRequest;
 use Modules\Courrier\Http\Requests\EnregistrerRemiseRequest;
 use Modules\Courrier\Http\Requests\EnvoyerCourrierRequest;
+use Modules\Courrier\Http\Requests\ImporterLotNumerisationRequest;
 use Modules\Courrier\Http\Requests\ImputerCourrierRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
@@ -32,6 +35,7 @@ use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Support\CsvExporter;
 use Modules\Kernel\Support\EmpreinteFichier;
+use Modules\Kernel\Support\GestionnaireDocumentNumerise;
 
 class CourrierController extends Controller
 {
@@ -41,6 +45,8 @@ class CourrierController extends Controller
         private readonly PdfGenerationService $pdf,
         private readonly QrCodeService $qrCode,
         private readonly NotificationService $notifications,
+        private readonly FeuilleCouvertureGenerator $feuilleCouvertureGenerator,
+        private readonly GestionnaireDocumentNumerise $gestionnaire,
     ) {}
 
     public function index(Request $request)
@@ -346,6 +352,73 @@ class CourrierController extends Controller
             'expire_at' => $jeton->expire_at,
             'qr_code_data_uri' => $this->qrCode->genererSvgDataUri($url),
         ]);
+    }
+
+    /**
+     * Feuille de couverture unitaire — à poser sur la liasse avant
+     * numérisation (voir docs/numerisation-courrier.md).
+     */
+    public function feuilleCouverture(Request $request, Courrier $courrier)
+    {
+        $this->authorize('view', $courrier);
+
+        $pdf = $this->feuilleCouvertureGenerator->generer($courrier, $request->integer('nombre_pages_attendues') ?: null);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"feuille-couverture-{$courrier->numero_accuse_reception}.pdf\"",
+        ]);
+    }
+
+    /**
+     * Impression groupée pour toute une file : une feuille par page, dans
+     * un seul PDF — permet de numériser vingt courriers d'affilée sans
+     * rien ressaisir entre deux.
+     */
+    public function feuilleCouvertureLot(Request $request)
+    {
+        $request->validate(['ids' => ['required', 'array', 'min:1'], 'ids.*' => ['integer']]);
+
+        $courriers = Courrier::query()->whereIn('id', $request->input('ids'))->with('directionOrigine')->get();
+        foreach ($courriers as $courrier) {
+            $this->authorize('view', $courrier);
+        }
+
+        $pdf = $this->feuilleCouvertureGenerator->genererLot($courriers);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="feuilles-couverture.pdf"',
+        ]);
+    }
+
+    /**
+     * Import par lot depuis une clé USB (Lot 3a) : le navigateur a déjà lu
+     * le code-barres de chaque feuille de couverture et découpé le PDF
+     * multi-courriers en segments — voir docs/numerisation-courrier.md.
+     * Un seul segment par appel, pour qu'un échec n'annule jamais le reste
+     * du lot.
+     */
+    public function importerLot(ImporterLotNumerisationRequest $request)
+    {
+        $courrier = Courrier::query()->where('numero_accuse_reception', $request->string('numero_accuse_reception'))->firstOrFail();
+        $this->authorize('view', $courrier);
+
+        $chemin = $request->file('fichier')->store('numerisations', 'local');
+
+        $document = $this->gestionnaire->enregistrerVersion(
+            $courrier,
+            $chemin,
+            SourceDocumentNumerise::COPIEUR,
+            $request->user(),
+        );
+
+        $courrier->update(['numerisation_statut' => NumerisationStatut::NUMERISE]);
+
+        return response()->json([
+            'message' => 'Segment importé avec succès.',
+            'document' => ['version' => $document->version, 'qualite' => $document->qualite?->value],
+        ], 201);
     }
 
     public function imprimer(Courrier $courrier)

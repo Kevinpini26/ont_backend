@@ -13,7 +13,8 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
-        "nwidart/laravel-modules": "*"
+        "nwidart/laravel-modules": "*",
+        "picqer/php-barcode-generator": "^3.3"
     },
     "require-dev": {
         "barryvdh/laravel-ide-helper": "^3.7",
