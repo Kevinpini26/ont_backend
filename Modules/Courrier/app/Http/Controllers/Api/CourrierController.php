@@ -26,7 +26,9 @@ use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\PdfGenerationService;
+use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Support\CsvExporter;
+use Modules\Kernel\Support\EmpreinteFichier;
 
 class CourrierController extends Controller
 {
@@ -135,7 +137,8 @@ class CourrierController extends Controller
 
         $pieceJointe = $donnees['piece_jointe'] ?? null;
         $piecesSupplementaires = $donnees['pieces_jointes'] ?? [];
-        unset($donnees['piece_jointe'], $donnees['pieces_jointes']);
+        $numerisationImpossible = (bool) ($donnees['numerisation_impossible'] ?? false);
+        unset($donnees['piece_jointe'], $donnees['pieces_jointes'], $donnees['numerisation_impossible']);
 
         $cheminPiecePrincipale = null;
         if ($pieceJointe) {
@@ -143,7 +146,7 @@ class CourrierController extends Controller
             $donnees['piece_jointe_chemin'] = $cheminPiecePrincipale;
         }
 
-        $courrier = $this->circuit->creer($request->user(), $donnees);
+        $courrier = $this->circuit->creer($request->user(), $donnees, $numerisationImpossible);
 
         // Alimente courrier_pieces_jointes en plus de piece_jointe_chemin
         // (voir Courrier::piecesJointes()) : la pièce principale devient la
@@ -158,6 +161,24 @@ class CourrierController extends Controller
                 'taille_octets' => $pieceJointe->getSize(),
                 'ordre' => 1,
                 'uploaded_by_id' => $request->user()?->id,
+            ]);
+
+            // Première version du document numérisé — voir
+            // docs/numerisation-courrier.md : le tout premier scan pris à la
+            // Réception (aujourd'hui encore un dépôt direct, demain la
+            // capture mobile du lot 1) devient la version 1, jamais un
+            // simple fichier isolé. TELEVERSEMENT ici : ce point d'entrée
+            // reste, pour l'instant, un dépôt direct — la capture mobile
+            // (source TELEPHONE) créera ses propres versions via son propre
+            // point d'entrée au lot 1.
+            $courrier->numerisations()->create([
+                'version' => 1,
+                'etape_circuit' => $courrier->statut->value,
+                'chemin' => $cheminPiecePrincipale,
+                'poids_octets' => $pieceJointe->getSize(),
+                'source' => SourceDocumentNumerise::TELEVERSEMENT,
+                'sha256' => EmpreinteFichier::pourFichierStocke($cheminPiecePrincipale),
+                'capture_par_id' => $request->user()?->id,
             ]);
         }
         foreach ($piecesSupplementaires as $index => $piece) {
@@ -455,7 +476,7 @@ class CourrierController extends Controller
             'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
             'imputations.direction', 'imputations.imputeePar',
-            'piecesJointes', 'reponses', 'courrierOrigine',
+            'piecesJointes', 'reponses', 'courrierOrigine', 'numerisations.capturePar',
         ]));
     }
 }

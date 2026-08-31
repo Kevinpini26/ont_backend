@@ -41,13 +41,19 @@ class StoreCourrierRequest extends FormRequest
             // elle-même son contenu (TipTap), sans document physique à
             // numériser (voir posteDeCreation()/config('courrier.poste_creation')).
             'piece_jointe' => [
-                Rule::requiredIf(fn () => $this->user()->poste?->value === config('courrier.poste_creation')),
+                Rule::requiredIf(fn () => $this->user()->poste?->value === config('courrier.poste_creation') && ! $this->boolean('numerisation_impossible')),
                 'nullable',
                 'file',
                 'max:5120',
                 'mimes:pdf,jpg,jpeg,png',
                 'mimetypes:application/pdf,image/jpeg,image/png',
             ],
+            // Le dépôt ne doit jamais être bloqué par une panne de
+            // numérisation (coupure de courant, copieur en panne...) : le
+            // courrier est enregistré quand même, avec
+            // numerisation_statut=a_numeriser (voir
+            // CourrierCircuitService::creer()) — voir docs/numerisation-courrier.md.
+            'numerisation_impossible' => ['sometimes', 'boolean'],
             'type' => ['required', Rule::enum(CourrierType::class)],
             'direction_origine_id' => ['nullable', 'integer', 'exists:directions,id'],
             'direction_destination_id' => ['nullable', 'integer', 'exists:directions,id'],

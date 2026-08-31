@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
 use Modules\Courrier\Database\Factories\CourrierFactory;
 use Modules\Courrier\Enums\AvisDg;
@@ -18,9 +19,11 @@ use Modules\Courrier\Enums\ModeExpedition;
 use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\ModeRemise;
 use Modules\Courrier\Enums\NiveauConfidentialite;
+use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Scopes\CourrierDirectionScope;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
 
 class Courrier extends Model
@@ -42,6 +45,7 @@ class Courrier extends Model
         'degre_urgence' => 'normal',
         'niveau_confidentialite' => 'ordinaire',
         'sens' => 'entrant',
+        'numerisation_statut' => 'non_applicable',
     ];
 
     protected $fillable = [
@@ -61,6 +65,7 @@ class Courrier extends Model
         'expediteur_externe_email',
         'expediteur_externe_telephone',
         'piece_jointe_chemin',
+        'numerisation_statut',
         'candidat_nom',
         'candidat_contact',
         'candidat_email',
@@ -157,6 +162,7 @@ class Courrier extends Model
             'date_envoi' => 'date',
             'remis_le' => 'datetime',
             'mode_remise' => ModeRemise::class,
+            'numerisation_statut' => NumerisationStatut::class,
         ];
     }
 
@@ -222,6 +228,20 @@ class Courrier extends Model
     public function piecesJointes(): HasMany
     {
         return $this->hasMany(CourrierPieceJointe::class)->orderBy('ordre');
+    }
+
+    /**
+     * Chaque version numérisée du document, dans l'ordre de capture —
+     * jamais un remplacement de la précédente (voir DocumentNumerise).
+     */
+    public function numerisations(): MorphMany
+    {
+        return $this->morphMany(DocumentNumerise::class, 'numerisable')->oldest('version');
+    }
+
+    public function derniereNumerisation(): ?DocumentNumerise
+    {
+        return $this->numerisations->last();
     }
 
     /**

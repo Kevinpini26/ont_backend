@@ -7,9 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Concerns\BelongsToDirectionScope;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Database\Factories\StagiaireFactory;
 use Modules\Stagiaires\Enums\StagiaireOrigine;
@@ -153,6 +155,21 @@ class Stagiaire extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(StagiaireDocument::class);
+    }
+
+    /**
+     * Distinct de documents() (pièces du dossier administratif) : chaque
+     * version numérisée d'un document du dossier qui continue de vivre
+     * après réception — voir Modules\Kernel\Models\DocumentNumerise.
+     */
+    public function numerisations(): MorphMany
+    {
+        return $this->morphMany(DocumentNumerise::class, 'numerisable')->oldest('version');
+    }
+
+    public function derniereNumerisation(): ?DocumentNumerise
+    {
+        return $this->numerisations->last();
     }
 
     public function suivis(): HasMany

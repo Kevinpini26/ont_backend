@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\ModeReception;
+use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Events\CourrierStageAvisFavorable;
 use Modules\Courrier\Exceptions\RelectureNonValideeException;
@@ -47,10 +48,22 @@ class CourrierCircuitService
         private readonly DelegationResolver $delegations,
     ) {}
 
-    public function creer(User $auteur, array $donnees): Courrier
+    public function creer(User $auteur, array $donnees, bool $numerisationImpossible = false): Courrier
     {
         $estReception = $auteur->poste === $this->regles->posteDeCreation();
         $estDirection = $auteur->role === UserRole::RESPONSABLE_DIRECTION;
+
+        // Une direction rédige elle-même son contenu (TipTap), sans
+        // document physique à numériser : "non applicable", jamais "à
+        // numériser" — voir docs/numerisation-courrier.md.
+        $numerisationStatut = match (true) {
+            ! $estReception => NumerisationStatut::NON_APPLICABLE,
+            $numerisationImpossible => NumerisationStatut::A_NUMERISER,
+            // La pièce jointe est obligatoire à la Réception sauf
+            // numerisation_impossible (voir StoreCourrierRequest) : à ce
+            // point, si ni l'un ni l'autre, c'est qu'elle a bien été fournie.
+            default => NumerisationStatut::NUMERISE,
+        };
 
         if (! $estReception && ! $estDirection) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
@@ -73,7 +86,7 @@ class CourrierCircuitService
             && ! empty($donnees['direction_destination_id'])
             && $donnees['type'] !== CourrierType::DEMANDE_STAGE->value;
 
-        $courrier = DB::transaction(function () use ($auteur, $donnees, $estCircuitCourt) {
+        $courrier = DB::transaction(function () use ($auteur, $donnees, $estCircuitCourt, $numerisationStatut) {
             $courrier = Courrier::query()->create([
                 ...$donnees,
                 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
@@ -81,6 +94,7 @@ class CourrierCircuitService
                 'necessite_avis_dg' => ! $estCircuitCourt,
                 'initie_par_dg' => false,
                 'created_by' => $auteur->id,
+                'numerisation_statut' => $numerisationStatut,
             ]);
 
             $this->tracerTransition($courrier, $auteur);
