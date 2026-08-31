@@ -28,6 +28,7 @@ use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Support\EmpreinteFichier;
 
 /**
  * Orchestre les transitions du circuit courrier : c'est l'unique point
@@ -568,6 +569,7 @@ class CourrierCircuitService
             // transition elle-même, pour qu'il n'existe jamais d'état
             // "signé sans PDF".
             $courrier->pdf_chemin = $this->pdf->generer($courrier);
+            $courrier->pdf_sha256 = EmpreinteFichier::pourFichierStocke($courrier->pdf_chemin);
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
 

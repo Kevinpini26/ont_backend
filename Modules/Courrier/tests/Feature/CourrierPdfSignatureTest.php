@@ -45,6 +45,14 @@ class CourrierPdfSignatureTest extends CourrierTestCase
         $courrier->refresh();
         $this->assertNotNull($courrier->pdf_chemin);
         Storage::disk('local')->assertExists($courrier->pdf_chemin);
+
+        // Empreinte d'intégrité (voir docs/conformite-donnees.md) : doit
+        // correspondre exactement au contenu réellement stocké sur disque.
+        $this->assertNotNull($courrier->pdf_sha256);
+        $this->assertSame(
+            hash('sha256', Storage::disk('local')->get($courrier->pdf_chemin)),
+            $courrier->pdf_sha256,
+        );
     }
 
     public function test_le_pdf_est_telechargeable_apres_signature(): void

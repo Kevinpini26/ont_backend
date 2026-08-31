@@ -85,6 +85,7 @@ class Courrier extends Model
         'signataire_id',
         'signe_at',
         'pdf_chemin',
+        'pdf_sha256',
         'classification',
         'note_technique',
         'accuse_reception_partenaire',

@@ -14,6 +14,7 @@ class StagiaireDocument extends Model
         'type',
         'nom_original',
         'chemin',
+        'sha256',
         'uploaded_by_id',
     ];
 

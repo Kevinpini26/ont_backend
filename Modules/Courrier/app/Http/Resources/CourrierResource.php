@@ -19,6 +19,7 @@ class CourrierResource extends JsonResource
             'numero_accuse_reception' => $this->numero_accuse_reception,
             'numero_enregistrement' => $this->numero_enregistrement,
             'numero_depart' => $this->numero_depart,
+            'pdf_sha256' => $this->pdf_sha256,
             'cote_classement' => $this->cote_classement,
             'emplacement_physique' => $this->emplacement_physique,
             'sens' => $this->sens?->value,

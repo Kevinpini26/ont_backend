@@ -7,6 +7,7 @@ use Modules\Public\Http\Controllers\Api\DemandeStagePublicController;
 use Modules\Public\Http\Controllers\Api\DisponibiliteDemandesStagePublicController;
 use Modules\Public\Http\Controllers\Api\DossierPublicController;
 use Modules\Public\Http\Controllers\Api\LienPublicController;
+use Modules\Public\Http\Controllers\Api\MentionInformationController;
 use Modules\Public\Http\Controllers\Api\StatistiquesPubliquesController;
 
 // Aucune authentification : accessible à tout candidat externe muni de son
@@ -15,6 +16,7 @@ Route::prefix('v1/public')->middleware('throttle:sensitive')->group(function () 
     Route::post('/demandes-stage', [DemandeStagePublicController::class, 'store']);
     Route::get('/disponibilite-demandes-stage', [DisponibiliteDemandesStagePublicController::class, 'show']);
     Route::get('/statistiques', [StatistiquesPubliquesController::class, 'show']);
+    Route::get('/mention-information', [MentionInformationController::class, 'show']);
     Route::post('/courriers-externes', [CourrierExternePublicController::class, 'store']);
 
     // Vérifications à identifiant devinable (numéro séquentiel) : limiteur

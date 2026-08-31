@@ -16,6 +16,7 @@ class StagiaireDocumentResource extends JsonResource
             'type' => $this->type?->value,
             'type_label' => $this->type?->label(),
             'nom_original' => $this->nom_original,
+            'sha256' => $this->sha256,
             'created_at' => $this->created_at,
         ];
     }

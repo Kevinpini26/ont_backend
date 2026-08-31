@@ -10,6 +10,7 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\EmpreinteFichier;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\AttestationGenerator;
 use Modules\Stagiaires\Contracts\CalculateurNoteFinale;
@@ -104,10 +105,12 @@ class StagiaireCircuitService
             }
             $stagiaire->save();
 
+            $cheminNoteAffectation = $this->notesAffectation->generer($stagiaire);
             $stagiaire->documents()->create([
                 'type' => DocumentType::NOTE_AFFECTATION,
                 'nom_original' => "note-affectation-{$stagiaire->nom}.pdf",
-                'chemin' => $this->notesAffectation->generer($stagiaire),
+                'chemin' => $cheminNoteAffectation,
+                'sha256' => EmpreinteFichier::pourFichierStocke($cheminNoteAffectation),
                 'uploaded_by_id' => $dfp->id,
             ]);
 
@@ -244,6 +247,7 @@ class StagiaireCircuitService
         // Convention de stage : direction et dates sont connues à ce stade,
         // le document peut donc être complet dès sa génération.
         $stagiaire->convention_chemin = $this->conventions->generer($stagiaire);
+        $stagiaire->convention_sha256 = EmpreinteFichier::pourFichierStocke($stagiaire->convention_chemin);
         $stagiaire->convention_genere_at = now();
         $stagiaire->save();
 
@@ -253,6 +257,7 @@ class StagiaireCircuitService
         // Document distinct de la convention (voir docs/questions-ont.md) :
         // sa propre signature, son propre lien à usage unique.
         $stagiaire->engagement_confidentialite_chemin = $this->engagementsConfidentialite->generer($stagiaire);
+        $stagiaire->engagement_confidentialite_sha256 = EmpreinteFichier::pourFichierStocke($stagiaire->engagement_confidentialite_chemin);
         $stagiaire->engagement_confidentialite_genere_at = now();
         $stagiaire->save();
 
@@ -314,6 +319,7 @@ class StagiaireCircuitService
         $stagiaire->save();
 
         $stagiaire->convention_chemin = $this->conventions->generer($stagiaire);
+        $stagiaire->convention_sha256 = EmpreinteFichier::pourFichierStocke($stagiaire->convention_chemin);
         $stagiaire->convention_genere_at = now();
         $stagiaire->save();
 
@@ -362,6 +368,7 @@ class StagiaireCircuitService
         $stagiaire->save();
 
         $stagiaire->convention_chemin = $this->conventions->generer($stagiaire);
+        $stagiaire->convention_sha256 = EmpreinteFichier::pourFichierStocke($stagiaire->convention_chemin);
         $stagiaire->convention_genere_at = now();
         $stagiaire->save();
 
@@ -582,16 +589,19 @@ class StagiaireCircuitService
             'type' => DocumentType::ATTESTATION_STAGE,
             'nom_original' => "attestation-{$stagiaire->nom}.pdf",
             'chemin' => $chemin,
+            'sha256' => EmpreinteFichier::pourFichierStocke($chemin),
         ]);
 
         // Certificat distinct de l'attestation : ne mentionne jamais la
         // note finale (voir CertificatGenerator), donc consultable par la
         // direction d'accueil sans exposer une information confidentielle.
+        $cheminCertificat = $this->certificats->generer($stagiaire);
         StagiaireDocument::query()->create([
             'stagiaire_id' => $stagiaire->id,
             'type' => DocumentType::CERTIFICAT_FIN_STAGE,
             'nom_original' => "certificat-fin-stage-{$stagiaire->nom}.pdf",
-            'chemin' => $this->certificats->generer($stagiaire),
+            'chemin' => $cheminCertificat,
+            'sha256' => EmpreinteFichier::pourFichierStocke($cheminCertificat),
         ]);
 
         $lien = StagiaireLienPublic::genererPour($stagiaire, TypeLienPublic::RETOUR_EXPERIENCE);
@@ -665,6 +675,7 @@ class StagiaireCircuitService
             'type' => $type,
             'nom_original' => $nomOriginal,
             'chemin' => $chemin,
+            'sha256' => EmpreinteFichier::pourFichierStocke($chemin),
             'uploaded_by_id' => $uploadePar?->id,
         ]);
     }

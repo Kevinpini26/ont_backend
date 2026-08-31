@@ -217,3 +217,57 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   `voirStatistiques()` qui inclut aussi un responsable de direction (pour
   ses propres chiffres) et la DG : un rapport consolidé destiné à la
   tutelle n'a, par nature, pas vocation à être vu direction par direction.
+
+## Lot 7 — conformité, preuve et archivage
+
+Voir `docs/conformite-donnees.md` pour l'analyse complète (articles cités
+du texte officiel de l'ordonnance-loi n°23/010). Résumé des points qui
+dépendent d'une démarche ou d'une décision propre à l'ONT, hors du seul
+périmètre du code :
+
+- **Déclaration ou autorisation préalable auprès de l'Autorité de
+  protection des données.** Le dossier stagiaire traite une pièce
+  d'identité (numéro national d'identification) et une photo (donnée
+  biométrique) — l'article 187 soumet ces catégories à une
+  **autorisation préalable**, pas une simple déclaration. Aucune démarche
+  de ce type n'est visible dans ce qui a été confié à ce code : à
+  vérifier en priorité, c'est un préalable légal à toute mise en
+  production, pas seulement un point technique.
+
+- **Lieu d'hébergement des données.** L'article 201 impose un stockage
+  en RDC (sauf autorisation de transfert). Ce code ne permet pas de
+  savoir où est hébergée l'instance de production — à vérifier
+  séparément.
+
+- **Délégué à la protection des données et registre des traitements.**
+  Aucun des deux n'existe dans l'organisation actuelle (voir articles
+  189, 4°, 206 et 227-228) — à trancher si l'ONT souhaite s'en doter,
+  notamment pour bénéficier de la dispense de déclaration prévue à
+  l'article 189, 4°.
+
+- **Durée de conservation exacte par catégorie de données.**
+  L'ordonnance-loi ne fixe aucun chiffre (voir §5 de
+  `conformite-donnees.md`) : `config('kernel.mention_information.duree_conservation')`
+  reste un texte d'attente, aucune purge automatique n'a été implémentée.
+  À chiffrer avec la DFP/le Secrétariat Général, catégorie par catégorie
+  (dossier stagiaire non affecté, dossier stagiaire clôturé, courrier,
+  journal d'audit).
+
+- **Exercice des droits d'accès/rectification/opposition par la personne
+  concernée elle-même.** Aucun point d'entrée self-service n'existe (voir
+  §7) — à construire si le volume de demandes le justifie, ou à traiter
+  manuellement par la DFP en attendant.
+
+- **Redevance et enregistrement auprès de l'INACO.** L'article 46
+  institue une redevance sur les actes/documents publics destinés à être
+  archivés, perçue au profit de l'Institut National des Archives du
+  Congo — à confirmer si l'ONT s'en acquitte et selon quelles modalités.
+
+- **Signature électronique qualifiée.** Les mécanismes de signature du
+  système (clic en application, lien public à usage unique) sont des
+  signatures simples, pas qualifiées au sens des articles 104-110 — leur
+  valeur probante n'est pas automatiquement équivalente à une signature
+  manuscrite. L'empreinte SHA-256 ajoutée dans ce lot n'est qu'une
+  preuve technique complémentaire d'intégrité. Une intégration avec un
+  prestataire de services de confiance agréé resterait à construire si
+  une valeur probante pleine est requise pour ces documents.
