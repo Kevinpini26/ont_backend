@@ -35,7 +35,7 @@ class StatistiquesPubliquesTest extends TestCase
     /**
      * Aucune donnée nominative (nom de candidat, de stagiaire, d'agent,
      * numéro de dossier) ne doit apparaître dans cette réponse — seuls les
-     * trois agrégats globaux sont exposés.
+     * quatre agrégats globaux sont exposés.
      */
     public function test_la_reponse_ne_contient_aucune_donnee_nominative(): void
     {
@@ -52,6 +52,7 @@ class StatistiquesPubliquesTest extends TestCase
                 'dossiers_traites' => $response->json('dossiers_traites'),
                 'delai_moyen_jours' => $response->json('delai_moyen_jours'),
                 'directions_actives' => $response->json('directions_actives'),
+                'stagiaires_accueillis' => $response->json('stagiaires_accueillis'),
             ]);
     }
 
@@ -63,5 +64,16 @@ class StatistiquesPubliquesTest extends TestCase
         $this->getJson('/api/v1/public/statistiques')
             ->assertOk()
             ->assertJsonPath('directions_actives', 3);
+    }
+
+    public function test_stagiaires_accueillis_ne_compte_que_les_affectations_de_lannee_en_cours(): void
+    {
+        Stagiaire::factory()->create(['affecte_at' => now()->startOfYear()->addDays(5)]);
+        Stagiaire::factory()->create(['affecte_at' => now()->subYear()]);
+        Stagiaire::factory()->create(['affecte_at' => null]);
+
+        $this->getJson('/api/v1/public/statistiques')
+            ->assertOk()
+            ->assertJsonPath('stagiaires_accueillis', 1);
     }
 }
