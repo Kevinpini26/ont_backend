@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Public\Http\Controllers\Api\AttestationPublicController;
+use Modules\Public\Http\Controllers\Api\CaptureNumerisationPublicController;
 use Modules\Public\Http\Controllers\Api\CourrierExternePublicController;
 use Modules\Public\Http\Controllers\Api\DemandeStagePublicController;
 use Modules\Public\Http\Controllers\Api\DisponibiliteDemandesStagePublicController;
@@ -34,4 +35,7 @@ Route::prefix('v1/public')->middleware('throttle:sensitive')->group(function () 
     Route::post('/liens/{token}/retour', [LienPublicController::class, 'soumettreRetour']);
     Route::post('/liens/{token}/rapport-stage', [LienPublicController::class, 'soumettreRapportStage']);
     Route::post('/liens/{token}/signer-engagement-confidentialite', [LienPublicController::class, 'signerEngagementConfidentialite']);
+
+    Route::get('/capture/{token}', [CaptureNumerisationPublicController::class, 'show']);
+    Route::post('/capture/{token}', [CaptureNumerisationPublicController::class, 'soumettre']);
 });

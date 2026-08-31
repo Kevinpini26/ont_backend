@@ -45,6 +45,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/stagiaires/{stagiaire}/convention/telecharger', [StagiaireController::class, 'telechargerConvention']);
     Route::get('/stagiaires/{stagiaire}/badge', [StagiaireController::class, 'badge']);
     Route::get('/stagiaires/{stagiaire}/imprimer', [StagiaireController::class, 'imprimer']);
+    Route::post('/stagiaires/{stagiaire}/jeton-capture', [StagiaireController::class, 'genererJetonCapture']);
     Route::get('/stagiaires/{stagiaire}/retour', [StagiaireController::class, 'retour']);
 
     Route::get('/stagiaires/{stagiaire}/presences', [StagiairePresenceController::class, 'index']);

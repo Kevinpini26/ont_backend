@@ -58,4 +58,21 @@ return [
         'http_champ_message' => env('SMS_HTTP_CHAMP_MESSAGE', 'message'),
         'http_params_supplementaires' => [],
     ],
+
+    /**
+     * Numérisation du courrier physique — voir docs/numerisation-courrier.md.
+     * Plafonds en kilooctets (comme les règles de validation Laravel
+     * 'max:'), distincts des plafonds historiques de StoreCourrierRequest
+     * (5 Mo, pour un fichier déjà prêt déposé directement) : un scan
+     * multi-pages pèse structurellement plus lourd.
+     */
+    'numerisation' => [
+        'duree_jeton_capture_minutes' => 15,
+        'plafond_ko_courrier' => 15360,
+        'plafond_ko_stagiaire' => 20480,
+        // En-deçà, le fichier trahit probablement une image illisible
+        // (compression excessive, page blanche) — refusé plutôt que
+        // silencieusement accepté en mauvaise qualité.
+        'seuil_octets_par_page' => 20 * 1024,
+    ],
 ];

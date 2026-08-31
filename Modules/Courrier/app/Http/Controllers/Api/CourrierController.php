@@ -25,8 +25,11 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
+use Modules\Kernel\Contracts\QrCodeService;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
+use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Support\CsvExporter;
 use Modules\Kernel\Support\EmpreinteFichier;
 
@@ -36,6 +39,8 @@ class CourrierController extends Controller
         private readonly CourrierCircuitService $circuit,
         private readonly AuditLogger $audit,
         private readonly PdfGenerationService $pdf,
+        private readonly QrCodeService $qrCode,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function index(Request $request)
@@ -315,6 +320,34 @@ class CourrierController extends Controller
      * quelle étape du circuit — utile en pratique de terrain où
      * l'impression papier reste le principal support de suivi.
      */
+    /**
+     * Génère le jeton de capture mobile (15 min, usage unique) et son QR
+     * code — voir docs/numerisation-courrier.md et JetonCaptureNumerisation.
+     * Même garde que la fiche imprimable : quiconque voit le courrier peut
+     * demander à le faire numériser, sans restreindre à un seul poste.
+     */
+    public function genererJetonCapture(Request $request, Courrier $courrier)
+    {
+        $this->authorize('view', $courrier);
+
+        $jeton = JetonCaptureNumerisation::genererPour($courrier, $request->user());
+        $url = rtrim(config('app.frontend_url'), '/')."/capture/{$jeton->token}";
+
+        if ($request->filled('numero_sms')) {
+            $this->notifications->notifierParSms(
+                $request->string('numero_sms')->toString(),
+                "ONT : lien de capture pour numériser le courrier {$courrier->numero_accuse_reception} (valable 15 min) : {$url}",
+            );
+        }
+
+        return response()->json([
+            'token' => $jeton->token,
+            'url' => $url,
+            'expire_at' => $jeton->expire_at,
+            'qr_code_data_uri' => $this->qrCode->genererSvgDataUri($url),
+        ]);
+    }
+
     public function imprimer(Courrier $courrier)
     {
         $this->authorize('view', $courrier);

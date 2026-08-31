@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
+use Modules\Kernel\Contracts\QrCodeService;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Support\CsvExporter;
 use Modules\Stagiaires\Contracts\BadgeStagiairePdfGenerator;
 use Modules\Stagiaires\Enums\StagiaireStatut;
@@ -34,6 +37,8 @@ class StagiaireController extends Controller
         private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier,
         private readonly BadgeStagiairePdfGenerator $badges,
         private readonly PdfGenerationService $pdf,
+        private readonly QrCodeService $qrCode,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function index(Request $request)
@@ -293,6 +298,33 @@ class StagiaireController extends Controller
      * quelle étape du dossier, sans exposer le détail des évaluations ni
      * le retour d'expérience (voir fiche-imprimable.blade.php).
      */
+    /**
+     * Voir CourrierController::genererJetonCapture() — même mécanisme,
+     * généralisé au dossier stagiaire (ex: pièce d'identité, diplôme
+     * apportés en main propre).
+     */
+    public function genererJetonCapture(Request $request, Stagiaire $stagiaire)
+    {
+        $this->authorize('view', $stagiaire);
+
+        $jeton = JetonCaptureNumerisation::genererPour($stagiaire, $request->user());
+        $url = rtrim(config('app.frontend_url'), '/')."/capture/{$jeton->token}";
+
+        if ($request->filled('numero_sms')) {
+            $this->notifications->notifierParSms(
+                $request->string('numero_sms')->toString(),
+                "ONT : lien de capture pour numériser un document du dossier de {$stagiaire->nom} (valable 15 min) : {$url}",
+            );
+        }
+
+        return response()->json([
+            'token' => $jeton->token,
+            'url' => $url,
+            'expire_at' => $jeton->expire_at,
+            'qr_code_data_uri' => $this->qrCode->genererSvgDataUri($url),
+        ]);
+    }
+
     public function imprimer(Stagiaire $stagiaire)
     {
         $this->authorize('view', $stagiaire);

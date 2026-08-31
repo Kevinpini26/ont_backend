@@ -40,6 +40,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/enregistrer', [CourrierController::class, 'enregistrer']);
     Route::get('/courriers/{courrier}/pdf', [CourrierController::class, 'telechargerPdf']);
     Route::get('/courriers/{courrier}/imprimer', [CourrierController::class, 'imprimer']);
+    Route::post('/courriers/{courrier}/jeton-capture', [CourrierController::class, 'genererJetonCapture']);
     Route::get('/courriers/{courrier}/lettre-stage', [CourrierController::class, 'telechargerLettreStage']);
     Route::get('/courriers/{courrier}/pieces/{piece}', [CourrierController::class, 'telechargerPieceCandidat']);
     Route::get('/courriers/{courrier}/piece-jointe', [CourrierController::class, 'telechargerPieceJointe']);
