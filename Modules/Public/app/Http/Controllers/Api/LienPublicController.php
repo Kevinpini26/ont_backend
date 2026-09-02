@@ -58,7 +58,7 @@ class LienPublicController extends Controller
         // produit une réponse générique, sans détail d'implémentation.
         $lien = StagiaireLienPublic::query()->where('token', $token)->with(['stagiaire.direction'])->first();
 
-        abort_unless($lien, 404, 'Ce lien est introuvable ou invalide.');
+        abort_unless($lien !== null, 404, 'Ce lien est introuvable ou invalide.');
 
         return new LienPublicResource($lien);
     }
