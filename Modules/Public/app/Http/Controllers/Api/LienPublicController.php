@@ -26,24 +26,39 @@ class LienPublicController extends Controller
 
     private function trouverLienValide(string $token, TypeLienPublic $type): StagiaireLienPublic
     {
+        // ->first() + abort_unless (pas firstOrFail) : voir le commentaire de
+        // show() — un jeton inconnu ne doit jamais faire remonter le message
+        // brut d'une ModelNotFoundException à l'appelant.
         $lien = StagiaireLienPublic::query()
             ->where('token', $token)
             ->where('type', $type)
             ->with(['stagiaire.direction'])
-            ->firstOrFail();
+            ->first();
 
         // 404 générique, sans message distinguant "lien déjà utilisé" d'un
         // jeton simplement inconnu : le jeton (48 caractères aléatoires)
         // n'est de toute façon pas énumérable, mais autant ne pas confirmer
-        // par le code HTTP qu'un lien donné a bien existé.
-        abort_unless($lien->estValide(), 404);
+        // par le code HTTP qu'un lien donné a bien existé. Message explicite
+        // (pas de valeur par défaut) : un message vide reste une chaîne
+        // "truthy-absente" côté JS (`?? secours` ne s'applique qu'à null/
+        // undefined), PublicLienPage.jsx afficherait une alerte vide sinon.
+        abort_unless($lien && $lien->estValide(), 404, 'Ce lien est introuvable ou invalide.');
 
         return $lien;
     }
 
     public function show(string $token)
     {
-        $lien = StagiaireLienPublic::query()->where('token', $token)->with(['stagiaire.direction'])->firstOrFail();
+        // ->first() + abort_unless (pas firstOrFail) : un jeton inconnu est un
+        // cas attendu, atteint par n'importe qui tapant une URL au hasard, pas
+        // une erreur de programmation — firstOrFail() lève une
+        // ModelNotFoundException dont Laravel sérialise le message brut
+        // ("No query results for model [...]") dans la réponse JSON, exposé
+        // tel quel par PublicLienPage.jsx à l'utilisateur final. abort(404)
+        // produit une réponse générique, sans détail d'implémentation.
+        $lien = StagiaireLienPublic::query()->where('token', $token)->with(['stagiaire.direction'])->first();
+
+        abort_unless($lien, 404, 'Ce lien est introuvable ou invalide.');
 
         return new LienPublicResource($lien);
     }
@@ -54,9 +69,9 @@ class LienPublicController extends Controller
             ->where('token', $token)
             ->where('type', TypeLienPublic::CONVENTION)
             ->with('stagiaire')
-            ->firstOrFail();
+            ->first();
 
-        abort_unless($lien->stagiaire->convention_chemin, 404);
+        abort_unless($lien && $lien->stagiaire->convention_chemin, 404, 'Aucune convention disponible pour ce lien.');
 
         return Storage::disk('local')->download(
             $lien->stagiaire->convention_chemin,
