@@ -123,10 +123,31 @@ class CourrierStatistiqueController extends Controller
         $initiesParDg = Courrier::query()->withoutGlobalScopes()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
         $initiesParDgPrecedent = Courrier::query()->withoutGlobalScopes()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
+        // Un dossier qui a bouclé au-delà du seuil configuré est un dossier
+        // bloqué (voir CourrierCircuitService::representerDg()) : signalé
+        // ici plutôt que de tourner indéfiniment sans que personne ne le
+        // voie. Le dernier commentaire d'avis porte la dernière observation
+        // en date ; l'historique complet reste consultable sur la fiche.
+        $seuilTours = config('courrier.circuit.tours_avant_alerte', 5);
+        $dossiersEnBoucle = Courrier::query()
+            ->withoutGlobalScopes()
+            ->where('tour', '>', $seuilTours)
+            ->get(['id', 'numero_accuse_reception', 'objet', 'tour', 'avis_dg_commentaire'])
+            ->map(fn (Courrier $c) => [
+                'id' => $c->id,
+                'numero_accuse_reception' => $c->numero_accuse_reception,
+                'objet' => $c->objet,
+                'tour' => $c->tour,
+                'derniere_observation' => $c->avis_dg_commentaire,
+            ])
+            ->values();
+
         return response()->json([
             'en_attente_decision' => $enAttenteDecision,
             'en_attente_depuis_longtemps' => $enAttenteDepuisLongtemps,
             'seuil_jours' => $seuilJours,
+            'dossiers_en_boucle' => $dossiersEnBoucle,
+            'seuil_tours' => $seuilTours,
             'avis_rendus_periode' => $avisRendus,
             'avis_rendus_variation' => PeriodeStatistique::variationPourcentage($avisRendus, $avisRendusPrecedent),
             'courriers_initie_par_dg_periode' => $initiesParDg,

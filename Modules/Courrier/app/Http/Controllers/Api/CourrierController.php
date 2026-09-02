@@ -271,11 +271,32 @@ class CourrierController extends Controller
         return $this->ressource($this->circuit->transmettreAuProtocole($courrier, $request->user()));
     }
 
+    public function transmettreTri(Request $request, Courrier $courrier)
+    {
+        $this->authorize('transmettre', $courrier);
+
+        return $this->ressource($this->circuit->transmettreTri($courrier, $request->user()));
+    }
+
+    public function transmettreAuTriDepuisProtocole(Request $request, Courrier $courrier)
+    {
+        $this->authorize('transmettre', $courrier);
+
+        return $this->ressource($this->circuit->transmettreAuTriDepuisProtocole($courrier, $request->user()));
+    }
+
     public function transmettreAvisDg(Request $request, Courrier $courrier)
     {
         $this->authorize('transmettre', $courrier);
 
         return $this->ressource($this->circuit->transmettreEnAttenteAvisDg($courrier, $request->user()));
+    }
+
+    public function representerDg(Request $request, Courrier $courrier)
+    {
+        $this->authorize('transmettre', $courrier);
+
+        return $this->ressource($this->circuit->representerDg($courrier, $request->user()));
     }
 
     public function rendreAvis(RendreAvisDgRequest $request, Courrier $courrier)

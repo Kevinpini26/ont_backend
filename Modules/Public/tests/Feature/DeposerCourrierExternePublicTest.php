@@ -80,7 +80,7 @@ class DeposerCourrierExternePublicTest extends TestCase
             ->assertJsonValidationErrors(['piece_jointe']);
     }
 
-    public function test_le_courrier_externe_suit_le_circuit_complet_et_est_visible_par_le_protocole(): void
+    public function test_le_courrier_externe_suit_le_circuit_complet_et_est_visible_par_le_secretariat_01(): void
     {
         Mail::fake();
         Storage::fake('local');
@@ -90,15 +90,18 @@ class DeposerCourrierExternePublicTest extends TestCase
             ->json('numero_accuse_reception');
 
         $direction = Direction::factory()->create();
-        $protocole = User::factory()->agentCircuitCourrier(Poste::PROTOCOLE, $direction)->create();
+        // Le Protocole n'est plus l'étape par défaut (Lot 1, bouclage) : un
+        // dépôt public suit le circuit complet comme tout courrier entrant,
+        // directement au tri du Secrétariat 01.
+        $secretariat1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1, $direction)->create();
 
         $courrier = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numero)->firstOrFail();
 
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
 
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")
             ->assertOk()
-            ->assertJsonPath('data.statut', 'au_protocole');
+            ->assertJsonPath('data.statut', 'en_attente_tri');
     }
 }

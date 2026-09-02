@@ -120,6 +120,7 @@ class DgInterimTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $dg = $this->agent(Poste::DG, $direction);
 
         $courrier = Courrier::factory()->create([
@@ -129,7 +130,18 @@ class DgInterimTest extends CourrierTestCase
         ]);
         $this->marquerDecharge($courrier);
 
+        // Même si le Protocole a été emprunté (hypothèse simulée ici — voir
+        // config('courrier.categories_protocole'), vide en pratique
+        // aujourd'hui), il transmet au tri du Secrétariat 01, jamais
+        // directement à la DG : le tri précède toujours la DG.
         $this->actingAs($protocole)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-au-tri-depuis-protocole")
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value);
+
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
+
+        $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg")
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);

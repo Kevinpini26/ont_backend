@@ -318,3 +318,30 @@ périmètre du code :
   représentation provinciale voit-il uniquement les dossiers de son site,
   ou tout le national comme aujourd'hui ? Ce lot pose le référentiel sans
   préjuger de ces réponses.
+
+## Bouclage du circuit courrier (correction du circuit réel vs codé)
+
+- **Quelle catégorie de courrier passe réellement par le Protocole ?** Le
+  document de flux officiel de l'ONT (Réception, Protocole, DGA, Ass.P,
+  Ass1, Ass2, Ass.Dga, DG, Sec01, Sec02) place le Protocole dans le
+  circuit, mais la description de la Direction du chemin d'une demande de
+  stage ne le mentionne pas. Provisoire : le Protocole n'est ni supprimé ni
+  obligatoire — une condition dédiée
+  (`config('courrier.categories_protocole')`, vide aujourd'hui) le rend
+  activable par catégorie de courrier sans nouvelle migration. Hypothèse à
+  tester avec l'ONT : le Protocole traite-t-il les invitations
+  officielles, les correspondances protocolaires, les missions et les
+  visites, plutôt que le courrier ordinaire (demande de stage,
+  correspondance générale) ? Voir
+  `config('courrier.circuit_transitions.complet.recu')`, condition
+  `protocole_requis`.
+
+- **Qui attribue réellement le numéro d'accusé de réception ?** Trois
+  sources se contredisent : le code le génère au poste Réception (voir
+  `config('courrier.poste_creation')`, `CourrierCircuitService::creer()`),
+  le document de flux officiel l'attribue au Secrétariat 01 (colonne
+  « A/R »), et une note antérieure de l'ONT indique que c'est le
+  Secrétariat de la DG qui enregistre la demande et remet le numéro au
+  candidat. Les trois désignent peut-être le même guichet physique sous
+  des noms différents, mais tant que ce n'est pas confirmé,
+  `poste_creation` n'a pas été modifié.

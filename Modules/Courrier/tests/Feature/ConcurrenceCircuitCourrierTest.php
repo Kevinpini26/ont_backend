@@ -38,21 +38,21 @@ class ConcurrenceCircuitCourrierTest extends CourrierTestCase
         return app(CourrierCircuitService::class);
     }
 
-    public function test_une_seule_de_deux_transmissions_au_protocole_concurrentes_aboutit(): void
+    public function test_une_seule_de_deux_transmissions_au_tri_concurrentes_aboutit(): void
     {
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
         $this->marquerDecharge($courrier);
 
-        $resultat = $this->service()->transmettreAuProtocole($courrier, $protocole);
-        $this->assertSame(CourrierStatut::AU_PROTOCOLE, $resultat->statut);
+        $resultat = $this->service()->transmettreTri($courrier, $secretariat1);
+        $this->assertSame(CourrierStatut::EN_ATTENTE_TRI, $resultat->statut);
 
         // $courrier n'a jamais été réassigné : il représente toujours l'état
         // "recu" vu par une deuxième requête chargée avant la première.
         $this->expectException(TransitionNonAutoriseeException::class);
-        $this->service()->transmettreAuProtocole($courrier, $protocole);
+        $this->service()->transmettreTri($courrier, $secretariat1);
     }
 
     public function test_deux_avis_dg_concurrents_sur_le_meme_courrier_le_second_echoue(): void

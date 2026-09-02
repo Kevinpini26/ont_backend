@@ -54,7 +54,7 @@ class DelegationPosteTest extends CourrierTestCase
         $admin = User::factory()->administrateur()->create();
         $delegataire = User::factory()->responsableDirection()->create();
         DelegationPoste::query()->create([
-            'poste' => Poste::PROTOCOLE,
+            'poste' => Poste::SECRETARIAT_1,
             'delegataire_id' => $delegataire->id,
             'debut' => now()->subDay()->toDateString(),
             'fin' => now()->addDay()->toDateString(),
@@ -65,10 +65,10 @@ class DelegationPosteTest extends CourrierTestCase
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
         $this->marquerDecharge($courrier);
 
-        $response = $this->actingAs($delegataire)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole");
+        $response = $this->actingAs($delegataire)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri");
 
         $response->assertOk();
-        $this->assertSame(CourrierStatut::AU_PROTOCOLE->value, $response->json('data.statut'));
+        $this->assertSame(CourrierStatut::EN_ATTENTE_TRI->value, $response->json('data.statut'));
 
         // transitions() est trié du plus ancien au plus récent (voir
         // Courrier::transitions()) : la dernière ligne est donc last(), pas
@@ -80,12 +80,12 @@ class DelegationPosteTest extends CourrierTestCase
     public function test_une_action_normale_par_le_titulaire_du_poste_nest_pas_marquee_en_interim(): void
     {
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertOk();
 
         $derniereTransition = $courrier->transitions()->get()->last();
         $this->assertFalse((bool) $derniereTransition->agi_en_interim);

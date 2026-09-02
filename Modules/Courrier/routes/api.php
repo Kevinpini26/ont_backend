@@ -35,8 +35,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/envoyer', [CourrierController::class, 'envoyer']);
     Route::post('/courriers/{courrier}/enregistrer-remise', [CourrierController::class, 'enregistrerRemise']);
     Route::post('/courriers/{courrier}/transmettre-protocole', [CourrierController::class, 'transmettreProtocole']);
+    Route::post('/courriers/{courrier}/transmettre-tri', [CourrierController::class, 'transmettreTri']);
+    Route::post('/courriers/{courrier}/transmettre-au-tri-depuis-protocole', [CourrierController::class, 'transmettreAuTriDepuisProtocole']);
     Route::post('/courriers/{courrier}/valider-avant-diffusion', [CourrierController::class, 'validerAvantDiffusion']);
     Route::post('/courriers/{courrier}/transmettre-avis-dg', [CourrierController::class, 'transmettreAvisDg']);
+    Route::post('/courriers/{courrier}/representer-dg', [CourrierController::class, 'representerDg']);
     Route::post('/courriers/{courrier}/rendre-avis', [CourrierController::class, 'rendreAvis']);
     Route::post('/courriers/{courrier}/soumettre-projet-reponse', [CourrierController::class, 'soumettreProjetReponse']);
     Route::post('/courriers/{courrier}/valider-relecture', [CourrierController::class, 'validerRelecture']);

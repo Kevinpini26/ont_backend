@@ -9,34 +9,57 @@ return [
      * Deux circuits possibles pour un courrier, selon qu'il exige ou non un
      * arbitrage de la DG (Courrier::necessite_avis_dg, déterminé
      * automatiquement à la création — voir CourrierCircuitService::creer).
-     * Pour chaque statut courant, le statut suivant autorisé et le(s)
-     * poste(s) habilité(s) à déclencher cette transition précise. Toute
-     * transition qui ne figure pas ici (saut d'étape, ordre inversé, ou
-     * circuit inapplicable) est refusée.
+     * Chaque statut courant porte une LISTE de transitions candidates (pas
+     * un unique "suivant" scalaire) : la première dont la condition est
+     * satisfaite (voir ConfigCircuitTransitionRules::conditionSatisfaite())
+     * l'emporte ; `condition: null` signifie "toujours satisfaite", et sert
+     * de repli par défaut en dernière position. C'est ce qui permet à un
+     * même statut de mener à plusieurs suites — la condition première pour
+     * qu'une boucle existe (voir 'retour_reception' ci-dessous). Toute
+     * transition dont aucune entrée ne correspond (saut d'étape, ordre
+     * inversé, ou circuit inapplicable) est refusée.
      *
      * - 'complet' : mail externe entrant (toujours), demande de stage
      *   (toujours), ou courrier à destination de la DG elle-même.
-     *     - recu -> au_protocole : le Protocole prend en charge le courrier
-     *       reçu.
-     *     - au_protocole -> en_attente_avis_dg : le Protocole transmet
-     *       directement à la DG pour avis — la DGA n'est PAS une étape
-     *       obligatoire du circuit standard (corrigé : un établissement
-     *       public transmet directement à la DG, la DGA n'intervenant qu'en
-     *       intérim, voir ci-dessous). Le statut historique
-     *       "en_circuit_hierarchique" (CourrierStatut::EN_CIRCUIT_HIERARCHIQUE)
-     *       n'est plus jamais atteint par le circuit standard — conservé
-     *       dans l'enum uniquement pour l'affichage d'un historique déjà
-     *       existant.
-     *     - en_attente_avis_dg -> projet_reponse_en_cours : la DG (ou la
-     *       DGA, uniquement lorsque la DG est marquée indisponible — garde
+     *     - recu -> au_protocole : condition 'protocole_requis', jamais
+     *       satisfaite aujourd'hui (voir 'categories_protocole' plus bas,
+     *       vide) — le Protocole n'est pas supprimé du circuit (il figure
+     *       dans le document de flux officiel de l'ONT), mais aucune
+     *       catégorie de courrier confirmée n'en a besoin pour l'instant.
+     *       Voir docs/questions-ont.md.
+     *     - recu -> en_attente_tri : sans condition, le comportement par
+     *       défaut — la Réception transmet directement au tri du
+     *       Secrétariat 01, sans Protocole, conformément au circuit décrit
+     *       par la Direction.
+     *     - au_protocole -> en_attente_tri : si jamais le Protocole est un
+     *       jour emprunté, il transmet lui aussi au tri, jamais directement
+     *       à la DG — le tri précède toujours la DG, qu'il y ait eu
+     *       Protocole ou non.
+     *     - en_attente_tri -> en_attente_avis_dg : le Secrétariat 01 trie
+     *       par degré d'urgence puis transmet à la DG. La porte métier
+     *       réelle (urgence obligatoire, bannettes) est ajoutée au Lot 2 ;
+     *       ce statut n'est pour l'instant qu'un point de passage.
+     *     - en_attente_avis_dg -> projet_reponse_en_cours : condition
+     *       'avis_dg_tranche' (favorable ou défavorable). La DG (ou la DGA,
+     *       uniquement lorsque la DG est marquée indisponible — garde
      *       métier dynamique dans CourrierCircuitService::rendreAvisDg(),
-     *       pas dans cette table statique) rend l'avis
-     *       (favorable/défavorable/réservé) et transmet au Secrétariat 01.
-     *       Le poste DGA figure ci-dessous parmi les postes structurellement
-     *       habilités pour cette étape ; la garde d'intérim en restreint
-     *       l'usage réel.
+     *       pas dans cette table statique) transmet au Secrétariat 01 pour
+     *       rédaction du projet de réponse.
+     *     - en_attente_avis_dg -> retour_reception : condition
+     *       'avis_dg_reserve'. Un avis "réservé" veut dire que la décision
+     *       n'est pas arrêtée : le dossier boucle plutôt que d'avancer
+     *       comme si une décision avait été prise. Destination provisoire
+     *       (voir CourrierStatut::RETOUR_RECEPTION) : en Lot 3, une fois
+     *       l'imputation câblée, la direction imputée remplacera la
+     *       Réception comme destinataire réel de ce complément.
+     *     - retour_reception -> en_attente_avis_dg : la Réception représente
+     *       le dossier à la DG — c'est cette transition, et elle seule, qui
+     *       incrémente le tour de boucle (voir
+     *       CourrierCircuitService::representerDg()).
      *     - projet_reponse_en_cours -> en_relecture : le Secrétariat 01
-     *       soumet son projet de réponse à un relecteur désigné.
+     *       soumet son projet de réponse à un relecteur désigné — le second
+     *       rôle du Secrétariat 01, distinct du tri (statut distinct,
+     *       jamais confondus dans une seule étape).
      *     - en_relecture -> signe : la DG signe — refusé si le relecteur
      *       désigné n'a pas explicitement validé la relecture.
      *     - signe -> enregistre : le Secrétariat 02 enregistre le courrier
@@ -44,7 +67,8 @@ return [
      *
      * - 'court' : courrier initié directement par une direction à
      *   destination d'une autre direction (jamais vers la DG, jamais une
-     *   demande de stage) — aucun besoin d'arbitrage DG.
+     *   demande de stage) — aucun besoin d'arbitrage DG, donc aucun tri par
+     *   le Secrétariat 01 (réservé au circuit 'complet').
      *     - recu -> enregistre : le Secrétariat 02 enregistre directement
      *       le courrier (numérotation, traçabilité), sans passer par le
      *       Protocole, la DGA, ni attendre d'avis DG. Il arrive ensuite tel
@@ -53,12 +77,13 @@ return [
      * - 'dg_initie' : courrier sortant initié par la DG elle-même
      *   (instruction, note de service), sans courrier entrant déclencheur
      *   — voir CourrierCircuitService::initierParDg(). Ni Protocole ni avis
-     *   DG (il part déjà de la DG), mais relecture et signature restent
-     *   obligatoires comme pour tout courrier officiel. Pas d'entrée
-     *   "recu" : la création bascule directement vers en_attente_validation_dg
-     *   ou en_relecture selon la case "validation_dg_requise" du
-     *   formulaire — une décision prise une fois, en code, à la création,
-     *   jamais une transition pilotée par un poste via cette table.
+     *   DG (il part déjà de la DG), pas de tri non plus (n'est pas du
+     *   courrier entrant), mais relecture et signature restent obligatoires
+     *   comme pour tout courrier officiel. Pas d'entrée "recu" : la création
+     *   bascule directement vers en_attente_validation_dg ou en_relecture
+     *   selon la case "validation_dg_requise" du formulaire — une décision
+     *   prise une fois, en code, à la création, jamais une transition
+     *   pilotée par un poste via cette table.
      *     - en_attente_validation_dg -> en_relecture : la DG valide le
      *       contenu avant qu'il ne parte en relecture (uniquement si le
      *       rédacteur a jugé cette étape nécessaire).
@@ -70,61 +95,120 @@ return [
     'circuit_transitions' => [
         'complet' => [
             'recu' => [
-                'suivant' => 'au_protocole',
-                'postes' => [Poste::PROTOCOLE->value],
+                [
+                    'action' => 'transmettre_protocole',
+                    'statut_arrivee' => 'au_protocole',
+                    'postes' => [Poste::PROTOCOLE->value],
+                    'condition' => 'protocole_requis',
+                ],
+                [
+                    'action' => 'transmettre_tri',
+                    'statut_arrivee' => 'en_attente_tri',
+                    'postes' => [Poste::SECRETARIAT_1->value],
+                    'condition' => null,
+                ],
             ],
             'au_protocole' => [
-                'suivant' => 'en_attente_avis_dg',
-                'postes' => [Poste::PROTOCOLE->value],
+                [
+                    'action' => 'transmettre_au_tri',
+                    'statut_arrivee' => 'en_attente_tri',
+                    'postes' => [Poste::PROTOCOLE->value],
+                    'condition' => null,
+                ],
+            ],
+            'en_attente_tri' => [
+                [
+                    'action' => 'transmettre_dg',
+                    'statut_arrivee' => 'en_attente_avis_dg',
+                    'postes' => [Poste::SECRETARIAT_1->value],
+                    'condition' => null,
+                ],
             ],
             'en_attente_avis_dg' => [
-                'suivant' => 'projet_reponse_en_cours',
-                'postes' => [Poste::DG->value, Poste::DGA->value],
+                [
+                    'action' => 'rendre_avis_tranche',
+                    'statut_arrivee' => 'projet_reponse_en_cours',
+                    'postes' => [Poste::DG->value, Poste::DGA->value],
+                    'condition' => 'avis_dg_tranche',
+                ],
+                [
+                    'action' => 'rendre_avis_reserve',
+                    'statut_arrivee' => 'retour_reception',
+                    'postes' => [Poste::DG->value, Poste::DGA->value],
+                    'condition' => 'avis_dg_reserve',
+                ],
+            ],
+            'retour_reception' => [
+                [
+                    'action' => 'representer_dg',
+                    'statut_arrivee' => 'en_attente_avis_dg',
+                    'postes' => [Poste::RECEPTION->value],
+                    'condition' => null,
+                ],
             ],
             'projet_reponse_en_cours' => [
-                'suivant' => 'en_relecture',
-                'postes' => [Poste::SECRETARIAT_1->value],
+                [
+                    'action' => 'soumettre_projet_reponse',
+                    'statut_arrivee' => 'en_relecture',
+                    'postes' => [Poste::SECRETARIAT_1->value],
+                    'condition' => null,
+                ],
             ],
             'en_relecture' => [
-                'suivant' => 'signe',
-                'postes' => [Poste::DG->value],
+                [
+                    'action' => 'signer',
+                    'statut_arrivee' => 'signe',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
             ],
             'signe' => [
-                'suivant' => 'enregistre',
-                'postes' => [Poste::SECRETARIAT_2->value],
+                [
+                    'action' => 'enregistrer',
+                    'statut_arrivee' => 'enregistre',
+                    'postes' => [Poste::SECRETARIAT_2->value],
+                    'condition' => null,
+                ],
             ],
-            'enregistre' => [
-                'suivant' => null,
-                'postes' => [],
-            ],
+            'enregistre' => [],
         ],
         'court' => [
             'recu' => [
-                'suivant' => 'enregistre',
-                'postes' => [Poste::SECRETARIAT_2->value],
+                [
+                    'action' => 'enregistrer',
+                    'statut_arrivee' => 'enregistre',
+                    'postes' => [Poste::SECRETARIAT_2->value],
+                    'condition' => null,
+                ],
             ],
-            'enregistre' => [
-                'suivant' => null,
-                'postes' => [],
-            ],
+            'enregistre' => [],
         ],
         'dg_initie' => [
             'en_attente_validation_dg' => [
-                'suivant' => 'en_relecture',
-                'postes' => [Poste::DG->value],
+                [
+                    'action' => 'valider_avant_diffusion',
+                    'statut_arrivee' => 'en_relecture',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
             ],
             'en_relecture' => [
-                'suivant' => 'signe',
-                'postes' => [Poste::DG->value],
+                [
+                    'action' => 'signer',
+                    'statut_arrivee' => 'signe',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
             ],
             'signe' => [
-                'suivant' => 'enregistre',
-                'postes' => [Poste::SECRETARIAT_2->value],
+                [
+                    'action' => 'enregistrer',
+                    'statut_arrivee' => 'enregistre',
+                    'postes' => [Poste::SECRETARIAT_2->value],
+                    'condition' => null,
+                ],
             ],
-            'enregistre' => [
-                'suivant' => null,
-                'postes' => [],
-            ],
+            'enregistre' => [],
         ],
 
         /**
@@ -139,18 +223,42 @@ return [
          */
         'sortant' => [
             'en_relecture' => [
-                'suivant' => 'signe',
-                'postes' => [Poste::DG->value],
+                [
+                    'action' => 'signer',
+                    'statut_arrivee' => 'signe',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
             ],
             'signe' => [
-                'suivant' => 'envoye',
-                'postes' => [Poste::SECRETARIAT_2->value],
+                [
+                    'action' => 'envoyer',
+                    'statut_arrivee' => 'envoye',
+                    'postes' => [Poste::SECRETARIAT_2->value],
+                    'condition' => null,
+                ],
             ],
-            'envoye' => [
-                'suivant' => null,
-                'postes' => [],
-            ],
+            'envoye' => [],
         ],
+    ],
+
+    /**
+     * Catégories de courrier (Courrier::type) pour lesquelles le passage par
+     * le Protocole est requis avant le tri — vide aujourd'hui : aucune
+     * catégorie confirmée. Voir docs/questions-ont.md. Activer un jour ne
+     * demande qu'une entrée ici (et, si besoin, un nouveau cas
+     * CourrierType), jamais une nouvelle migration ni un nouveau statut.
+     */
+    'categories_protocole' => [],
+
+    'circuit' => [
+        /**
+         * Au-delà de ce nombre de tours (Courrier::tour), un dossier encore
+         * dans la boucle est signalé en alerte sur le tableau de bord de la
+         * DG (voir CourrierStatistiqueController::dg) plutôt que de tourner
+         * indéfiniment sans que personne ne le voie.
+         */
+        'tours_avant_alerte' => 5,
     ],
 
     /**

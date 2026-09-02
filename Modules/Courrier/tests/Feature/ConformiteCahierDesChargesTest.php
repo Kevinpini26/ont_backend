@@ -227,10 +227,10 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         ])->assertCreated()->json('numero_accuse_reception');
 
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $courrier = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numero)->firstOrFail();
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertOk();
 
         $response = $this->postJson('/api/v1/public/dossiers/verifier', [
             'numero' => $numero,
@@ -240,9 +240,9 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $this->assertArrayNotHasKey('statut', $response->json('data'));
         $this->assertArrayNotHasKey('statut_label', $response->json('data'));
         $this->assertNotNull($response->json('data.statut_simplifie'));
-        // Aucune étape interne du circuit (Protocole, DGA, DG...) ne doit
-        // fuiter dans la valeur simplifiée elle-même.
-        $this->assertStringNotContainsString('protocole', strtolower($response->json('data.statut_simplifie')));
+        // Aucune étape interne du circuit (tri, Protocole, DGA, DG...) ne
+        // doit fuiter dans la valeur simplifiée elle-même.
+        $this->assertStringNotContainsString('tri', strtolower($response->json('data.statut_simplifie')));
     }
 
     // --- Scénario 7 : numérisation obligatoire à la Réception ---

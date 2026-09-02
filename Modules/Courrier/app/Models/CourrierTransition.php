@@ -21,6 +21,7 @@ class CourrierTransition extends Model
     protected $fillable = [
         'courrier_id',
         'statut',
+        'tour',
         'changed_by_id',
         'agi_en_interim',
         'destinataire_poste',
@@ -34,6 +35,7 @@ class CourrierTransition extends Model
     {
         return [
             'statut' => CourrierStatut::class,
+            'tour' => 'integer',
             'created_at' => 'datetime',
             'accuse_reception_at' => 'datetime',
             'agi_en_interim' => 'boolean',

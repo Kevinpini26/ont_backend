@@ -61,6 +61,10 @@ class CourrierResource extends JsonResource
             'type_label' => $this->type?->label(),
             'statut' => $this->statut?->value,
             'statut_label' => $this->statut?->label(),
+            // Tour de la boucle interne (Lot 1) — incrémenté uniquement
+            // quand la Réception représente un dossier revenu en "réservé"
+            // à la DG, voir CourrierCircuitService::representerDg().
+            'tour' => $this->tour,
             'necessite_avis_dg' => $this->necessite_avis_dg,
             'initie_par_dg' => $this->initie_par_dg,
             'validation_dg_requise' => $this->validation_dg_requise,
@@ -118,6 +122,7 @@ class CourrierResource extends JsonResource
                 fn () => $this->transitions->map(fn ($transition) => [
                     'statut' => $transition->statut?->value,
                     'statut_label' => $transition->statut?->label(),
+                    'tour' => $transition->tour,
                     'emetteur' => $transition->auteur?->name,
                     'destinataire' => match (true) {
                         $transition->destinataire_user_id !== null => $transition->destinataireUser?->name,

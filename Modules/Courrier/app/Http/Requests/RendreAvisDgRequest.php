@@ -17,7 +17,17 @@ class RendreAvisDgRequest extends FormRequest
     {
         return [
             'avis_dg' => ['required', Rule::enum(AvisDg::class)],
-            'avis_dg_commentaire' => ['nullable', 'string'],
+            // Obligatoire pour un avis réservé (le dossier boucle : sans
+            // observation, personne ne saurait ce qui manque au retour) —
+            // facultatif sinon.
+            'avis_dg_commentaire' => ['nullable', 'string', Rule::requiredIf($this->input('avis_dg') === AvisDg::RESERVE->value)],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'avis_dg_commentaire.required' => "Un avis réservé doit préciser ce qui est attendu pour que le dossier puisse revenir complet.",
         ];
     }
 }

@@ -46,6 +46,7 @@ class Courrier extends Model
         'niveau_confidentialite' => 'ordinaire',
         'sens' => 'entrant',
         'numerisation_statut' => 'non_applicable',
+        'tour' => 1,
     ];
 
     protected $fillable = [
@@ -118,6 +119,7 @@ class Courrier extends Model
         'remis_a',
         'mode_remise',
         'decharge_remise_chemin',
+        'tour',
     ];
 
     protected static function booted(): void
@@ -163,6 +165,7 @@ class Courrier extends Model
             'remis_le' => 'datetime',
             'mode_remise' => ModeRemise::class,
             'numerisation_statut' => NumerisationStatut::class,
+            'tour' => 'integer',
         ];
     }
 

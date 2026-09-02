@@ -29,7 +29,7 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $courrier = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
@@ -42,13 +42,16 @@ class BordereauTransmissionTest extends CourrierTestCase
         $this->assertCount(1, $courrier['transitions']);
         $this->assertSame(CourrierStatut::RECU->value, $courrier['transitions'][0]['statut']);
         $this->assertSame($reception->name, $courrier['transitions'][0]['emetteur']);
-        $this->assertSame('Protocole', $courrier['transitions'][0]['destinataire']);
+        // Le Protocole n'est plus le destinataire par défaut (Lot 1,
+        // bouclage) : la Réception transmet directement au tri du
+        // Secrétariat 01, sans Protocole.
+        $this->assertSame('Secrétariat 01', $courrier['transitions'][0]['destinataire']);
         $this->assertNull($courrier['transitions'][0]['accuse_reception_at']);
 
         $id = $courrier['id'];
 
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$id}/transmettre-protocole")
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$id}/transmettre-tri")
             ->assertStatus(422);
 
         $this->assertSame(CourrierStatut::RECU, Courrier::withoutGlobalScopes()->findOrFail($id)->statut);
@@ -60,7 +63,7 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
@@ -69,19 +72,19 @@ class BordereauTransmissionTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
 
-        $decharge = $this->actingAs($protocole)
+        $decharge = $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$id}/accuser-reception")
             ->assertOk()
             ->json('data');
 
         $this->assertFalse($decharge['en_transit']);
-        $this->assertSame($protocole->name, $decharge['transitions'][0]['accuse_reception_par']);
+        $this->assertSame($secretariat1->name, $decharge['transitions'][0]['accuse_reception_par']);
         $this->assertNotNull($decharge['transitions'][0]['accuse_reception_at']);
 
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$id}/transmettre-protocole")
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$id}/transmettre-tri")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::AU_PROTOCOLE->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value);
     }
 
     public function test_le_fil_de_bordereaux_reflete_fidelement_chaque_transmission_dans_lordre(): void
@@ -90,7 +93,7 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $dg = $this->agent(Poste::DG, $direction);
 
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
@@ -100,10 +103,10 @@ class BordereauTransmissionTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
 
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/transmettre-protocole")->assertOk();
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-tri")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg")->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
         $transitions = $this->actingAs($dg)
@@ -115,16 +118,16 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $this->assertSame(CourrierStatut::RECU->value, $transitions[0]['statut']);
         $this->assertSame($reception->name, $transitions[0]['emetteur']);
-        $this->assertSame('Protocole', $transitions[0]['destinataire']);
-        $this->assertSame($protocole->name, $transitions[0]['accuse_reception_par']);
+        $this->assertSame('Secrétariat 01', $transitions[0]['destinataire']);
+        $this->assertSame($secretariat1->name, $transitions[0]['accuse_reception_par']);
 
-        $this->assertSame(CourrierStatut::AU_PROTOCOLE->value, $transitions[1]['statut']);
-        $this->assertSame($protocole->name, $transitions[1]['emetteur']);
-        $this->assertSame('Protocole', $transitions[1]['destinataire']);
-        $this->assertSame($protocole->name, $transitions[1]['accuse_reception_par']);
+        $this->assertSame(CourrierStatut::EN_ATTENTE_TRI->value, $transitions[1]['statut']);
+        $this->assertSame($secretariat1->name, $transitions[1]['emetteur']);
+        $this->assertSame('Secrétariat 01', $transitions[1]['destinataire']);
+        $this->assertSame($secretariat1->name, $transitions[1]['accuse_reception_par']);
 
         $this->assertSame(CourrierStatut::EN_ATTENTE_AVIS_DG->value, $transitions[2]['statut']);
-        $this->assertSame($protocole->name, $transitions[2]['emetteur']);
+        $this->assertSame($secretariat1->name, $transitions[2]['emetteur']);
         $this->assertSame('Directeur Général', $transitions[2]['destinataire']);
         $this->assertSame($dg->name, $transitions[2]['accuse_reception_par']);
         $this->assertNotNull($transitions[2]['accuse_reception_at']);
@@ -142,7 +145,7 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+        $dg = $this->agent(Poste::DG, $direction);
 
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
@@ -151,7 +154,9 @@ class BordereauTransmissionTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
 
-        $this->actingAs($secretariat1)
+        // Ni le Protocole ni la DG ne sont destinataires d'un courrier
+        // fraîchement reçu (voir test ci-dessus : c'est le Secrétariat 01).
+        $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$id}/accuser-reception")
             ->assertStatus(403);
     }

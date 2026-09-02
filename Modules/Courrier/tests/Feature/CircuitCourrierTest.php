@@ -44,19 +44,26 @@ class CircuitCourrierTest extends CourrierTestCase
         // destinataire avant de pouvoir transmettre à son tour — voir
         // BordereauTransmissionTest.php pour la vérification dédiée du
         // mécanisme lui-même.
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        //
+        // Correction du bouclage (Lot 1) : le Protocole n'est plus une étape
+        // obligatoire — la Réception transmet directement au tri du
+        // Secrétariat 01, sans Protocole, conformément au circuit décrit par
+        // la Direction (voir config('courrier.circuit_transitions.complet'),
+        // condition 'protocole_requis' jamais satisfaite tant qu'aucune
+        // catégorie n'y est confirmée).
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$id}/transmettre-protocole")
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$id}/transmettre-tri")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::AU_PROTOCOLE->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value);
 
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
-        // Corrigé : le Protocole transmet directement à la DG pour avis,
-        // sans étape DGA obligatoire (voir DgInterimTest pour le cas
+        // Corrigé : le Secrétariat 01 transmet directement à la DG pour
+        // avis, sans étape DGA obligatoire (voir DgInterimTest pour le cas
         // d'intérim, où la DGA intervient explicitement).
-        $this->actingAs($protocole)
+        $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg")
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
@@ -142,12 +149,15 @@ class CircuitCourrierTest extends CourrierTestCase
     public function test_un_poste_non_habilite_ne_peut_pas_faire_avancer_le_courrier(): void
     {
         $direction = Direction::factory()->create();
-        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+        // Ni le Protocole ni le Secrétariat 01 : aucune des deux candidates
+        // depuis "recu" (transmettre-protocole, transmettre-tri) n'habilite
+        // la DG.
+        $dg = $this->agent(Poste::DG, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
 
-        $this->actingAs($secretariat1)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")
+        $this->actingAs($dg)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")
             ->assertStatus(403);
     }
 

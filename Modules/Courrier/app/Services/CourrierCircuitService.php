@@ -297,13 +297,26 @@ class CourrierCircuitService
         if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
             $destinataireUserId = $courrier->relecteur_id;
         } else {
-            $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg);
+            // Contexte 'type' : seul ce qui départage réellement 'recu'
+            // (Protocole si un jour requis, Secrétariat 01 sinon) — sans
+            // lui, l'union inclurait à tort le Protocole comme destinataire
+            // possible d'un courrier qui, dans les faits, va toujours au
+            // tri. Sans effet sur les autres statuts (aucune de leurs
+            // candidates ne conditionne sur le type).
+            $postesAutorises = $this->regles->postesPourTransitionResolue(
+                $courrier->statut,
+                $courrier->necessite_avis_dg,
+                $courrier->initie_par_dg,
+                false,
+                ['type' => $courrier->type?->value],
+            );
             $destinatairePoste = ($postesAutorises[0] ?? null)?->value;
         }
 
         CourrierTransition::query()->create([
             'courrier_id' => $courrier->id,
             'statut' => $courrier->statut,
+            'tour' => $courrier->tour,
             'changed_by_id' => $utilisateur?->id,
             // Proxy volontairement simple : "cet utilisateur détient une
             // délégation active aujourd'hui", pas une vérification que
@@ -366,12 +379,20 @@ class CourrierCircuitService
         }
     }
 
-    private function assertTransitionAutorisee(Courrier $courrier, User $utilisateur, CourrierStatut $statutCible): void
+    /**
+     * `$contexte` porte les valeurs nécessaires à la résolution quand le
+     * statut courant a plusieurs destinations candidates (voir
+     * CircuitTransitionRules::statutSuivant()) — vide pour la plupart des
+     * appels, à un seul statut de destination possible.
+     *
+     * @param  array<string, mixed>  $contexte
+     */
+    private function assertTransitionAutorisee(Courrier $courrier, User $utilisateur, CourrierStatut $statutCible, array $contexte = []): void
     {
         $this->assertDechargeDonnee($courrier);
 
         $estSortant = $courrier->sens === SensCourrier::SORTANT;
-        $statutAttendu = $this->regles->statutSuivant($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
+        $statutAttendu = $this->regles->statutSuivant($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant, $contexte);
 
         if ($statutAttendu === null || $statutAttendu !== $statutCible) {
             throw TransitionNonAutoriseeException::sautDetape();
@@ -442,13 +463,57 @@ class CourrierCircuitService
         });
     }
 
+    /**
+     * Reste défini pour le jour où une catégorie de courrier confirmée
+     * exigera le Protocole (voir config('courrier.categories_protocole'),
+     * vide aujourd'hui) — inatteignable en pratique tant qu'aucune
+     * catégorie n'y figure : le tri du Secrétariat 01 (transmettreTri())
+     * est le chemin par défaut depuis "recu".
+     */
     public function transmettreAuProtocole(Courrier $courrier, User $utilisateur): Courrier
     {
         return DB::transaction(function () use ($courrier, $utilisateur) {
             $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::AU_PROTOCOLE);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::AU_PROTOCOLE, ['type' => $courrier->type->value]);
 
             $courrier->statut = CourrierStatut::AU_PROTOCOLE;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Chemin par défaut depuis "recu" (voir transmettreAuProtocole()) : la
+     * Réception transmet directement au tri du Secrétariat 01, sans
+     * Protocole, conformément au circuit décrit par la Direction.
+     */
+    public function transmettreTri(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI, ['type' => $courrier->type->value]);
+
+            $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Si le Protocole a été emprunté, il transmet lui aussi au tri, jamais
+     * directement à la DG — le tri précède toujours la DG.
+     */
+    public function transmettreAuTriDepuisProtocole(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI);
+
+            $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
 
@@ -471,6 +536,26 @@ class CourrierCircuitService
     }
 
     /**
+     * La Réception représente à la DG un dossier revenu en "réservé" — seule
+     * transition qui incrémente le tour de boucle (voir
+     * Courrier::tour, config('courrier.circuit.tours_avant_alerte')).
+     */
+    public function representerDg(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
+
+            $courrier->tour += 1;
+            $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
      * La DGA figure parmi les postes structurellement habilités pour cette
      * étape (voir config('courrier.circuit_transitions')), mais ne peut
      * réellement rendre l'avis que lorsque la DG est marquée indisponible
@@ -483,7 +568,13 @@ class CourrierCircuitService
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $avis, $commentaire) {
             $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::PROJET_REPONSE_EN_COURS);
+
+            // Un avis "réservé" veut dire que la décision n'est pas
+            // arrêtée : le dossier boucle (retour_reception, voir
+            // config('courrier.circuit_transitions.complet.en_attente_avis_dg'))
+            // plutôt que d'avancer comme si une décision avait été prise.
+            $statutCible = $avis === AvisDg::RESERVE ? CourrierStatut::RETOUR_RECEPTION : CourrierStatut::PROJET_REPONSE_EN_COURS;
+            $this->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, ['avis_dg' => $avis->value]);
 
             $enInterim = $utilisateur->poste === Poste::DGA;
 
@@ -496,7 +587,7 @@ class CourrierCircuitService
             $courrier->avis_dg_rendu_at = now();
             $courrier->avis_dg_rendu_par_id = $utilisateur->id;
             $courrier->avis_dg_rendu_en_interim = $enInterim;
-            $courrier->statut = CourrierStatut::PROJET_REPONSE_EN_COURS;
+            $courrier->statut = $statutCible;
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
 

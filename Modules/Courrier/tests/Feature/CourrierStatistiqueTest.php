@@ -22,7 +22,7 @@ class CourrierStatistiqueTest extends CourrierTestCase
 
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Test statistiques',
@@ -31,13 +31,13 @@ class CourrierStatistiqueTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->json('data.id');
 
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$id}/transmettre-protocole")
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$id}/transmettre-tri")
             ->assertOk();
 
-        $response = $this->actingAs($protocole)
+        $response = $this->actingAs($secretariat1)
             ->getJson('/api/v1/courriers/statistiques')
             ->assertOk();
 
@@ -49,7 +49,7 @@ class CourrierStatistiqueTest extends CourrierTestCase
         ]);
 
         $parStatut = collect($response->json('par_statut'))->keyBy('statut');
-        $this->assertSame(1, $parStatut['au_protocole']['total']);
+        $this->assertSame(1, $parStatut['en_attente_tri']['total']);
     }
 
     public function test_une_direction_ne_peut_pas_consulter_le_tableau_de_bord_du_circuit(): void
