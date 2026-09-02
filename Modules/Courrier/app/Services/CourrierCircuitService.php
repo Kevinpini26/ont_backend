@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
@@ -521,15 +522,61 @@ class CourrierCircuitService
         });
     }
 
-    public function transmettreEnAttenteAvisDg(Courrier $courrier, User $utilisateur): Courrier
+    /**
+     * C'est ICI, et seulement ici, que le tri par degré d'urgence du
+     * Secrétariat 01 est réellement effectué (voir CourrierStatut::EN_ATTENTE_TRI)
+     * — jamais un statut à part qui bloquerait le dossier : le courrier
+     * reste visible et consultable tant qu'il n'a pas encore été trié
+     * (voir Courrier::urgenceTriee(), config('courrier.tri.delai_alerte_heures')
+     * pour l'alerte de tri manquant). Une fois trié, seule la DG peut
+     * corriger le degré (voir requalifierUrgence()) — cette méthode-ci ne
+     * repose jamais sur un degré déjà présent.
+     */
+    public function transmettreEnAttenteAvisDg(Courrier $courrier, User $utilisateur, DegreUrgence $degreUrgence): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $degreUrgence) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
 
+            $courrier->degre_urgence = $degreUrgence;
+            $courrier->urgence_triee_at = now();
+            $courrier->urgence_triee_par_id = $utilisateur->id;
             $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Correction du degré d'urgence après le tri — réservée à la DG et à
+     * elle seule (jamais la DGA, y compris en intérim : c'est une décision
+     * de fond, pas une action du circuit standard soumise à la garde
+     * d'intérim habituelle). Peut s'exercer à tout moment après le tri,
+     * quel que soit le statut courant du dossier (un directeur qui reçoit
+     * un dossier marqué normal alors qu'il est brûlant doit pouvoir le
+     * corriger sans renvoyer le courrier au Secrétariat) — ce n'est donc
+     * volontairement pas une transition de circuit (pas d'appel à
+     * assertTransitionAutorisee()).
+     */
+    public function requalifierUrgence(Courrier $courrier, User $dg, DegreUrgence $nouveauDegre): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $dg, $nouveauDegre) {
+            $courrier = $this->lockCourrierFrais($courrier);
+
+            if (! $courrier->urgenceTriee()) {
+                throw TransitionNonAutoriseeException::urgenceNonTriee();
+            }
+
+            $ancienDegre = $courrier->degre_urgence;
+            $courrier->degre_urgence = $nouveauDegre;
+            $courrier->save();
+
+            $this->audit->enregistrer('courrier.urgence_requalifiee', $courrier, $dg, [
+                'ancien_degre' => $ancienDegre->value,
+                'nouveau_degre' => $nouveauDegre->value,
+            ]);
 
             return $courrier;
         });

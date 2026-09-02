@@ -42,7 +42,10 @@ class Courrier extends Model
      */
     protected $attributes = [
         'nombre_annexes' => 0,
-        'degre_urgence' => 'normal',
+        // Pas de défaut applicatif pour degre_urgence (Lot 2, tri par
+        // urgence) : "pas encore trié" (null) et "trié comme normal"
+        // ('normal') sont deux états distincts, jamais confondus — voir
+        // CourrierCircuitService::transmettreEnAttenteAvisDg().
         'niveau_confidentialite' => 'ordinaire',
         'sens' => 'entrant',
         'numerisation_statut' => 'non_applicable',
@@ -105,6 +108,8 @@ class Courrier extends Model
         'mode_reception',
         'nombre_annexes',
         'degre_urgence',
+        'urgence_triee_at',
+        'urgence_triee_par_id',
         'niveau_confidentialite',
         'cote_classement',
         'emplacement_physique',
@@ -158,6 +163,7 @@ class Courrier extends Model
             'mode_reception' => ModeReception::class,
             'nombre_annexes' => 'integer',
             'degre_urgence' => DegreUrgence::class,
+            'urgence_triee_at' => 'datetime',
             'niveau_confidentialite' => NiveauConfidentialite::class,
             'sens' => SensCourrier::class,
             'mode_expedition' => ModeExpedition::class,
@@ -197,6 +203,25 @@ class Courrier extends Model
     public function avisDgRenduPar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'avis_dg_rendu_par_id');
+    }
+
+    public function urgenceTrieePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'urgence_triee_par_id');
+    }
+
+    /**
+     * Basé sur urgence_triee_at, PAS sur degre_urgence : ce dernier peut
+     * être pré-rempli dès la création par la Réception (métadonnée
+     * indicative du registre, voir StoreCourrierRequest), sans que ce
+     * préremplissage vaille tri officiel. Seul le passage réel par le
+     * Secrétariat 01 (voir CourrierCircuitService::transmettreEnAttenteAvisDg())
+     * pose urgence_triee_at et compte comme "trié" — "pas encore trié" et
+     * "trié comme normal" ne sont pas le même état.
+     */
+    public function urgenceTriee(): bool
+    {
+        return $this->urgence_triee_at !== null;
     }
 
     public function annotations(): HasMany

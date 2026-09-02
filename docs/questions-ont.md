@@ -345,3 +345,16 @@ périmètre du code :
   candidat. Les trois désignent peut-être le même guichet physique sous
   des noms différents, mais tant que ce n'est pas confirmé,
   `poste_creation` n'a pas été modifié.
+
+- **Délai d'alerte du tri non effectué : heures d'horloge, pas heures
+  ouvrées.** La Direction a demandé "quatre heures ouvrées" pour l'alerte
+  d'un courrier resté en `en_attente_tri` sans degré d'urgence renseigné.
+  Ce projet n'a pas de calendrier d'heures ouvrées (jours fériés, horaires
+  8h30–15h30) implémenté nulle part — le délai indicatif existant
+  (`config('courrier.delais_indicatifs_heures')`) traite déjà ses seuils
+  comme de simples heures d'horloge, une simplification déjà assumée
+  ailleurs dans ce module. `config('courrier.tri.delai_alerte_heures')`
+  (défaut 4) suit le même principe : à remplacer par un vrai calcul
+  d'heures ouvrées si la pratique de terrain montre que la différence
+  compte (ex. un dépôt vendredi après-midi ne devrait pas déclencher
+  l'alerte dès le samedi matin).

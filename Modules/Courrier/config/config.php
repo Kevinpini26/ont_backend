@@ -262,6 +262,21 @@ return [
     ],
 
     /**
+     * Lot 2 (tri par urgence) : un dossier encore "en_attente_tri" sans
+     * degre_urgence renseigné au-delà de ce délai remonte en alerte plutôt
+     * que de rester invisible — jamais un blocage du service (le dossier
+     * reste consultable normalement pendant ce temps). Simplification déjà
+     * adoptée ailleurs dans ce module (voir 'delais_indicatifs_heures'
+     * ci-dessous) : heures d'horloge, pas un calcul d'heures ouvrées réel
+     * — à ajuster si la pratique de terrain l'exige. "4 heures ouvrées"
+     * demandé par la Direction ; 4h d'horloge en repli tant qu'un
+     * calendrier d'heures ouvrées n'existe pas dans ce projet.
+     */
+    'tri' => [
+        'delai_alerte_heures' => 4,
+    ],
+
+    /**
      * Poste habilité à créer un courrier entrant (statut initial "recu").
      */
     'poste_creation' => Poste::RECEPTION->value,

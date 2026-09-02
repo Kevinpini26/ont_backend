@@ -142,7 +142,7 @@ class DgInterimTest extends CourrierTestCase
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
 
         $this->actingAs($secretariat1)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg")
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
 

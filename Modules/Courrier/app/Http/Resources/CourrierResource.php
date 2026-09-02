@@ -106,6 +106,10 @@ class CourrierResource extends JsonResource
             'classification' => $this->classification?->value,
             'degre_urgence' => $this->degre_urgence?->value,
             'degre_urgence_label' => $this->degre_urgence?->label(),
+            // null tant que non trié (voir Courrier::urgenceTriee()) — à
+            // distinguer d'un degré "normal" effectivement choisi.
+            'urgence_triee_at' => $this->urgence_triee_at,
+            'urgence_triee_par' => $this->whenLoaded('urgenceTrieePar', fn () => $this->urgenceTrieePar?->name),
             'niveau_confidentialite' => $this->niveau_confidentialite?->value,
             'niveau_confidentialite_label' => $this->niveau_confidentialite?->label(),
             'note_technique' => $this->note_technique,

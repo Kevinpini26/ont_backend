@@ -62,11 +62,13 @@ class CircuitCourrierTest extends CourrierTestCase
 
         // Corrigé : le Secrétariat 01 transmet directement à la DG pour
         // avis, sans étape DGA obligatoire (voir DgInterimTest pour le cas
-        // d'intérim, où la DGA intervient explicitement).
+        // d'intérim, où la DGA intervient explicitement). C'est ici que le
+        // tri par degré d'urgence (Lot 2) est réellement effectué.
         $this->actingAs($secretariat1)
-            ->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg")
+            ->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
+            ->assertJsonPath('data.degre_urgence', 'urgent');
 
         // La DG (jamais la DGA) accuse réception du bordereau : la DGA
         // reste ensuite bloquée par la garde d'intérim ci-dessous, pas par
@@ -131,15 +133,18 @@ class CircuitCourrierTest extends CourrierTestCase
     public function test_impossible_de_sauter_une_etape_du_circuit(): void
     {
         $direction = Direction::factory()->create();
-        // Le protocole est bien le poste habilité pour l'étape "au_protocole"
-        // (celle qui mène à en_attente_avis_dg), mais le courrier est encore
-        // à "recu" : la règle métier doit interdire de sauter "au_protocole".
+        // Le Protocole figure dans l'union des postes candidats depuis
+        // "recu" (voir config('courrier.circuit_transitions.complet.recu'),
+        // condition 'protocole_requis' jamais satisfaite en pratique) — la
+        // policy laisse donc passer la requête, mais le service doit
+        // refuser : le courrier est encore à "recu", pas "en_attente_tri",
+        // la transition vers "en_attente_avis_dg" saute une étape.
         $protocole = $this->agent(Poste::PROTOCOLE, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
 
         $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg")
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])
             ->assertStatus(422);
 
         $courrier->refresh();

@@ -79,7 +79,14 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
         $this->assertDatabaseMissing('audit_logs', ['action' => 'courrier.acces_confidentiel']);
     }
 
-    public function test_le_degre_durgence_et_le_niveau_de_confidentialite_par_defaut_sont_normal_et_ordinaire(): void
+    /**
+     * degre_urgence n'a plus de défaut applicatif 'normal' depuis le Lot 2
+     * (tri par urgence) : "pas encore trié" (null, tant que le Secrétariat
+     * 01 n'a pas transmis à la DG) et "trié comme normal" ne sont pas le
+     * même état — voir Courrier::urgenceTriee(). niveau_confidentialite,
+     * lui, n'est pas concerné par ce changement et garde son défaut.
+     */
+    public function test_le_degre_durgence_par_defaut_est_non_renseigne_et_le_niveau_de_confidentialite_ordinaire(): void
     {
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
@@ -91,7 +98,7 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
         ])->assertCreated();
 
-        $response->assertJsonPath('data.degre_urgence', 'normal')
+        $response->assertJsonPath('data.degre_urgence', null)
             ->assertJsonPath('data.niveau_confidentialite', 'ordinaire');
     }
 

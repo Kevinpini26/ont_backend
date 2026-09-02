@@ -8,6 +8,7 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Models\Direction;
@@ -31,7 +32,6 @@ class CourrierDemoSeeder extends Seeder
         $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
 
         $reception = User::query()->where('email', 'reception@ont.cd')->firstOrFail();
-        $protocole = User::query()->where('email', 'protocole@ont.cd')->firstOrFail();
         $dg = User::query()->where('email', 'dg@ont.cd')->firstOrFail();
         $secretariat1 = User::query()->where('email', 'secretariat_1@ont.cd')->firstOrFail();
         $secretariat2 = User::query()->where('email', 'secretariat_2@ont.cd')->firstOrFail();
@@ -39,9 +39,12 @@ class CourrierDemoSeeder extends Seeder
 
         // Liste ordonnée (pas de tableau associatif indexé par l'enum : PHP
         // n'autorise que des clés int/string) de [statut cible, objet].
+        // Le Protocole n'est plus un point de passage par défaut depuis le
+        // Lot 1 (bouclage du circuit) : recu -> en_attente_tri directement,
+        // via le Secrétariat 01 — voir config('courrier.circuit_transitions.complet').
         $objets = [
             [CourrierStatut::RECU, 'Demande de partenariat touristique — Office du Tourisme du Kwilu'],
-            [CourrierStatut::AU_PROTOCOLE, 'Invitation au Forum régional du tourisme durable'],
+            [CourrierStatut::EN_ATTENTE_TRI, 'Invitation au Forum régional du tourisme durable'],
             [CourrierStatut::EN_ATTENTE_AVIS_DG, "Sollicitation d'avis sur une convention de coopération"],
             [CourrierStatut::PROJET_REPONSE_EN_COURS, 'Demande de subvention — festival culturel de Matadi'],
             [CourrierStatut::EN_RELECTURE, 'Réponse à une requête de la Fédération des hôteliers'],
@@ -56,15 +59,15 @@ class CourrierDemoSeeder extends Seeder
                 continue;
             }
 
-            $circuit->accuserReception($courrier, $protocole);
-            $courrier = $circuit->transmettreAuProtocole($courrier, $protocole);
+            $circuit->accuserReception($courrier, $secretariat1);
+            $courrier = $circuit->transmettreTri($courrier, $secretariat1);
 
-            if ($statutCible === CourrierStatut::AU_PROTOCOLE) {
+            if ($statutCible === CourrierStatut::EN_ATTENTE_TRI) {
                 continue;
             }
 
-            $circuit->accuserReception($courrier, $protocole);
-            $courrier = $circuit->transmettreEnAttenteAvisDg($courrier, $protocole);
+            $circuit->accuserReception($courrier, $secretariat1);
+            $courrier = $circuit->transmettreEnAttenteAvisDg($courrier, $secretariat1, DegreUrgence::NORMAL);
 
             if ($statutCible === CourrierStatut::EN_ATTENTE_AVIS_DG) {
                 continue;

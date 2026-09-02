@@ -79,6 +79,17 @@ class CourrierPolicy
     }
 
     /**
+     * Réservé à la DG, et à elle seule — jamais la DGA, même en intérim
+     * (voir CourrierCircuitService::requalifierUrgence()) : corriger le
+     * degré d'urgence est une décision de fond, pas une action du circuit
+     * standard soumise à la garde d'intérim habituelle.
+     */
+    public function requalifierUrgence(User $user, Courrier $courrier): bool
+    {
+        return $user->poste === Poste::DG;
+    }
+
+    /**
      * Filtre grossier, comme transmettre()/signer() : le relecteur désigné
      * pour en_relecture, ou un poste habilité pour ce statut sinon. La
      * vérification précise (garde d'intérim DGA comprise) reste dans

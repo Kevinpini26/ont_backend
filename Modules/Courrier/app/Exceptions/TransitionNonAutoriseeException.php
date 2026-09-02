@@ -28,6 +28,11 @@ class TransitionNonAutoriseeException extends Exception
         return new self('La réception de ce dossier a déjà été accusée.');
     }
 
+    public static function urgenceNonTriee(): self
+    {
+        return new self("Ce dossier n'a pas encore été trié par degré d'urgence : rien à requalifier.");
+    }
+
     public function render(Request $request): JsonResponse
     {
         return response()->json(['message' => $this->getMessage()], 422);

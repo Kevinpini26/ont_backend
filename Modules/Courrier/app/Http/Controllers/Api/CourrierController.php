@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
+use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Http\Requests\EnregistrerCourrierRequest;
@@ -20,9 +21,11 @@ use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
 use Modules\Courrier\Http\Requests\InitierReponseSortanteRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
+use Modules\Courrier\Http\Requests\RequalifierUrgenceRequest;
 use Modules\Courrier\Http\Requests\SortirOriginalRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
 use Modules\Courrier\Http\Requests\StoreCourrierRequest;
+use Modules\Courrier\Http\Requests\TransmettreAvisDgRequest;
 use Modules\Courrier\Http\Requests\ValiderRelectureRequest;
 use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Models\Courrier;
@@ -84,6 +87,23 @@ class CourrierController extends Controller
 
         if ($request->filled('recherche')) {
             $query->recherchePleinTexte($request->string('recherche')->toString());
+
+            return CourrierResource::collection($query->paginate(20));
+        }
+
+        // tri=urgence : très urgent en tête, puis urgent, puis normal, puis
+        // non encore trié en dernier — explicite (paramètre, pas le
+        // comportement par défaut) pour ne rien changer silencieusement à
+        // l'ordre existant des appelants qui ne le demandent pas.
+        if ($request->string('tri')->toString() === 'urgence') {
+            $query->orderByRaw(<<<'SQL'
+                case degre_urgence
+                    when 'tres_urgent' then 0
+                    when 'urgent' then 1
+                    when 'normal' then 2
+                    else 3
+                end asc
+                SQL)->latest();
 
             return CourrierResource::collection($query->paginate(20));
         }
@@ -285,11 +305,22 @@ class CourrierController extends Controller
         return $this->ressource($this->circuit->transmettreAuTriDepuisProtocole($courrier, $request->user()));
     }
 
-    public function transmettreAvisDg(Request $request, Courrier $courrier)
+    public function transmettreAvisDg(TransmettreAvisDgRequest $request, Courrier $courrier)
     {
-        $this->authorize('transmettre', $courrier);
+        return $this->ressource($this->circuit->transmettreEnAttenteAvisDg(
+            $courrier,
+            $request->user(),
+            DegreUrgence::from($request->validated('degre_urgence')),
+        ));
+    }
 
-        return $this->ressource($this->circuit->transmettreEnAttenteAvisDg($courrier, $request->user()));
+    public function requalifierUrgence(RequalifierUrgenceRequest $request, Courrier $courrier)
+    {
+        return $this->ressource($this->circuit->requalifierUrgence(
+            $courrier,
+            $request->user(),
+            DegreUrgence::from($request->validated('degre_urgence')),
+        ));
     }
 
     public function representerDg(Request $request, Courrier $courrier)
@@ -639,7 +670,7 @@ class CourrierController extends Controller
     private function ressource(Courrier $courrier): CourrierResource
     {
         return new CourrierResource($courrier->load([
-            'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar',
+            'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
             'imputations.direction', 'imputations.imputeePar',
             'piecesJointes', 'reponses', 'courrierOrigine', 'numerisations.capturePar',

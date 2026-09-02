@@ -65,6 +65,29 @@ class CourrierStatistiqueController extends Controller
             ->orderBy('periode')
             ->get();
 
+        // Un dossier "en_attente_tri" pas encore trié (urgence_triee_at nul
+        // — pas degre_urgence, qui peut être pré-rempli dès la création par
+        // la Réception sans valoir tri officiel, voir Courrier::urgenceTriee())
+        // depuis plus que le délai configuré remonte ici — jamais un
+        // blocage du service, juste un signal pour le Secrétariat 01 (voir
+        // CourrierCircuitService::transmettreEnAttenteAvisDg()).
+        $delaiAlerteTri = (int) config('courrier.tri.delai_alerte_heures', 4);
+        $courriersNonTries = Courrier::query()
+            ->withoutGlobalScopes()
+            ->where('statut', CourrierStatut::EN_ATTENTE_TRI->value)
+            ->whereNull('urgence_triee_at')
+            ->with('transitions')
+            ->get()
+            ->map(fn (Courrier $c) => [
+                'id' => $c->id,
+                'numero_accuse_reception' => $c->numero_accuse_reception,
+                'objet' => $c->objet,
+                'depuis_heures' => ($c->bordereauCourant()?->created_at ?? $c->created_at)->diffInHours(now()),
+            ])
+            ->filter(fn (array $ligne) => $ligne['depuis_heures'] >= $delaiAlerteTri)
+            ->sortByDesc('depuis_heures')
+            ->values();
+
         return response()->json([
             'par_statut' => collect(CourrierStatut::cases())->map(fn (CourrierStatut $statut) => [
                 'statut' => $statut->value,
@@ -73,6 +96,8 @@ class CourrierStatistiqueController extends Controller
             ])->values(),
             'en_cours_total' => $enCoursTotal,
             'en_attente_relecture' => $enAttenteRelecture,
+            'courriers_non_tries_en_alerte' => $courriersNonTries,
+            'delai_alerte_tri_heures' => $delaiAlerteTri,
             'courriers_recus_periode' => $recus,
             'courriers_recus_variation' => PeriodeStatistique::variationPourcentage($recus, $recusPrecedent),
             'periode' => [
