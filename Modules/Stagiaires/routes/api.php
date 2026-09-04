@@ -11,6 +11,7 @@ use Modules\Stagiaires\Http\Controllers\Api\StagiaireDocumentController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiairePresenceController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireStatistiqueController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireSuiviController;
+use Modules\Stagiaires\Http\Controllers\Api\TableauRepartitionController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::middleware('role:administrateur')->group(function () {
@@ -61,4 +62,15 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/stagiaires/{stagiaire}/documents', [StagiaireDocumentController::class, 'store'])
         ->middleware('throttle:sensitive');
     Route::get('/stagiaires/{stagiaire}/documents/{document}/telecharger', [StagiaireDocumentController::class, 'download']);
+
+    // Lot 4 — tableau de répartition.
+    Route::get('/tableaux-repartition', [TableauRepartitionController::class, 'index']);
+    Route::post('/tableaux-repartition', [TableauRepartitionController::class, 'store']);
+    Route::get('/tableaux-repartition/{tableau}', [TableauRepartitionController::class, 'show']);
+    Route::post('/tableaux-repartition/{tableau}/lignes', [TableauRepartitionController::class, 'ajouterLigne']);
+    Route::delete('/tableaux-repartition/{tableau}/lignes/{ligne}', [TableauRepartitionController::class, 'retirerLigne']);
+    Route::post('/tableaux-repartition/{tableau}/soumettre', [TableauRepartitionController::class, 'soumettre']);
+    Route::post('/tableaux-repartition/{tableau}/representer-dg', [TableauRepartitionController::class, 'representerDg']);
+    Route::post('/tableaux-repartition/{tableau}/rendre-avis', [TableauRepartitionController::class, 'rendreAvis']);
+    Route::get('/tableaux-repartition/{tableau}/pdf', [TableauRepartitionController::class, 'telechargerPdf']);
 });

@@ -64,6 +64,23 @@ enum CourrierStatut: string
     case CHEZ_DIRECTION = 'chez_direction';
 
     /**
+     * Lot 4 (tableau de répartition) : statuts d'un courrier "synthétique"
+     * (Courrier::type = TABLEAU_REPARTITION, voir TableauRepartition::courrier())
+     * qui porte le trajet Réception -> DG du tableau lui-même, sans jamais
+     * apparaître dans les files d'attente ordinaires — voir
+     * TableauRepartitionCircuitService, un service dédié qui n'utilise ni
+     * config('courrier.circuit_transitions') ni le bordereau/décharge du
+     * courrier ordinaire (décision : simple trace, pas de blocage — un
+     * tableau n'est jamais remis "de la main à la main"). TABLEAU_CHEZ_RECEPTION
+     * sert à la fois de point d'entrée (la DFP soumet) et de point de
+     * retour (la DG renvoie avec observations, tour+1) — même rôle que
+     * RETOUR_RECEPTION/representer_dg pour le courrier ordinaire.
+     */
+    case TABLEAU_CHEZ_RECEPTION = 'tableau_chez_reception';
+    case TABLEAU_EN_ATTENTE_AVIS_DG = 'tableau_en_attente_avis_dg';
+    case TABLEAU_APPROUVE = 'tableau_approuve';
+
+    /**
      * Circuit "dg_initie" uniquement (voir config('courrier.circuit_transitions'))
      * : un courrier initié par la DG dont le rédacteur a coché « Nécessite
      * la validation de la DG avant envoi ». Précède en_relecture ; jamais
@@ -93,6 +110,9 @@ enum CourrierStatut: string
             self::PROJET_REPONSE_EN_COURS => 'Projet de réponse en cours',
             self::EN_DISPATCH => 'En dispatch vers la direction',
             self::CHEZ_DIRECTION => 'Chez le secrétariat de la direction',
+            self::TABLEAU_CHEZ_RECEPTION => 'Chez la Réception (tableau)',
+            self::TABLEAU_EN_ATTENTE_AVIS_DG => "En attente d'avis DG (tableau)",
+            self::TABLEAU_APPROUVE => 'Tableau approuvé',
             self::EN_ATTENTE_VALIDATION_DG => 'En attente de validation DG',
             self::EN_RELECTURE => 'En relecture',
             self::SIGNE => 'Signé',

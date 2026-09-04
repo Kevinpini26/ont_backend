@@ -18,7 +18,15 @@ class CourrierFactory extends Factory
 
     public function definition(): array
     {
-        static $sequence = 0;
+        // Part d'un offset élevé, jamais de 0 : DefaultNumeroGenerator (le
+        // vrai générateur, table de séquence dédiée, réinitialisée à
+        // chaque test par RefreshDatabase) repart lui aussi de 1 à chaque
+        // test — un compteur de factory qui commencerait à 0 entrerait en
+        // collision avec le premier accusé de réception "réel" généré
+        // dans un test qui mélange les deux (ex. un Stagiaire::factory(),
+        // qui crée son propre Courrier::factory() lié, suivi d'un appel à
+        // un service utilisant le vrai générateur).
+        static $sequence = 900000;
         $sequence++;
 
         return [

@@ -54,7 +54,10 @@ class StoreCourrierRequest extends FormRequest
             // numerisation_statut=a_numeriser (voir
             // CourrierCircuitService::creer()) — voir docs/numerisation-courrier.md.
             'numerisation_impossible' => ['sometimes', 'boolean'],
-            'type' => ['required', Rule::enum(CourrierType::class)],
+            // TABLEAU_REPARTITION exclu volontairement : réservé au
+            // courrier synthétique créé par TableauRepartitionCircuitService
+            // (Lot 4), jamais à cette route générique.
+            'type' => ['required', Rule::enum(CourrierType::class)->only([CourrierType::DEMANDE_STAGE, CourrierType::CORRESPONDANCE_GENERALE])],
             'direction_origine_id' => ['nullable', 'integer', 'exists:directions,id'],
             'direction_destination_id' => ['nullable', 'integer', 'exists:directions,id'],
             'expediteur_externe_nom' => ['nullable', 'string', 'max:255'],

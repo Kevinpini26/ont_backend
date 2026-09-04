@@ -17,8 +17,11 @@ use Modules\Stagiaires\Contracts\EngagementConfidentialiteGenerator;
 use Modules\Stagiaires\Contracts\NoteAffectationGenerator;
 use Modules\Stagiaires\Contracts\RapportAnnuelGenerator;
 use Modules\Stagiaires\Contracts\SequenceGenerator;
+use Modules\Stagiaires\Contracts\TableauRepartitionPdfGenerator;
 use Modules\Stagiaires\Models\Stagiaire;
+use Modules\Stagiaires\Models\TableauRepartition;
 use Modules\Stagiaires\Policies\StagiairePolicy;
+use Modules\Stagiaires\Policies\TableauRepartitionPolicy;
 use Modules\Stagiaires\Support\ActiveDirectionsAffectationRules;
 use Modules\Stagiaires\Support\DatabaseSequenceGenerator;
 use Modules\Stagiaires\Support\DompdfAttestationGenerator;
@@ -28,6 +31,7 @@ use Modules\Stagiaires\Support\DompdfConventionGenerator;
 use Modules\Stagiaires\Support\DompdfEngagementConfidentialiteGenerator;
 use Modules\Stagiaires\Support\DompdfNoteAffectationGenerator;
 use Modules\Stagiaires\Support\DompdfRapportAnnuelGenerator;
+use Modules\Stagiaires\Support\DompdfTableauRepartitionPdfGenerator;
 use Modules\Stagiaires\Support\MoyenneCalculateurNoteFinale;
 use Modules\Stagiaires\Support\SimilarTextDoublonDetector;
 use Nwidart\Modules\Support\ModuleServiceProvider;
@@ -79,6 +83,7 @@ class StagiairesServiceProvider extends ModuleServiceProvider
         $this->app->bind(RapportAnnuelGenerator::class, DompdfRapportAnnuelGenerator::class);
         $this->app->bind(DoublonDetector::class, SimilarTextDoublonDetector::class);
         $this->app->bind(SequenceGenerator::class, DatabaseSequenceGenerator::class);
+        $this->app->bind(TableauRepartitionPdfGenerator::class, DompdfTableauRepartitionPdfGenerator::class);
     }
 
     public function boot(): void
@@ -86,6 +91,7 @@ class StagiairesServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         Gate::policy(Stagiaire::class, StagiairePolicy::class);
+        Gate::policy(TableauRepartition::class, TableauRepartitionPolicy::class);
     }
 
     /**
