@@ -68,6 +68,18 @@ class DemoAccountsSeeder extends Seeder
                     'email_verified_at' => now(),
                 ],
             );
+
+            User::query()->updateOrCreate(
+                ['email' => 'secretariat.'.strtolower($direction->code).'@ont.cd'],
+                [
+                    'name' => 'Secrétariat '.$direction->code,
+                    'password' => self::MOT_DE_PASSE,
+                    'role' => UserRole::SECRETARIAT_DIRECTION,
+                    'poste' => null,
+                    'direction_id' => $direction->id,
+                    'email_verified_at' => now(),
+                ],
+            );
         }
     }
 }

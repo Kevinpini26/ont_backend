@@ -39,23 +39,34 @@ return [
      *       par degré d'urgence puis transmet à la DG. La porte métier
      *       réelle (urgence obligatoire, bannettes) est ajoutée au Lot 2 ;
      *       ce statut n'est pour l'instant qu'un point de passage.
+     *     - en_attente_avis_dg -> en_dispatch : condition
+     *       'avis_dg_favorable_impute' (Lot 3), vérifiée AVANT
+     *       'avis_dg_tranche' ci-dessous puisque les deux conditions
+     *       peuvent être vraies en même temps sur un avis favorable — un
+     *       avis favorable sur un courrier déjà imputé (voir
+     *       Courrier::imputations, direction principale) part vers le
+     *       dispatch plutôt que vers une rédaction interne de réponse.
      *     - en_attente_avis_dg -> projet_reponse_en_cours : condition
-     *       'avis_dg_tranche' (favorable ou défavorable). La DG (ou la DGA,
-     *       uniquement lorsque la DG est marquée indisponible — garde
-     *       métier dynamique dans CourrierCircuitService::rendreAvisDg(),
-     *       pas dans cette table statique) transmet au Secrétariat 01 pour
-     *       rédaction du projet de réponse.
+     *       'avis_dg_tranche' (favorable sans imputation, ou défavorable).
+     *       La DG (ou la DGA, uniquement lorsque la DG est marquée
+     *       indisponible — garde métier dynamique dans
+     *       CourrierCircuitService::rendreAvisDg(), pas dans cette table
+     *       statique) transmet au Secrétariat 01 pour rédaction du projet
+     *       de réponse.
      *     - en_attente_avis_dg -> retour_reception : condition
      *       'avis_dg_reserve'. Un avis "réservé" veut dire que la décision
      *       n'est pas arrêtée : le dossier boucle plutôt que d'avancer
-     *       comme si une décision avait été prise. Destination provisoire
-     *       (voir CourrierStatut::RETOUR_RECEPTION) : en Lot 3, une fois
-     *       l'imputation câblée, la direction imputée remplacera la
-     *       Réception comme destinataire réel de ce complément.
+     *       comme si une décision avait été prise — y compris sur un
+     *       courrier déjà imputé (Lot 3 : seul un avis favorable exploite
+     *       l'imputation, jamais un avis réservé).
      *     - retour_reception -> en_attente_avis_dg : la Réception représente
      *       le dossier à la DG — c'est cette transition, et elle seule, qui
      *       incrémente le tour de boucle (voir
      *       CourrierCircuitService::representerDg()).
+     *     - en_dispatch -> chez_direction : le Secrétariat 02 transmet le
+     *       courrier imputé au secrétariat de la direction imputée à titre
+     *       principal (Lot 3). Étape terminale pour ce lot — la suite
+     *       (tableau de répartition, retour vers la DG) est le Lot 4.
      *     - projet_reponse_en_cours -> en_relecture : le Secrétariat 01
      *       soumet son projet de réponse à un relecteur désigné — le second
      *       rôle du Secrétariat 01, distinct du tri (statut distinct,
@@ -126,6 +137,12 @@ return [
             ],
             'en_attente_avis_dg' => [
                 [
+                    'action' => 'rendre_avis_favorable_impute',
+                    'statut_arrivee' => 'en_dispatch',
+                    'postes' => [Poste::DG->value, Poste::DGA->value],
+                    'condition' => 'avis_dg_favorable_impute',
+                ],
+                [
                     'action' => 'rendre_avis_tranche',
                     'statut_arrivee' => 'projet_reponse_en_cours',
                     'postes' => [Poste::DG->value, Poste::DGA->value],
@@ -146,6 +163,15 @@ return [
                     'condition' => null,
                 ],
             ],
+            'en_dispatch' => [
+                [
+                    'action' => 'dispatcher_direction',
+                    'statut_arrivee' => 'chez_direction',
+                    'postes' => [Poste::SECRETARIAT_2->value],
+                    'condition' => null,
+                ],
+            ],
+            'chez_direction' => [],
             'projet_reponse_en_cours' => [
                 [
                     'action' => 'soumettre_projet_reponse',

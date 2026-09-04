@@ -358,3 +358,31 @@ périmètre du code :
   d'heures ouvrées si la pratique de terrain montre que la différence
   compte (ex. un dépôt vendredi après-midi ne devrait pas déclencher
   l'alerte dès le samedi matin).
+
+- **Lot 3 (orientation et dispatch) : le dispatch vers la direction n'est
+  déclenché que par un avis favorable sur un courrier déjà imputé.** Choix
+  fait faute de mieux pour raccorder l'imputation (existante depuis le Lot
+  1 registre, `CourrierPolicy::imputer()`) au circuit sans toucher à la
+  mécanique de l'avis DG (favorable/réservé/défavorable), volontairement
+  laissée intacte. Dans le circuit décrit par la Direction, l'orientation
+  de la DG précède plutôt toute décision — elle a lieu juste après le tri,
+  avant même un premier passage devant la DG pour avis. Le modèle
+  actuel (`en_attente_avis_dg` -> `en_dispatch`, condition
+  `avis_dg_favorable_impute`, voir
+  `config('courrier.circuit_transitions.complet.en_attente_avis_dg')`)
+  suppose donc que la DG impute et rend son avis en un seul geste ; à
+  confirmer si, en pratique, l'imputation doit au contraire pouvoir
+  précéder l'avis de plusieurs jours (ex. la DG oriente immédiatement,
+  l'avis définitif n'arrivant qu'au retour du tableau de répartition,
+  Lot 4).
+
+- **Poste "secrétariat de direction" : rôle nouveau, sans action encore
+  définie au-delà de la réception.** Implémenté comme `UserRole::SECRETARIAT_DIRECTION`
+  (direction-scopé, comme `RESPONSABLE_DIRECTION`) plutôt que comme un
+  `Poste` central. Un courrier arrivé à `chez_direction` (Lot 3) n'a
+  aujourd'hui aucune action de circuit qui lui soit propre — il est
+  seulement visible par ce poste et par le responsable de la même
+  direction, en attente du Lot 4 (tableau de répartition). À confirmer que
+  ce rôle est bien distinct du responsable de direction dans la pratique
+  (une même personne cumule-t-elle les deux, ou sont-ce deux comptes
+  séparés comme modélisé ici ?).

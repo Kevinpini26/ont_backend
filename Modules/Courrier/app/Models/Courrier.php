@@ -331,11 +331,25 @@ class Courrier extends Model
     /**
      * "En transit" n'est pas un statut à part : c'est le bordereau courant
      * qui n'a pas encore été acquitté par son destinataire — orthogonal à
-     * `statut`, qui ne change qu'à la prochaine transition franchie.
+     * `statut`, qui ne change qu'à la prochaine transition franchie. Faux
+     * quand le bordereau courant n'a aucun destinataire (statut terminal,
+     * ou sans candidate de transition — voir
+     * CourrierCircuitService::tracerTransition()) : rien n'est en transit
+     * vers personne, donc rien à décharger. Sans cette garde,
+     * `null?->accuse_reception_at === null` vaudrait vrai même en
+     * l'absence de tout bordereau réel, ce qui bloquerait indéfiniment un
+     * statut sans destinataire (ex. les statuts terminaux ENREGISTRE et
+     * CHEZ_DIRECTION).
      */
     public function enTransit(): bool
     {
-        return $this->bordereauCourant()?->accuse_reception_at === null;
+        $bordereau = $this->bordereauCourant();
+
+        if ($bordereau === null || ($bordereau->destinataire_poste === null && $bordereau->destinataire_user_id === null)) {
+            return false;
+        }
+
+        return $bordereau->accuse_reception_at === null;
     }
 
     public function relectureEstValidee(): bool

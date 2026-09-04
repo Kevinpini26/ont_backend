@@ -37,13 +37,31 @@ enum CourrierStatut: string
     /**
      * Point de passage du bouclage interne (Lot 1) : un avis DG "réservé"
      * renvoie le dossier ici plutôt qu'en projet_reponse_en_cours — la
-     * Réception le représente ensuite à la DG, tour suivant. Destination
-     * provisoire tant que l'imputation n'est pas câblée comme porte de
-     * circuit (Lot 3) : à terme, c'est la direction imputée qui recevra le
-     * dossier ici, pas systématiquement la Réception.
+     * Réception le représente ensuite à la DG, tour suivant. Décision prise
+     * au Lot 3 : ce point de passage reste la Réception, y compris pour un
+     * courrier déjà imputé — seul un avis favorable sur un courrier imputé
+     * part vers EN_DISPATCH (voir plus bas), jamais un avis réservé.
      */
     case RETOUR_RECEPTION = 'retour_reception';
     case PROJET_REPONSE_EN_COURS = 'projet_reponse_en_cours';
+
+    /**
+     * Lot 3 (orientation et dispatch) : un avis DG favorable rendu sur un
+     * courrier déjà imputé (voir Courrier::imputations) part ici plutôt
+     * qu'en PROJET_REPONSE_EN_COURS — l'imputation route le dossier vers une
+     * direction plutôt que vers une rédaction interne de réponse. Le
+     * Secrétariat 02 transmet ensuite au secrétariat de la direction
+     * imputée à titre principal.
+     */
+    case EN_DISPATCH = 'en_dispatch';
+
+    /**
+     * Le dossier est arrivé au secrétariat de la direction imputée à titre
+     * principal (UserRole::SECRETARIAT_DIRECTION), qui le met à disposition
+     * du responsable de direction et des agents — terminal pour ce lot,
+     * la suite (tableau de répartition, retour vers la DG) est le Lot 4.
+     */
+    case CHEZ_DIRECTION = 'chez_direction';
 
     /**
      * Circuit "dg_initie" uniquement (voir config('courrier.circuit_transitions'))
@@ -73,6 +91,8 @@ enum CourrierStatut: string
             self::RETOUR_RECEPTION => 'Retour à la Réception',
             self::EN_ATTENTE_AVIS_DG => "En attente d'avis DG",
             self::PROJET_REPONSE_EN_COURS => 'Projet de réponse en cours',
+            self::EN_DISPATCH => 'En dispatch vers la direction',
+            self::CHEZ_DIRECTION => 'Chez le secrétariat de la direction',
             self::EN_ATTENTE_VALIDATION_DG => 'En attente de validation DG',
             self::EN_RELECTURE => 'En relecture',
             self::SIGNE => 'Signé',

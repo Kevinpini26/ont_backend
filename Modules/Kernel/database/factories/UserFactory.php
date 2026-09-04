@@ -60,6 +60,15 @@ class UserFactory extends Factory
         ]);
     }
 
+    public function secretariatDirection(?Direction $direction = null): static
+    {
+        return $this->state(fn () => [
+            'role' => UserRole::SECRETARIAT_DIRECTION,
+            'poste' => null,
+            'direction_id' => $direction?->id ?? Direction::factory(),
+        ]);
+    }
+
     public function agentCircuitCourrier(Poste $poste, ?Direction $direction = null): static
     {
         return $this->state(fn () => [

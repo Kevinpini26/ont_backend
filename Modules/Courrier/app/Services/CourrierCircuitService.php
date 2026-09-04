@@ -603,6 +603,26 @@ class CourrierCircuitService
     }
 
     /**
+     * Le Secrétariat 02 transmet un courrier imputé (avis DG favorable,
+     * voir rendreAvisDg()) au secrétariat de la direction imputée à titre
+     * principal (Lot 3). Étape terminale pour ce lot : la suite (tableau de
+     * répartition, retour vers la DG) est le Lot 4.
+     */
+    public function dispatcherVersDirection(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::CHEZ_DIRECTION);
+
+            $courrier->statut = CourrierStatut::CHEZ_DIRECTION;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
      * La DGA figure parmi les postes structurellement habilités pour cette
      * étape (voir config('courrier.circuit_transitions')), mais ne peut
      * réellement rendre l'avis que lorsque la DG est marquée indisponible
@@ -620,8 +640,18 @@ class CourrierCircuitService
             // arrêtée : le dossier boucle (retour_reception, voir
             // config('courrier.circuit_transitions.complet.en_attente_avis_dg'))
             // plutôt que d'avancer comme si une décision avait été prise.
-            $statutCible = $avis === AvisDg::RESERVE ? CourrierStatut::RETOUR_RECEPTION : CourrierStatut::PROJET_REPONSE_EN_COURS;
-            $this->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, ['avis_dg' => $avis->value]);
+            // Un avis favorable sur un courrier déjà imputé (Lot 3) part en
+            // dispatch plutôt qu'en rédaction interne de réponse.
+            $courrierImpute = $courrier->imputations()->where('est_principale', true)->exists();
+            $statutCible = match (true) {
+                $avis === AvisDg::RESERVE => CourrierStatut::RETOUR_RECEPTION,
+                $avis === AvisDg::FAVORABLE && $courrierImpute => CourrierStatut::EN_DISPATCH,
+                default => CourrierStatut::PROJET_REPONSE_EN_COURS,
+            };
+            $this->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, [
+                'avis_dg' => $avis->value,
+                'courrier_impute' => $courrierImpute,
+            ]);
 
             $enInterim = $utilisateur->poste === Poste::DGA;
 
@@ -646,7 +676,11 @@ class CourrierCircuitService
             // Après commit uniquement : la fiche stagiaire créée en
             // réaction à cet événement ne doit jamais exister pour un avis
             // finalement annulé par un rollback (ex. verrou expiré, échec
-            // d'assertion concurrente).
+            // d'assertion concurrente). Se déclenche que le courrier soit
+            // imputé ou non (statutCible = en_dispatch ou
+            // projet_reponse_en_cours) : le Lot 3 ne touche pas à cet
+            // événement — "l'avis favorable ne vaut pas acceptation" est le
+            // Lot 5, pas celui-ci.
             if ($avis === AvisDg::FAVORABLE && $courrier->type === CourrierType::DEMANDE_STAGE) {
                 DB::afterCommit(fn () => CourrierStageAvisFavorable::dispatch($courrier));
             }

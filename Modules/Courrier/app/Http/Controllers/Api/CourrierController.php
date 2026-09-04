@@ -330,6 +330,13 @@ class CourrierController extends Controller
         return $this->ressource($this->circuit->representerDg($courrier, $request->user()));
     }
 
+    public function dispatcherVersDirection(Request $request, Courrier $courrier)
+    {
+        $this->authorize('transmettre', $courrier);
+
+        return $this->ressource($this->circuit->dispatcherVersDirection($courrier, $request->user()));
+    }
+
     public function rendreAvis(RendreAvisDgRequest $request, Courrier $courrier)
     {
         $data = $request->validated();

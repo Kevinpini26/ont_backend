@@ -40,6 +40,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/valider-avant-diffusion', [CourrierController::class, 'validerAvantDiffusion']);
     Route::post('/courriers/{courrier}/transmettre-avis-dg', [CourrierController::class, 'transmettreAvisDg']);
     Route::post('/courriers/{courrier}/representer-dg', [CourrierController::class, 'representerDg']);
+    Route::post('/courriers/{courrier}/dispatcher-direction', [CourrierController::class, 'dispatcherVersDirection']);
     Route::post('/courriers/{courrier}/requalifier-urgence', [CourrierController::class, 'requalifierUrgence']);
     Route::post('/courriers/{courrier}/rendre-avis', [CourrierController::class, 'rendreAvis']);
     Route::post('/courriers/{courrier}/soumettre-projet-reponse', [CourrierController::class, 'soumettreProjetReponse']);

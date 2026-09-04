@@ -68,6 +68,12 @@ class ConfigCircuitTransitionRules implements CircuitTransitionRules
             'protocole_requis' => in_array($contexte['type'] ?? null, config('courrier.categories_protocole', []), true),
             'avis_dg_reserve' => ($contexte['avis_dg'] ?? null) === AvisDg::RESERVE->value,
             'avis_dg_tranche' => isset($contexte['avis_dg']) && $contexte['avis_dg'] !== AvisDg::RESERVE->value,
+            // Lot 3 : un avis favorable sur un courrier déjà imputé (voir
+            // Courrier::imputations) part en dispatch plutôt qu'en rédaction
+            // interne — vérifiée avant 'avis_dg_tranche' dans la table de
+            // transitions, qui matcherait aussi un avis favorable.
+            'avis_dg_favorable_impute' => ($contexte['avis_dg'] ?? null) === AvisDg::FAVORABLE->value
+                && ($contexte['courrier_impute'] ?? false) === true,
             default => throw new LogicException("Condition de circuit inconnue : {$condition}"),
         };
     }
