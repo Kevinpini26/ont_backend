@@ -5,6 +5,7 @@ use Modules\Stagiaires\Http\Controllers\Api\ArchiveAnnuelleController;
 use Modules\Stagiaires\Http\Controllers\Api\DisponibiliteDemandesStageController;
 use Modules\Stagiaires\Http\Controllers\Api\EtablissementFormationController;
 use Modules\Stagiaires\Http\Controllers\Api\ImportHistoriqueController;
+use Modules\Stagiaires\Http\Controllers\Api\NotificationDiffusionController;
 use Modules\Stagiaires\Http\Controllers\Api\RapportAnnuelController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireDocumentController;
@@ -78,4 +79,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/tableaux-repartition/{tableau}/representer-dg', [TableauRepartitionController::class, 'representerDg']);
     Route::post('/tableaux-repartition/{tableau}/rendre-avis', [TableauRepartitionController::class, 'rendreAvis']);
     Route::get('/tableaux-repartition/{tableau}/pdf', [TableauRepartitionController::class, 'telechargerPdf']);
+
+    // Lot B — suivi des notifications de diffusion.
+    Route::get('/stagiaires/{stagiaire}/notifications-diffusion', [NotificationDiffusionController::class, 'index']);
+    Route::post('/notifications-diffusion/{notification}/renvoyer', [NotificationDiffusionController::class, 'renvoyer']);
 });

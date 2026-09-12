@@ -82,6 +82,12 @@ class StagiaireResource extends JsonResource
             'cloture_at' => $this->cloture_at,
             'created_at' => $this->created_at,
 
+            // Lot B : issue individuelle du dossier après le feu vert.
+            'motif_non_retenu' => $this->motif_non_retenu,
+            'motif_non_retenu_label' => $this->motif_non_retenu ? (config('stagiaires.motifs_non_retenu')[$this->motif_non_retenu] ?? $this->motif_non_retenu) : null,
+            'motif_non_retenu_libre' => $this->motif_non_retenu_libre,
+            'non_retenu_at' => $this->non_retenu_at,
+
             // Détection de doublon : ne bloque jamais, juste un signalement
             // pour que la DFP tranche.
             'doublon_suspecte' => $this->doublon_suspecte,

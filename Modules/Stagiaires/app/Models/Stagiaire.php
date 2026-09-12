@@ -77,6 +77,10 @@ class Stagiaire extends Model
         'origine',
         'importe_par_id',
         'importe_at',
+        'motif_non_retenu',
+        'motif_non_retenu_libre',
+        'non_retenu_at',
+        'non_retenu_par_id',
     ];
 
     protected static function newFactory(): StagiaireFactory
@@ -114,6 +118,7 @@ class Stagiaire extends Model
             'engagement_confidentialite_signe_at' => 'datetime',
             'affecte_hors_quota' => 'boolean',
             'importe_at' => 'datetime',
+            'non_retenu_at' => 'datetime',
         ];
     }
 
@@ -135,6 +140,16 @@ class Stagiaire extends Model
     public function affectePar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'affecte_par_id');
+    }
+
+    public function nonRetenuPar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'non_retenu_par_id');
+    }
+
+    public function notificationsDiffusion(): HasMany
+    {
+        return $this->hasMany(NotificationDiffusion::class)->latest('envoye_at');
     }
 
     public function maitreStageUtilisateur(): BelongsTo

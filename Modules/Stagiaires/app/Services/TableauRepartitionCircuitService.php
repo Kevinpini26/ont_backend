@@ -395,24 +395,46 @@ class TableauRepartitionCircuitService
 
             $this->assertAucunDoublonApprouve($tableau);
 
-            // Lot 5 : c'est ici, et seulement ici, que chaque proposition
-            // devient une affectation réelle — une ligne, un appel, à
-            // l'intérieur de cette même transaction : si l'une échoue
-            // (quota atteint entre-temps), l'approbation entière échoue
-            // "en bloc", rien n'est affecté à moitié. redacteur (la DFP
-            // qui a composé le tableau) reste l'auteur de l'affectation,
-            // pas la DG qui ne fait qu'approuver le lot.
+            // Lot A/B : c'est ici, et seulement ici, que chaque proposition
+            // devient réelle — une ligne, un appel, à l'intérieur de cette
+            // même transaction : si l'une échoue (quota atteint
+            // entre-temps), l'approbation entière échoue "en bloc", rien
+            // n'est décidé à moitié. redacteur (la DFP qui a composé le
+            // tableau) reste l'auteur de la décision, pas la DG qui ne fait
+            // qu'approuver le lot.
             /** @var User $redacteur */
             $redacteur = $tableau->redacteur()->firstOrFail();
+            $stagiairesANotifier = [];
 
             foreach ($tableau->lignes()->with('stagiaire')->get() as $ligne) {
-                $this->stagiaires->affecter(
+                if ($ligne->issue_proposee === IssueProposee::NON_RETENU) {
+                    $stagiairesANotifier[] = $this->stagiaires->nonRetenu(
+                        $ligne->stagiaire,
+                        $redacteur,
+                        $ligne->motif_non_retenu,
+                        $ligne->motif_non_retenu_libre,
+                    );
+
+                    continue;
+                }
+
+                $stagiairesANotifier[] = $this->stagiaires->affecter(
                     $ligne->stagiaire,
                     $redacteur,
                     $ligne->direction_accueil_proposee_id,
                     $ligne->encadrant_pressenti,
                 );
             }
+
+            // Après commit uniquement : la diffusion (Lot B) ne doit
+            // jamais partir pour une approbation finalement annulée par un
+            // rollback (ex. doublon détecté par une transaction
+            // concurrente).
+            DB::afterCommit(function () use ($stagiairesANotifier) {
+                foreach ($stagiairesANotifier as $stagiaire) {
+                    $this->stagiaires->notifierIssue($stagiaire);
+                }
+            });
 
             $courrier->statut = CourrierStatut::TABLEAU_APPROUVE;
             $courrier->save();

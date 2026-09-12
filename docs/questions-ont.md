@@ -386,3 +386,99 @@ périmètre du code :
   ce rôle est bien distinct du responsable de direction dans la pratique
   (une même personne cumule-t-elle les deux, ou sont-ce deux comptes
   séparés comme modélisé ici ?).
+
+## Lot A/B — tableau généré et verrou de diffusion (ce que le modèle laissait passer)
+
+Questions posées explicitement par la Direction à propos du tableau de
+répartition et de l'issue individuelle d'une demande de stage :
+
+- **Combien de tableaux de répartition par période : un seul, ou
+  plusieurs ?** Implémenté : plusieurs tableaux autorisés par défaut pour
+  une même période (utile pour les compléments de dossiers tardifs, voir
+  Lot A point 5 / point 10 des dix manques), avec un paramètre pour
+  restreindre à un seul — `config('stagiaires.tableau_un_seul_par_periode')`,
+  défaut `false`. Voir `TableauRepartitionCircuitService::creer()`.
+
+- **Qui prononce le refus d'une demande : la DFP dans son tableau, ou la
+  DG au feu vert ?** Implémenté : la DFP **propose** le refus (issue
+  `non_retenu` + motif) ligne par ligne dans le tableau ; c'est le feu
+  vert de la DG (ou son suppléant) qui **prononce** effectivement ce
+  refus, dans le même geste que l'approbation des dossiers retenus — un
+  refus proposé n'a aucun effet tant que le tableau n'est pas approuvé.
+  Voir `TableauRepartitionCircuitService::rendreAvis()` (branche
+  `IssueProposee::NON_RETENU` → `StagiaireCircuitService::nonRetenu()`). À
+  confirmer que cette répartition des rôles (proposition DFP / décision
+  DG) correspond à la pratique, plutôt qu'un refus qui serait de la seule
+  autorité de la DFP.
+
+- **Le feu vert est-il une signature, ou une simple mention ?** Non
+  tranché dans ce lot : le feu vert reste, comme avant, une approbation
+  enregistrée (auteur, date, statut du tableau) sans altérer le PDF ni
+  poser une signature visible dessus. Le point 9 des dix manques (sceller
+  le feu vert par une empreinte SHA-256 du PDF approuvé) est prévu pour le
+  Lot D, où cette question sera reposée dans son contexte technique
+  (scellement, non-régénération).
+
+- **Qui donne le feu vert quand la DG est absente en août ?** Implémenté :
+  la DGA peut rendre l'avis sur un tableau à la place de la DG lorsque
+  celle-ci est marquée indisponible (même mécanisme que l'avis sur un
+  courrier simple, voir `DgDisponibilite` et
+  `TableauRepartitionCircuitService::rendreAvis()`) — la mention d'intérim
+  est enregistrée dans le journal d'audit. Le Lot C généralisera ce
+  principe à tous les postes via `DelegationPoste`/`DelegationResolver`
+  plutôt que la vérification actuelle, propre à la DG/DGA.
+
+- **Que devient une demande déposée après la soumission du tableau ?**
+  Implémenté : elle reste simplement visible parmi les dossiers éligibles
+  (`GET /tableaux-repartition/dossiers-eligibles`) et peut être ajoutée à
+  un **autre** tableau de la même période (voir la question précédente sur
+  la pluralité des tableaux) — aucun mécanisme de "liste d'attente"
+  formelle distinct des dossiers éligibles n'a été créé. Le point 10 des
+  dix manques (demandes arrivées après la clôture officielle de la
+  période) reste, lui, entièrement ouvert : ce lot ne distingue pas une
+  période "close" d'une période encore ouverte à de nouveaux tableaux.
+
+- **Le projet de réponse rédigé par un assistant est-il relu avant
+  validation DG ?** Question héritée d'un lot antérieur (rédaction
+  assistée de courrier sortant), sans rapport direct avec le tableau de
+  répartition — non retranchée ici faute de nouvel élément dans ce lot
+  pour y répondre ; consigner la réponse dans la section Lot 1 le jour où
+  elle est connue.
+
+Questions supplémentaires découvertes en implémentant (Lot A/B) :
+
+- **Imputation automatique vers la DFP à l'avis favorable.** Un courrier
+  de demande de stage qui reçoit un avis favorable de la DG, sans que
+  celle-ci ait explicitement imputé le dossier, est désormais imputé
+  automatiquement à la DFP (sinon aucune demande de stage ne devient
+  jamais éligible au tableau). Provisoire :
+  `config('stagiaires.imputation_automatique_dfp')`, défaut `true`. Voir
+  `CourrierCircuitService::rendreAvisDg()`. À confirmer que l'avis
+  favorable de la DG vaut bien, dans tous les cas, orientation vers la
+  DFP — ou si un avis favorable peut aussi orienter vers une autre
+  direction sans passer par un tableau de répartition.
+
+- **Liste des motifs de refus.** Implémentée comme une liste fermée
+  configurable plutôt qu'un texte entièrement libre (pour permettre des
+  statistiques de refus) : `places_epuisees`, `dossier_incomplet`,
+  `profil_sans_correspondance`, `hors_periode` — voir
+  `config('stagiaires.motifs_non_retenu')` — complétée d'un champ texte
+  libre facultatif pour préciser. À confirmer que ces quatre motifs
+  couvrent bien les cas réels, ou qu'il n'en manque pas un.
+
+- **Canal et ton de la notification de refus au candidat.** Le message
+  envoyé (`IssueTableauNotification`) reste un modèle générique reprenant
+  le motif choisi, jamais relu par un humain avant envoi (contrairement à
+  la question ci-dessus sur le projet de réponse) — à faire valider par
+  la DFP comme les autres modèles de documents/courriers déjà signalés
+  dans ce fichier (ton, formule de politesse, mention des voies de
+  recours éventuelles).
+
+- **Traçabilité réelle de l'état de remise d'un SMS.** Le suivi de
+  diffusion (`notifications_diffusion.statut_remise`) enregistre l'envoi
+  côté ONT (`envoye`), mais tant que
+  `config('kernel.sms.driver')` reste à `'log'` (aucun fournisseur SMS
+  retenu — voir la question déjà posée au Lot 8), aucun accusé de remise
+  réel ne peut être obtenu : le champ restera à `envoye` sans jamais
+  passer à un état "livré"/"échoué" tant qu'un fournisseur n'est pas
+  branché.

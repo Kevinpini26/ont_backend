@@ -28,6 +28,7 @@ use Modules\Stagiaires\Enums\TypeLienPublic;
 use Modules\Stagiaires\Exceptions\QuotaDirectionAtteintException;
 use Modules\Stagiaires\Exceptions\StagiaireTransitionException;
 use Modules\Stagiaires\Mail\StagiaireAffecteMail;
+use Modules\Stagiaires\Models\NotificationDiffusion;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\StagiaireDocument;
 use Modules\Stagiaires\Models\StagiaireLienPublic;
@@ -36,6 +37,7 @@ use Modules\Stagiaires\Models\StagiaireProlongation;
 use Modules\Stagiaires\Models\StagiaireSuivi;
 use Modules\Stagiaires\Notifications\ConventionASignerNotification;
 use Modules\Stagiaires\Notifications\EngagementConfidentialiteASignerNotification;
+use Modules\Stagiaires\Notifications\IssueTableauNotification;
 use Modules\Stagiaires\Notifications\RapportStageDemandeNotification;
 use Modules\Stagiaires\Notifications\RetourExperienceDemandeNotification;
 use Modules\Stagiaires\Notifications\StagiaireAffecteNotification;
@@ -176,6 +178,109 @@ class StagiaireCircuitService
             $this->notifications->notifier($responsable, new StagiaireAffecteNotification($stagiaire));
             $this->notifications->envoyerMail($responsable->email, new StagiaireAffecteMail($stagiaire));
         }
+    }
+
+    /**
+     * Lot B (issue individuelle) : symétrique de affecter() — un dossier
+     * non retenu sort de la boucle comme un dossier retenu, mais vers un
+     * statut terminal distinct plutôt que vers une direction réelle.
+     * Même garde que affecter() (EN_INSTRUCTION), même appelant unique
+     * (TableauRepartitionCircuitService::rendreAvis(), à l'approbation).
+     */
+    public function nonRetenu(Stagiaire $stagiaire, User $dfp, string $motif, ?string $motifLibre): Stagiaire
+    {
+        $this->assertStatut($stagiaire, StagiaireStatut::EN_INSTRUCTION);
+
+        $stagiaire->statut = StagiaireStatut::NON_RETENU;
+        $stagiaire->motif_non_retenu = $motif;
+        $stagiaire->motif_non_retenu_libre = $motifLibre;
+        $stagiaire->non_retenu_at = now();
+        $stagiaire->non_retenu_par_id = $dfp->id;
+        $stagiaire->save();
+
+        $this->audit->enregistrer('stagiaire.non_retenu', $stagiaire, $dfp, ['motif' => $motif]);
+
+        return $stagiaire;
+    }
+
+    /**
+     * Lot B : la diffusion devient un acte enregistré, pas un envoi dans
+     * le vide — voir NotificationDiffusion. Canal détecté par la même
+     * heuristique que le reste du module (email si valide, sinon SMS si
+     * le contact y ressemble) ; aucun envoi si ni l'un ni l'autre (contact
+     * manquant ou illisible), mais la trace n'est créée qu'en cas d'envoi
+     * réel — pas de ligne "non envoyé" qui donnerait une fausse impression
+     * de suivi.
+     */
+    public function notifierIssue(Stagiaire $stagiaire, ?User $auteur = null): ?NotificationDiffusion
+    {
+        $retenu = $stagiaire->statut === StagiaireStatut::AFFECTE;
+        $notification = new IssueTableauNotification($stagiaire, $retenu);
+        $type = $retenu ? 'retenu' : 'non_retenu';
+
+        if (filter_var($stagiaire->contact, FILTER_VALIDATE_EMAIL)) {
+            $this->notifications->notifierParEmail($stagiaire->contact, $notification);
+
+            return NotificationDiffusion::query()->create([
+                'stagiaire_id' => $stagiaire->id,
+                'type' => $type,
+                'canal' => 'email',
+                'destinataire' => $stagiaire->contact,
+                'contenu' => $notification->toMail($stagiaire)->render(),
+                'envoye_at' => now(),
+                'statut_remise' => 'envoye',
+                'envoye_par_id' => $auteur?->id,
+            ]);
+        }
+
+        if ($this->smsCanal->gere($stagiaire->contact ?? '')) {
+            $message = $notification->messageSms();
+            $this->notifications->notifierParSms($stagiaire->contact, $message);
+
+            return NotificationDiffusion::query()->create([
+                'stagiaire_id' => $stagiaire->id,
+                'type' => $type,
+                'canal' => 'sms',
+                'destinataire' => $stagiaire->contact,
+                'contenu' => $message,
+                'envoye_at' => now(),
+                'statut_remise' => 'envoye',
+                'envoye_par_id' => $auteur?->id,
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * "Action de renvoi" (Lot B) : recompose et renvoie sur le même canal,
+     * une nouvelle ligne plutôt qu'une mise à jour — l'historique complet
+     * des envois reste consultable.
+     */
+    public function renvoyerNotificationDiffusion(NotificationDiffusion $notification, User $auteur): NotificationDiffusion
+    {
+        /** @var Stagiaire $stagiaire */
+        $stagiaire = $notification->stagiaire()->firstOrFail();
+        $notificationAEnvoyer = new IssueTableauNotification($stagiaire, $notification->type === 'retenu');
+
+        if ($notification->canal === 'email') {
+            $this->notifications->notifierParEmail($notification->destinataire, $notificationAEnvoyer);
+            $contenu = $notificationAEnvoyer->toMail($stagiaire)->render();
+        } else {
+            $contenu = $notificationAEnvoyer->messageSms();
+            $this->notifications->notifierParSms($notification->destinataire, $contenu);
+        }
+
+        return NotificationDiffusion::query()->create([
+            'stagiaire_id' => $notification->stagiaire_id,
+            'type' => $notification->type,
+            'canal' => $notification->canal,
+            'destinataire' => $notification->destinataire,
+            'contenu' => $contenu,
+            'envoye_at' => now(),
+            'statut_remise' => 'envoye',
+            'envoye_par_id' => $auteur->id,
+        ]);
     }
 
     /**
