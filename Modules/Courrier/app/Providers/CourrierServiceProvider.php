@@ -7,17 +7,21 @@ use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Console\GenererRegistreCourrierCommand;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
+use Modules\Courrier\Contracts\BordereauLotPdfGenerator;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Contracts\CourrierPdfGenerator;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
 use Modules\Courrier\Contracts\SequenceGenerator;
+use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Policies\BordereauLotPolicy;
 use Modules\Courrier\Policies\CourrierPolicy;
 use Modules\Courrier\Support\ConfigCircuitTransitionRules;
 use Modules\Courrier\Support\DatabaseSequenceGenerator;
 use Modules\Courrier\Support\DefaultNumeroGenerator;
+use Modules\Courrier\Support\DompdfBordereauLotPdfGenerator;
 use Modules\Courrier\Support\DompdfCourrierPdfGenerator;
 use Modules\Courrier\Support\DompdfFeuilleCouvertureGenerator;
 use Modules\Courrier\Support\DompdfRegistreCourrierPdfGenerator;
@@ -66,6 +70,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
         $this->app->bind(CourrierPdfGenerator::class, DompdfCourrierPdfGenerator::class);
         $this->app->bind(RegistreCourrierPdfGenerator::class, DompdfRegistreCourrierPdfGenerator::class);
         $this->app->bind(FeuilleCouvertureGenerator::class, DompdfFeuilleCouvertureGenerator::class);
+        $this->app->bind(BordereauLotPdfGenerator::class, DompdfBordereauLotPdfGenerator::class);
     }
 
     public function boot(): void
@@ -73,6 +78,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         Gate::policy(Courrier::class, CourrierPolicy::class);
+        Gate::policy(BordereauLot::class, BordereauLotPolicy::class);
     }
 
     /**

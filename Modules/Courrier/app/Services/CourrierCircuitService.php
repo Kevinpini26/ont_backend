@@ -22,10 +22,12 @@ use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
 use Modules\Courrier\Mail\AccuseReceptionCandidatMail;
 use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Mail\CourrierRecuMail;
+use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\EmpruntOriginal;
+use Modules\Courrier\Models\ReorientationTri;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
@@ -292,7 +294,7 @@ class CourrierCircuitService
      * intermédiaire de initierParDg()) n'a pas de destinataire : rien à
      * décharger.
      */
-    private function tracerTransition(Courrier $courrier, ?User $utilisateur): void
+    private function tracerTransition(Courrier $courrier, ?User $utilisateur, ?int $bordereauLotId = null): void
     {
         $destinatairePoste = null;
         $destinataireUserId = null;
@@ -331,6 +333,7 @@ class CourrierCircuitService
             'agi_en_interim' => $utilisateur !== null && $this->delegations->posteDelegueAujourdhui($utilisateur) !== null,
             'destinataire_poste' => $destinatairePoste,
             'destinataire_user_id' => $destinataireUserId,
+            'bordereau_lot_id' => $bordereauLotId,
             'created_at' => now(),
         ]);
     }
@@ -507,6 +510,97 @@ class CourrierCircuitService
     }
 
     /**
+     * Lot C, points 1-2 : "la Réception est un point de blocage" tenait au
+     * fait que chaque courrier fraîchement créé porte sa propre transition
+     * en attente (voir tracerTransition(), destinataire_poste déjà
+     * résolu à la création) — jusqu'ici, le destinataire (Secrétariat 01,
+     * le plus souvent) devait accuser réception de chacun UN PAR UN avant
+     * de pouvoir seulement commencer à les traiter. Cette méthode ne crée
+     * AUCUNE nouvelle transition : elle regroupe sous un même bordereau
+     * des transitions déjà existantes, encore en attente, pour qu'une
+     * seule décharge (voir accuserReceptionLot()) les débloque toutes.
+     * "Trace individuelle par dossier" reste garantie : chaque transition
+     * groupée est la même ligne qui existait déjà, seulement étiquetée.
+     * Un lot doit être homogène (même poste destinataire) — un bordereau
+     * physique ne peut matériellement pas être remis à deux guichets
+     * différents à la fois.
+     */
+    public function grouperEnBordereauLot(array $courrierIds, User $emetteur): BordereauLot
+    {
+        $courrierIds = array_values(array_unique($courrierIds));
+
+        if ($courrierIds === []) {
+            throw TransitionNonAutoriseeException::lotVide();
+        }
+
+        return DB::transaction(function () use ($courrierIds, $emetteur) {
+            $transitions = CourrierTransition::query()
+                ->whereIn('courrier_id', $courrierIds)
+                ->whereNull('accuse_reception_at')
+                ->whereNotNull('destinataire_poste')
+                ->whereNull('bordereau_lot_id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('courrier_id');
+
+            if ($transitions->count() !== count($courrierIds)) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+
+            $postesDestinataires = $transitions->pluck('destinataire_poste')->unique();
+
+            if ($postesDestinataires->count() > 1) {
+                throw TransitionNonAutoriseeException::lotHeterogene();
+            }
+
+            $bordereau = BordereauLot::query()->create([
+                'numero' => $this->numeros->genererNumeroBordereauLot(),
+                'emetteur_id' => $emetteur->id,
+                'poste_destinataire' => $postesDestinataires->first(),
+            ]);
+
+            CourrierTransition::query()
+                ->whereIn('id', $transitions->pluck('id'))
+                ->update(['bordereau_lot_id' => $bordereau->id]);
+
+            return $bordereau;
+        });
+    }
+
+    /**
+     * Décharge du lot en une seule action — mais chaque dossier reçoit
+     * individuellement le même accusé (voir CourrierTransition, mises à
+     * jour en bloc ci-dessous) : Courrier::enTransit() continue de
+     * raisonner dossier par dossier, sans rien savoir d'un "lot".
+     */
+    public function accuserReceptionLot(BordereauLot $bordereau, User $destinataire): BordereauLot
+    {
+        return DB::transaction(function () use ($bordereau, $destinataire) {
+            if ($bordereau->accuse_reception_at !== null) {
+                throw TransitionNonAutoriseeException::dechargeDejaDonnee();
+            }
+
+            if (! $this->delegations->utilisateurHabilite($destinataire, [$bordereau->poste_destinataire])) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
+
+            $maintenant = now();
+
+            $bordereau->accuse_reception_at = $maintenant;
+            $bordereau->accuse_reception_par_id = $destinataire->id;
+            $bordereau->save();
+
+            $bordereau->transitions()->update([
+                'accuse_reception_at' => $maintenant,
+                'accuse_reception_par_id' => $destinataire->id,
+                'destinataire_user_id' => $destinataire->id,
+            ]);
+
+            return $bordereau;
+        });
+    }
+
+    /**
      * Si le Protocole a été emprunté, il transmet lui aussi au tri, jamais
      * directement à la DG — le tri précède toujours la DG.
      */
@@ -579,6 +673,60 @@ class CourrierCircuitService
                 'ancien_degre' => $ancienDegre->value,
                 'nouveau_degre' => $nouveauDegre->value,
             ]);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Lot C (réorientation du tri) : le signataire qui reçoit un courrier
+     * mal orienté vers l'avis DG le renvoie au tri — jamais une faute (le
+     * dossier ne boucle pas sur lui-même comme un avis "réservé", il
+     * repart carrément vers l'étape précédente), et le tour n'est
+     * volontairement pas incrémenté : ce n'est pas un renvoi de fond sur un
+     * dossier déjà instruit, juste une correction d'aiguillage avant même
+     * que la DG ait commencé à l'examiner. Le geste est cependant tracé
+     * dans reorientations_tri (voir ReorientationTri), y compris qui avait
+     * trié à l'origine, pour alimenter une statistique de justesse
+     * (CourrierPolicy::voirJustesseTri()) — jamais pour désigner une faute,
+     * seulement pour objectiver un taux.
+     */
+    public function renvoyerAuTri(Courrier $courrier, User $utilisateur, ?string $motif): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $motif, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertDechargeDonnee($courrier);
+
+            if ($courrier->statut !== CourrierStatut::EN_ATTENTE_AVIS_DG) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+
+            $enInterim = $utilisateur->poste === Poste::DGA;
+            $delegue = $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
+
+            if (! $delegue && ! ($enInterim && DgDisponibilite::estDisponible() === false)) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
+
+            $trieParId = CourrierTransition::query()
+                ->where('courrier_id', $courrier->id)
+                ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
+                ->latest('id')
+                ->value('changed_by_id');
+
+            $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            ReorientationTri::query()->create([
+                'courrier_id' => $courrier->id,
+                'trie_par_id' => $trieParId,
+                'reoriente_par_id' => $utilisateur->id,
+                'motif' => $motif,
+                'created_at' => now(),
+            ]);
+
+            $this->audit->enregistrer('courrier.reoriente_au_tri', $courrier, $utilisateur, ['motif' => $motif]);
 
             return $courrier;
         });

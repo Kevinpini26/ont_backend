@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Courrier\Http\Controllers\Api\BordereauLotController;
 use Modules\Courrier\Http\Controllers\Api\CourrierAnnotationController;
 use Modules\Courrier\Http\Controllers\Api\CourrierController;
 use Modules\Courrier\Http\Controllers\Api\CourrierEnSouffranceController;
@@ -14,6 +15,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/statistiques', [CourrierStatistiqueController::class, 'index']);
     Route::get('/courriers/statistiques-dg', [CourrierStatistiqueController::class, 'dg']);
     Route::get('/courriers/statistiques-direction', [CourrierStatistiqueController::class, 'pourDirection']);
+    Route::get('/courriers/justesse-tri', [CourrierStatistiqueController::class, 'justesseTri']);
+
+    // Lot C, points 1-2 — bordereau de transmission par lot.
+    Route::post('/bordereaux-lot', [BordereauLotController::class, 'store']);
+    Route::get('/bordereaux-lot/{bordereau}', [BordereauLotController::class, 'show']);
+    Route::post('/bordereaux-lot/{bordereau}/accuser-reception', [BordereauLotController::class, 'accuserReception']);
+    Route::get('/bordereaux-lot/{bordereau}/pdf', [BordereauLotController::class, 'telechargerPdf']);
     Route::get('/courriers/registre', [RegistreCourrierController::class, 'telecharger']);
     Route::get('/courriers/en-souffrance', [CourrierEnSouffranceController::class, 'index']);
     Route::get('/courriers/a-numeriser', [CourrierRattrapageNumerisationController::class, 'index']);
@@ -43,6 +51,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/dispatcher-direction', [CourrierController::class, 'dispatcherVersDirection']);
     Route::post('/courriers/{courrier}/requalifier-urgence', [CourrierController::class, 'requalifierUrgence']);
     Route::post('/courriers/{courrier}/rendre-avis', [CourrierController::class, 'rendreAvis']);
+    Route::post('/courriers/{courrier}/renvoyer-au-tri', [CourrierController::class, 'renvoyerAuTri']);
     Route::post('/courriers/{courrier}/soumettre-projet-reponse', [CourrierController::class, 'soumettreProjetReponse']);
     Route::post('/courriers/{courrier}/valider-relecture', [CourrierController::class, 'validerRelecture']);
     Route::post('/courriers/{courrier}/signer', [CourrierController::class, 'signer']);

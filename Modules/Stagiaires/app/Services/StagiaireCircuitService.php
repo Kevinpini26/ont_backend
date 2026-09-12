@@ -72,6 +72,7 @@ class StagiaireCircuitService
         $this->assertStatut($stagiaire, StagiaireStatut::DOSSIER_RECU);
 
         $stagiaire->statut = StagiaireStatut::EN_ATTENTE_AFFECTATION;
+        $stagiaire->statut_change_at = now();
         $stagiaire->save();
 
         return $stagiaire;
@@ -114,6 +115,7 @@ class StagiaireCircuitService
             $stagiaire->affecte_par_id = $dfp->id;
             $stagiaire->affecte_at = now();
             $stagiaire->statut = StagiaireStatut::AFFECTE;
+            $stagiaire->statut_change_at = now();
             $stagiaire->maitre_stage = $encadrantPressenti;
             // Attribué à l'affectation, jamais avant : un dossier encore en
             // attente n'a pas d'existence administrative dans une direction,
@@ -192,6 +194,7 @@ class StagiaireCircuitService
         $this->assertStatut($stagiaire, StagiaireStatut::EN_INSTRUCTION);
 
         $stagiaire->statut = StagiaireStatut::NON_RETENU;
+        $stagiaire->statut_change_at = now();
         $stagiaire->motif_non_retenu = $motif;
         $stagiaire->motif_non_retenu_libre = $motifLibre;
         $stagiaire->non_retenu_at = now();
@@ -360,6 +363,7 @@ class StagiaireCircuitService
             ? $dateDebut->copy()->addMonths(3)
             : $dateFin;
         $stagiaire->statut = StagiaireStatut::STAGE_EN_COURS;
+        $stagiaire->statut_change_at = now();
         $stagiaire->save();
 
         // Convention de stage : direction et dates sont connues à ce stade,
@@ -527,6 +531,7 @@ class StagiaireCircuitService
         $this->assertStatut($stagiaire, StagiaireStatut::STAGE_EN_COURS);
 
         $stagiaire->statut = StagiaireStatut::EVALUATION_EN_COURS;
+        $stagiaire->statut_change_at = now();
         $stagiaire->save();
 
         return $stagiaire;
@@ -701,6 +706,7 @@ class StagiaireCircuitService
             $stagiaire->evaluation_dfp_total,
         );
         $stagiaire->statut = StagiaireStatut::CLOTURE;
+        $stagiaire->statut_change_at = now();
         $stagiaire->cloture_at = now();
         $stagiaire->numero_attestation = sprintf(
             'ATT-%d-%06d',

@@ -33,4 +33,12 @@ class DefaultNumeroGenerator implements NumeroGenerator
 
         return sprintf(config('courrier.format_numero_depart', '%d-D%04d'), $annee, $sequence);
     }
+
+    public function genererNumeroBordereauLot(): string
+    {
+        $annee = Date::now()->year;
+        $sequence = $this->sequences->suivant('bordereau_lot', $annee);
+
+        return sprintf('BL-%d-%04d', $annee, $sequence);
+    }
 }

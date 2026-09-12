@@ -90,6 +90,29 @@ class CourrierPolicy
     }
 
     /**
+     * Filtre grossier, comme requalifierUrgence() — la garde d'intérim
+     * dynamique (DGA seulement si la DG est indisponible) reste dans
+     * CourrierCircuitService::renvoyerAuTri().
+     */
+    public function renvoyerAuTri(User $user, Courrier $courrier): bool
+    {
+        return $user->poste === Poste::DG
+            || $user->poste === Poste::DGA
+            || $this->delegations->utilisateurHabilite($user, [Poste::DG]);
+    }
+
+    /**
+     * Lot C, point 3 : la statistique de justesse du tri n'a de sens que
+     * pour celui qui trie — visible du seul Secrétariat 01 (et de
+     * l'administrateur, par convention pour tout ce qui est transverse).
+     */
+    public function voirJustesseTri(User $user): bool
+    {
+        return $user->role === UserRole::ADMINISTRATEUR
+            || ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::SECRETARIAT_1);
+    }
+
+    /**
      * Filtre grossier, comme transmettre()/signer() : le relecteur désigné
      * pour en_relecture, ou un poste habilité pour ce statut sinon. La
      * vérification précise (garde d'intérim DGA comprise) reste dans

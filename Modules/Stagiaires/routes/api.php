@@ -9,6 +9,7 @@ use Modules\Stagiaires\Http\Controllers\Api\NotificationDiffusionController;
 use Modules\Stagiaires\Http\Controllers\Api\RapportAnnuelController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireDocumentController;
+use Modules\Stagiaires\Http\Controllers\Api\StagiaireEnSouffranceController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiairePresenceController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireStatistiqueController;
 use Modules\Stagiaires\Http\Controllers\Api\StagiaireSuiviController;
@@ -21,6 +22,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     Route::get('/stagiaires/statistiques', [StagiaireStatistiqueController::class, 'index']);
     Route::get('/stagiaires/alertes', [StagiaireStatistiqueController::class, 'alertes']);
+    Route::get('/stagiaires/en-souffrance', [StagiaireEnSouffranceController::class, 'index']);
     Route::get('/stagiaires/export', [StagiaireController::class, 'export']);
     Route::get('/stagiaires/rapport-annuel', [RapportAnnuelController::class, 'telecharger']);
     Route::get('/archives/annuelle', [ArchiveAnnuelleController::class, 'telecharger']);

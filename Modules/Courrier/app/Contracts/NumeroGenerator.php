@@ -15,4 +15,11 @@ interface NumeroGenerator
      * docs/questions-ont.md.
      */
     public function genererNumeroDepart(): string;
+
+    /**
+     * Lot C (transmission par lot) — numéro du bordereau qui porte
+     * plusieurs dossiers à la fois, distinct du numéro d'accusé de
+     * réception (qui reste propre à chaque courrier).
+     */
+    public function genererNumeroBordereauLot(): string;
 }

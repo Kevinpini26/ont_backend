@@ -14,6 +14,7 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgDisponibilite;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\TableauRepartitionPdfGenerator;
@@ -50,6 +51,7 @@ class TableauRepartitionCircuitService
         private readonly AuditLogger $audit,
         private readonly StagiaireCircuitService $stagiaires,
         private readonly AvertissementsLigneTableau $avertissements,
+        private readonly DelegationResolver $delegations,
     ) {}
 
     private function assertStatut(TableauRepartition $tableau, TableauRepartitionStatut $attendu): void
@@ -210,6 +212,7 @@ class TableauRepartitionCircuitService
             // StagiairePolicy, StagiaireCircuitService::validerArrivee()
             // toujours gardée par le statut AFFECTE).
             $stagiaire->statut = StagiaireStatut::EN_INSTRUCTION;
+            $stagiaire->statut_change_at = now();
             $stagiaire->save();
 
             return $ligne;
@@ -265,6 +268,7 @@ class TableauRepartitionCircuitService
             // (jamais le cas en pratique tant qu'il est en instruction).
             if ($stagiaire->statut === StagiaireStatut::EN_INSTRUCTION) {
                 $stagiaire->statut = StagiaireStatut::EN_ATTENTE_AFFECTATION;
+                $stagiaire->statut_change_at = now();
                 $stagiaire->save();
             }
         });
@@ -316,11 +320,19 @@ class TableauRepartitionCircuitService
     {
         $this->assertStatut($tableau, TableauRepartitionStatut::CHEZ_RECEPTION);
 
-        if ($reception->poste !== Poste::RECEPTION) {
+        // Lot C (suppléance de tous les postes) : un délégataire de la
+        // Réception (voir DelegationPoste/DelegationResolver) doit pouvoir
+        // présenter le tableau tout autant que le titulaire — sans quoi
+        // l'absence d'un seul agent bloquerait tout le circuit du
+        // tableau, à rebours du principe déjà appliqué au courrier
+        // ordinaire (CourrierCircuitService::assertTransitionAutorisee()).
+        if (! $this->delegations->utilisateurHabilite($reception, [Poste::RECEPTION])) {
             throw new TableauRepartitionTransitionException('Seule la Réception peut présenter le tableau à la Direction Générale.');
         }
 
-        return DB::transaction(function () use ($tableau, $reception) {
+        $enInterim = $this->delegations->agitEnInterimPour($reception, [Poste::RECEPTION]);
+
+        return DB::transaction(function () use ($tableau, $reception, $enInterim) {
             /** @var Courrier $courrier */
             $courrier = $tableau->courrier()->firstOrFail();
 
@@ -334,7 +346,7 @@ class TableauRepartitionCircuitService
             $tableau->statut = TableauRepartitionStatut::EN_ATTENTE_AVIS_DG;
             $tableau->save();
 
-            $this->tracer($courrier, $reception);
+            $this->tracer($courrier, $reception, $enInterim);
 
             return $tableau;
         });
@@ -360,14 +372,22 @@ class TableauRepartitionCircuitService
         }
 
         // Même garde d'intérim dynamique que CourrierCircuitService::rendreAvisDg()
-        // — dupliquée plutôt que sur-abstraite pour ce seul autre appelant.
-        $enInterim = $dg->poste === Poste::DGA;
-        if ($dg->poste !== Poste::DG && ! $enInterim) {
+        // pour le cas DG/DGA (mécanisme propre à DgDisponibilite, laissé
+        // en l'état — voir DelegationResolver) ; complétée ici (Lot C)
+        // par la délégation générique de poste, pour qu'un délégataire du
+        // poste DG (DelegationPoste) puisse lui aussi rendre l'avis, pas
+        // seulement la DGA.
+        $delegue = $this->delegations->utilisateurHabilite($dg, [Poste::DG]);
+        $substitutionDga = $dg->poste === Poste::DGA && ! DgDisponibilite::estDisponible();
+
+        if (! $delegue && ! $substitutionDga) {
+            if ($dg->poste === Poste::DGA) {
+                throw new TableauRepartitionTransitionException('La DGA ne peut agir que lorsque la DG est marquée indisponible.');
+            }
             throw new TableauRepartitionTransitionException('Seule la Direction Générale peut se prononcer sur ce tableau.');
         }
-        if ($enInterim && DgDisponibilite::estDisponible()) {
-            throw new TableauRepartitionTransitionException('La DGA ne peut agir que lorsque la DG est marquée indisponible.');
-        }
+
+        $enInterim = $substitutionDga || $this->delegations->agitEnInterimPour($dg, [Poste::DG]);
 
         return DB::transaction(function () use ($tableau, $dg, $approuve, $observations, $enInterim) {
             /** @var Courrier $courrier */
@@ -386,7 +406,7 @@ class TableauRepartitionCircuitService
                 $tableau->statut = TableauRepartitionStatut::CHEZ_RECEPTION;
                 $tableau->save();
 
-                $this->tracer($courrier, $dg);
+                $this->tracer($courrier, $dg, $enInterim);
 
                 $this->audit->enregistrer('tableau_repartition.renvoye', $tableau, $dg, ['observations' => $observations]);
 
@@ -444,7 +464,7 @@ class TableauRepartitionCircuitService
             $tableau->approuve_at = now();
             $tableau->save();
 
-            $this->tracer($courrier, $dg);
+            $this->tracer($courrier, $dg, $enInterim);
 
             $tableau->pdf_chemin = $this->pdf->generer($tableau->fresh(['lignes.stagiaire', 'lignes.directionAccueilProposee', 'direction', 'redacteur']));
             $tableau->save();
@@ -487,13 +507,14 @@ class TableauRepartitionCircuitService
      * docblock de classe. `tour` est lu depuis le courrier, déjà à jour à
      * cet instant (posé juste avant l'appel).
      */
-    private function tracer(Courrier $courrier, User $auteur): void
+    private function tracer(Courrier $courrier, User $auteur, bool $enInterim = false): void
     {
         CourrierTransition::query()->create([
             'courrier_id' => $courrier->id,
             'statut' => $courrier->statut,
             'tour' => $courrier->tour,
             'changed_by_id' => $auteur->id,
+            'agi_en_interim' => $enInterim,
             'created_at' => now(),
         ]);
     }

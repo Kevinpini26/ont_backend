@@ -9,8 +9,11 @@ use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\CourrierTransition;
+use Modules\Courrier\Models\ReorientationTri;
 use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\PeriodeStatistique;
 
 class CourrierStatistiqueController extends Controller
@@ -283,6 +286,59 @@ class CourrierStatistiqueController extends Controller
                 'total' => (int) $ligne->total,
             ])->values(),
             'tendance_candidatures_12_mois' => $tendanceCandidatures,
+        ]);
+    }
+
+    /**
+     * Lot C, point 3 : statistique de justesse du tri, réservée au
+     * Secrétariat 01 (voir CourrierPolicy::voirJustesseTri()) — jamais
+     * pour désigner une faute individuelle, seulement pour objectiver un
+     * taux. "Trié" = a atteint en_attente_avis_dg au moins une fois ;
+     * "réorienté" = renvoyé au tri ensuite par le signataire (voir
+     * ReorientationTri) — jamais l'inverse, un dossier bouclé pour avis
+     * "réservé" n'y figure pas.
+     */
+    public function justesseTri(Request $request)
+    {
+        $this->authorize('voirJustesseTri', Courrier::class);
+
+        $tries = CourrierTransition::query()
+            ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
+            ->whereNotNull('changed_by_id')
+            ->selectRaw('changed_by_id, count(distinct courrier_id) as nombre')
+            ->groupBy('changed_by_id')
+            ->pluck('nombre', 'changed_by_id');
+
+        $reorientes = ReorientationTri::query()
+            ->whereNotNull('trie_par_id')
+            ->selectRaw('trie_par_id, count(*) as nombre')
+            ->groupBy('trie_par_id')
+            ->pluck('nombre', 'trie_par_id');
+
+        $noms = User::query()->whereIn('id', $tries->keys())->pluck('name', 'id');
+
+        $parAgent = $tries->map(function ($nombreTries, $agentId) use ($reorientes, $noms) {
+            $nombreReorientes = (int) $reorientes->get($agentId, 0);
+
+            return [
+                'agent_id' => (int) $agentId,
+                'agent_nom' => $noms->get($agentId),
+                'nombre_tries' => (int) $nombreTries,
+                'nombre_reoriented' => $nombreReorientes,
+                'taux_justesse' => round(1 - ($nombreReorientes / $nombreTries), 4),
+            ];
+        })->values();
+
+        $totalTries = (int) $tries->sum();
+        $totalReorientes = ReorientationTri::query()->count();
+
+        return response()->json([
+            'global' => [
+                'nombre_tries' => $totalTries,
+                'nombre_reoriented' => $totalReorientes,
+                'taux_justesse' => $totalTries > 0 ? round(1 - ($totalReorientes / $totalTries), 4) : null,
+            ],
+            'par_agent' => $parAgent,
         ]);
     }
 }

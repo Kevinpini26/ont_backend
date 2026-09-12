@@ -33,6 +33,16 @@ class TransitionNonAutoriseeException extends Exception
         return new self("Ce dossier n'a pas encore été trié par degré d'urgence : rien à requalifier.");
     }
 
+    public static function lotVide(): self
+    {
+        return new self('Un bordereau de lot doit porter au moins un dossier.');
+    }
+
+    public static function lotHeterogene(): self
+    {
+        return new self('Un bordereau de lot ne peut regrouper que des dossiers destinés au même poste.');
+    }
+
     public function render(Request $request): JsonResponse
     {
         return response()->json(['message' => $this->getMessage()], 422);

@@ -26,6 +26,7 @@ class CourrierTransition extends Model
         'agi_en_interim',
         'destinataire_poste',
         'destinataire_user_id',
+        'bordereau_lot_id',
         'accuse_reception_par_id',
         'accuse_reception_at',
         'created_at',
@@ -60,5 +61,10 @@ class CourrierTransition extends Model
     public function accuseReceptionPar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'accuse_reception_par_id');
+    }
+
+    public function bordereauLot(): BelongsTo
+    {
+        return $this->belongsTo(BordereauLot::class);
     }
 }

@@ -482,3 +482,67 @@ Questions supplémentaires découvertes en implémentant (Lot A/B) :
   réel ne peut être obtenu : le champ restera à `envoye` sans jamais
   passer à un état "livré"/"échoué" tant qu'un fournisseur n'est pas
   branché.
+
+## Lot C — Réception tenable et tri corrigible
+
+- **La transmission par lot ne concerne, dans ce lot, que le passage
+  "recu → Secrétariat 01".** En creusant le circuit réel (voir
+  `config('courrier.circuit_transitions')`), la Réception n'est
+  destinataire d'aucune transmission après la création d'un courrier —
+  seule `representerDg()` (re-présentation après un avis "réservé") la
+  concerne à nouveau. Le vrai point de blocage identifié est donc en
+  aval : le Secrétariat 01 (ou le Protocole) devait jusqu'ici accuser
+  réception de chaque courrier fraîchement créé UN PAR UN avant de
+  pouvoir commencer à les traiter. `BordereauLot` regroupe donc des
+  transitions déjà existantes (jamais de nouvelle transition créée) sous
+  un même bordereau, homogène par poste destinataire, débloqué en une
+  seule décharge — voir `CourrierCircuitService::grouperEnBordereauLot()`/
+  `accuserReceptionLot()`. À confirmer que c'est bien ce goulot
+  d'étranglement précis (et pas un autre, plus tôt dans le circuit) que
+  la Direction avait en tête en désignant "la Réception" comme point de
+  blocage.
+
+- **Qui peut grouper des dossiers en un bordereau de lot.** Ouvert à tout
+  poste du circuit courrier central (voir `BordereauLotPolicy::creer()`)
+  plutôt que restreint à un poste précis : l'opération elle-même ne
+  change aucun état (elle étiquette des transitions déjà en attente), le
+  service vérifie déjà leur homogénéité — à restreindre si un contrôle
+  plus strict s'avère nécessaire en pratique.
+
+- **Réorientation du tri : seul le duo DG/DGA peut la déclencher.**
+  Implémenté avec la même garde que l'avis DG (poste propre, délégation
+  de poste, ou DGA quand la DG est marquée indisponible) — jamais un
+  autre poste du circuit, même s'il détient le dossier à un autre moment.
+  Portée volontairement restreinte à la seule transition
+  `en_attente_avis_dg → en_attente_tri` (le seul cas concret décrit) : à
+  étendre si d'autres points du circuit doivent aussi pouvoir "revenir en
+  arrière sans faute".
+
+- **Statistique de justesse du tri : par agent, jamais nominative dans
+  l'absolu.** Le calcul (`GET /courriers/justesse-tri`) expose le nom de
+  chaque agent ayant trié à côté de son taux — visible du seul
+  Secrétariat 01 (et de l'administrateur), jamais de la DG ni d'une
+  direction. À confirmer que cette granularité par agent (plutôt qu'un
+  taux global anonyme) correspond à l'intention réelle ("objectiver un
+  taux", pas "noter" un agent précis).
+
+- **Suppléance généralisée du tableau de répartition : la DGA reste un
+  cas à part de `DelegationPoste`.** Le mécanisme générique
+  (`DelegationResolver`) couvre désormais aussi bien la Réception que le
+  poste DG pour le circuit du tableau — mais l'intérim DG/DGA continue de
+  reposer sur `DgDisponibilite` (un simple drapeau, pas une délégation
+  datée), conformément à une décision antérieure documentée dans le code
+  ("son mécanisme spécifique... reste en l'état"). Les deux mécanismes
+  coexistent donc pour ce seul poste : à unifier si la pratique montre
+  que l'un des deux devient redondant.
+
+- **Délais indicatifs du dossier stagiaire : valeurs provisoires.**
+  `config('stagiaires.delais_indicatifs_heures')` (dossier reçu 48h, en
+  attente d'affectation/affecté 72h, évaluation en cours 168h) reprend
+  l'ordre de grandeur du courrier plutôt qu'un délai réglementaire connu
+  — à ajuster avec la DFP. Contrairement au courrier (dont l'historique
+  complet vit dans `courrier_transitions`), un unique
+  `Stagiaire::statut_change_at` sert de repère (voir
+  `StagiaireEnSouffrance`) : suffisant pour "depuis quand dans l'étape
+  courante", mais ne conserve pas un historique complet des passages
+  antérieurs si ce besoin apparaissait plus tard.

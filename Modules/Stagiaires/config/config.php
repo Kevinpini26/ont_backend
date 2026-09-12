@@ -48,4 +48,17 @@ return [
         'profil_sans_correspondance' => 'Profil sans correspondance avec les besoins',
         'hors_periode' => 'Hors période',
     ],
+
+    /**
+     * Lot C, point 5 (délais et souffrance) — même principe que
+     * config('courrier.delais_indicatifs_heures') : purement indicatif,
+     * ne bloque jamais, voir StagiaireEnSouffrance.
+     */
+    'delai_indicatif_heures_par_defaut' => 72,
+    'delais_indicatifs_heures' => [
+        'dossier_recu' => 48,
+        'en_attente_affectation' => 72,
+        'affecte' => 72,
+        'evaluation_en_cours' => 168,
+    ],
 ];

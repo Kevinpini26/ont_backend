@@ -21,6 +21,7 @@ use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
 use Modules\Courrier\Http\Requests\InitierReponseSortanteRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
+use Modules\Courrier\Http\Requests\RenvoyerAuTriRequest;
 use Modules\Courrier\Http\Requests\RequalifierUrgenceRequest;
 use Modules\Courrier\Http\Requests\SortirOriginalRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
@@ -349,6 +350,15 @@ class CourrierController extends Controller
         );
 
         return $this->ressource($courrier);
+    }
+
+    public function renvoyerAuTri(RenvoyerAuTriRequest $request, Courrier $courrier)
+    {
+        return $this->ressource($this->circuit->renvoyerAuTri(
+            $courrier,
+            $request->user(),
+            $request->validated('motif'),
+        ));
     }
 
     public function soumettreProjetReponse(SoumettreProjetReponseRequest $request, Courrier $courrier)

@@ -42,6 +42,7 @@ class Stagiaire extends Model
         'periode_fin_demandee',
         'reference_courrier',
         'statut',
+        'statut_change_at',
         'direction_id',
         'affecte_par_id',
         'affecte_at',
@@ -92,6 +93,7 @@ class Stagiaire extends Model
     {
         return [
             'statut' => StagiaireStatut::class,
+            'statut_change_at' => 'datetime',
             'origine' => StagiaireOrigine::class,
             'type_stage' => StagiaireTypeStage::class,
             'periode_debut_demandee' => 'date',

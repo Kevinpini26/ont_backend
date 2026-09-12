@@ -5,6 +5,7 @@ namespace Modules\Stagiaires\Policies;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DelegationResolver;
 use Modules\Stagiaires\Models\TableauRepartition;
 
 /**
@@ -14,11 +15,20 @@ use Modules\Stagiaires\Models\TableauRepartition;
  */
 class TableauRepartitionPolicy
 {
+    public function __construct(private readonly DelegationResolver $delegations) {}
+
+    /**
+     * Lot C (suppléance de tous les postes) : un délégataire d'un des
+     * postes concernés par le tableau (Réception, DG, DGA) doit pouvoir au
+     * moins le consulter — sans quoi la porte s'ouvrirait au service mais
+     * resterait fermée ici, un délégataire ne verrait jamais le tableau
+     * qu'il est pourtant habilité à faire avancer.
+     */
     public function viewAny(User $user): bool
     {
         return $user->role === UserRole::AGENT_DFP
             || $user->role === UserRole::ADMINISTRATEUR
-            || in_array($user->poste, [Poste::DG, Poste::DGA, Poste::RECEPTION], true);
+            || $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA, Poste::RECEPTION]);
     }
 
     public function view(User $user, TableauRepartition $tableau): bool
@@ -54,11 +64,13 @@ class TableauRepartitionPolicy
      */
     public function representerDg(User $user, TableauRepartition $tableau): bool
     {
-        return $user->poste === Poste::RECEPTION;
+        return $this->delegations->utilisateurHabilite($user, [Poste::RECEPTION]);
     }
 
     public function rendreAvis(User $user): bool
     {
-        return $user->poste === Poste::DG || $user->poste === Poste::DGA;
+        return $user->poste === Poste::DG
+            || $user->poste === Poste::DGA
+            || $this->delegations->utilisateurHabilite($user, [Poste::DG]);
     }
 }
