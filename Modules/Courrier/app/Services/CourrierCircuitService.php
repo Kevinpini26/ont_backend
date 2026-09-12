@@ -366,6 +366,27 @@ class CourrierCircuitService
      * Général. "ONT" en repli quand aucune direction n'est imputée
      * (courrier interne à la DG, par exemple) — jamais une cote vide.
      */
+    /**
+     * Lot D, point 1 : une demande de stage n'atteint jamais enregistrer()
+     * (elle sort du circuit courrier ordinaire dès son imputation à la
+     * DFP, voir rendreAvisDg()) — sans quoi elle ne recevrait jamais de
+     * cote de classement propre, restant introuvable autrement que par la
+     * fiche stagiaire qui en découle. Appelée à l'approbation du tableau
+     * qui la porte (voir TableauRepartitionCircuitService::rendreAvis()),
+     * qu'elle ait été retenue ou non — un dossier refusé garde, lui aussi,
+     * sa lettre classée. Idempotente : n'écrase jamais une cote déjà posée.
+     */
+    public function classerDemandeStage(Courrier $courrier): void
+    {
+        if ($courrier->cote_classement !== null) {
+            return;
+        }
+
+        $codeDirection = $courrier->directionPrincipale()?->direction?->code ?? 'ONT';
+        $courrier->cote_classement = $this->numeros->genererCote($codeDirection, 'classement_stagiaire');
+        $courrier->save();
+    }
+
     private function genererCoteClassement(Courrier $courrier): string
     {
         $codeDirection = $courrier->directionPrincipale()?->direction?->code ?? 'ONT';

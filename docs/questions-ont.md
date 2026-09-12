@@ -546,3 +546,44 @@ Questions supplémentaires découvertes en implémentant (Lot A/B) :
   `StagiaireEnSouffrance`) : suffisant pour "depuis quand dans l'étape
   courante", mais ne conserve pas un historique complet des passages
   antérieurs si ce besoin apparaissait plus tard.
+
+## Lot D — classement retrouvable et cohérence de la boucle
+
+- **Cote de la lettre : posée à l'issue, pas avant.** Une demande de stage
+  ne recevait jusqu'ici jamais de cote de classement propre (elle sort du
+  circuit courrier ordinaire dès son imputation à la DFP, sans jamais
+  atteindre `enregistrer()`) — `classerDemandeStage()` la pose désormais
+  à l'approbation du tableau qui la porte, retenue ou non. Séquence
+  dédiée (`classement_stagiaire`), indépendante de `numero_enregistrement`
+  (qui n'existe jamais pour ces courriers) : à confirmer que cette
+  cadence (une cote par lettre, au moment où son sort est tranché) suffit,
+  ou si un classement plus précoce est attendu (dès la réception, avant
+  même l'examen par la DFP).
+
+- **Cote du tableau : même séquence dédiée, pas liée à celle des
+  lettres.** `classement_tableau` est une séquence indépendante de
+  `classement_stagiaire` — un tableau et les dossiers qu'il porte ont
+  chacun leur propre numérotation, sans lien arithmétique entre les deux
+  (contrairement à Courrier où cote et numéro d'enregistrement partagent
+  la même séquence). À confirmer que c'est bien l'usage attendu.
+
+- **Scellement : une table dédiée, mais aucune application ne bloque
+  une modification directe en base.** L'immutabilité de
+  `tableau_repartition_scellements` repose sur l'absence de toute méthode
+  applicative de mise à jour (aucun endpoint, aucun service ne la
+  modifie après création) — pas sur une contrainte PostgreSQL (trigger,
+  colonne générée) qui interdirait une modification manuelle en base.
+  Cohérent avec le reste du projet (`courrier_transitions`,
+  `notifications_diffusion` sont "append-only" par la même convention),
+  mais à renforcer par un vrai verrou base de données si la valeur
+  probante de cette preuve devait un jour être contestée devant un tiers.
+
+- **Cohérence nocturne : rapporte, ne corrige jamais.** La commande
+  `stagiaires:verifier-coherence` (02h00) journalise chaque anomalie via
+  le journal d'audit existant (`coherence.anomalie_detectee`, consultable
+  depuis l'écran d'administration) plutôt que par un nouveau canal de
+  notification dédié — à ajouter (email/SMS à l'administrateur) si le
+  simple journal d'audit ne suffit pas à garantir qu'une anomalie sera
+  vue à temps. Les cinq vérifications couvrent les scénarios cités
+  explicitement ; d'autres incohérences pourraient exister sans être
+  détectées par cette première version.

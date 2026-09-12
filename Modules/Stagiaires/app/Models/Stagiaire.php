@@ -129,6 +129,11 @@ class Stagiaire extends Model
         return $this->belongsTo(Courrier::class);
     }
 
+    public function lignesTableauRepartition(): HasMany
+    {
+        return $this->hasMany(TableauRepartitionLigne::class);
+    }
+
     public function direction(): BelongsTo
     {
         return $this->belongsTo(Direction::class);

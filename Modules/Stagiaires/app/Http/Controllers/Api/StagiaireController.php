@@ -139,7 +139,8 @@ class StagiaireController extends Controller
 
         return new StagiaireResource($stagiaire->load([
             'direction', 'presences', 'documents', 'doublonStagiaire', 'liensPublics', 'conventionSigneeDirectionPar',
-            'prolongations.prolongePar',
+            'prolongations.prolongePar', 'courrier',
+            'lignesTableauRepartition.tableau',
         ]));
     }
 

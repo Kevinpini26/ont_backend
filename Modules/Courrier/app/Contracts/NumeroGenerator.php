@@ -22,4 +22,15 @@ interface NumeroGenerator
      * réception (qui reste propre à chaque courrier).
      */
     public function genererNumeroBordereauLot(): string;
+
+    /**
+     * Lot D (classement retrouvable) — cote de classement générique,
+     * indépendante d'un numéro d'enregistrement préexistant (contrairement
+     * à celle calquée sur `numero_enregistrement`, voir
+     * CourrierCircuitService::genererCoteClassement()) : une séquence
+     * dédiée par `$cleSequence`, pour classer un objet qui n'a jamais lui-
+     * même de numéro d'enregistrement (une demande de stage restée en
+     * dispatch, un tableau de répartition).
+     */
+    public function genererCote(string $codeDirection, string $cleSequence): string;
 }

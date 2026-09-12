@@ -10,12 +10,14 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
+use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Support\EmpreinteFichier;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\TableauRepartitionPdfGenerator;
 use Modules\Stagiaires\Enums\IssueProposee;
@@ -25,6 +27,7 @@ use Modules\Stagiaires\Exceptions\TableauRepartitionTransitionException;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\TableauRepartition;
 use Modules\Stagiaires\Models\TableauRepartitionLigne;
+use Modules\Stagiaires\Models\TableauRepartitionScellement;
 use Modules\Stagiaires\Support\AvertissementsLigneTableau;
 
 /**
@@ -52,6 +55,7 @@ class TableauRepartitionCircuitService
         private readonly StagiaireCircuitService $stagiaires,
         private readonly AvertissementsLigneTableau $avertissements,
         private readonly DelegationResolver $delegations,
+        private readonly CourrierCircuitService $courriers,
     ) {}
 
     private function assertStatut(TableauRepartition $tableau, TableauRepartitionStatut $attendu): void
@@ -426,7 +430,12 @@ class TableauRepartitionCircuitService
             $redacteur = $tableau->redacteur()->firstOrFail();
             $stagiairesANotifier = [];
 
-            foreach ($tableau->lignes()->with('stagiaire')->get() as $ligne) {
+            foreach ($tableau->lignes()->with('stagiaire.courrier')->get() as $ligne) {
+                // Lot D, point 1 : chaque lettre garde sa cote individuelle
+                // dès que le sort du dossier qu'elle porte est réellement
+                // tranché — retenu ou non, jamais avant.
+                $this->courriers->classerDemandeStage($ligne->stagiaire->courrier);
+
                 if ($ligne->issue_proposee === IssueProposee::NON_RETENU) {
                     $stagiairesANotifier[] = $this->stagiaires->nonRetenu(
                         $ligne->stagiaire,
@@ -466,8 +475,29 @@ class TableauRepartitionCircuitService
 
             $this->tracer($courrier, $dg, $enInterim);
 
+            // Lot D, point 2 : le tableau approuvé reçoit sa propre cote,
+            // au même titre que chaque lettre qu'il porte — retrouvable
+            // seul, sans passer par un dossier stagiaire précis.
+            $tableau->cote_classement = $this->numeros->genererCote($this->directionDfp()->code, 'classement_tableau');
             $tableau->pdf_chemin = $this->pdf->generer($tableau->fresh(['lignes.stagiaire', 'lignes.directionAccueilProposee', 'direction', 'redacteur']));
             $tableau->save();
+
+            // Lot D, point 3 (scellement du feu vert) : posé une seule
+            // fois, juste après la génération du PDF définitif — jamais
+            // régénéré ensuite (aucun code de ce service ne réécrit
+            // pdf_chemin pour un tableau déjà approuvé, la transition
+            // elle-même ne redevenant jamais possible une fois franchie).
+            if ($tableau->scellement()->exists()) {
+                throw new TableauRepartitionTransitionException('Ce tableau est déjà scellé : impossible de le sceller une seconde fois.');
+            }
+
+            TableauRepartitionScellement::query()->create([
+                'tableau_repartition_id' => $tableau->id,
+                'pdf_sha256' => EmpreinteFichier::pourFichierStocke($tableau->pdf_chemin),
+                'auteur_id' => $dg->id,
+                'mention_interim' => $enInterim,
+                'created_at' => now(),
+            ]);
 
             $this->audit->enregistrer('tableau_repartition.approuve', $tableau, $dg);
 

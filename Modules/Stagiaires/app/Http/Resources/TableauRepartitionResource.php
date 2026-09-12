@@ -24,6 +24,13 @@ class TableauRepartitionResource extends JsonResource
             'approuve_par' => $this->whenLoaded('approuvePar', fn () => $this->approuvePar?->name),
             'approuve_at' => $this->approuve_at,
             'pdf_disponible' => $this->pdf_chemin !== null,
+            'cote_classement' => $this->cote_classement,
+            'scellement' => $this->whenLoaded('scellement', fn () => $this->scellement === null ? null : [
+                'pdf_sha256' => $this->scellement->pdf_sha256,
+                'auteur' => $this->scellement->relationLoaded('auteur') ? $this->scellement->auteur?->name : null,
+                'mention_interim' => $this->scellement->mention_interim,
+                'created_at' => $this->scellement->created_at,
+            ]),
             'tour' => $this->whenLoaded('courrier', fn () => $this->courrier?->tour),
             'avis_dg_commentaire' => $this->whenLoaded('courrier', fn () => $this->courrier?->avis_dg_commentaire),
             'lignes' => TableauRepartitionLigneResource::collection($this->whenLoaded('lignes')),

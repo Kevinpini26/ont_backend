@@ -82,6 +82,20 @@ class StagiaireResource extends JsonResource
             'cloture_at' => $this->cloture_at,
             'created_at' => $this->created_at,
 
+            // Lot D : classement retrouvable — la lettre d'origine (via le
+            // courrier porteur) et le tableau de répartition qui a tranché
+            // son sort, chacun avec sa propre cote, navigables l'un depuis
+            // l'autre.
+            'courrier_cote_classement' => $this->whenLoaded('courrier', fn () => $this->courrier?->cote_classement),
+            'tableau_repartition' => $this->whenLoaded('lignesTableauRepartition', function () {
+                $ligne = $this->lignesTableauRepartition->first(fn ($l) => $l->tableau?->statut?->value === 'approuve');
+
+                return $ligne === null ? null : [
+                    'id' => $ligne->tableau->id,
+                    'cote_classement' => $ligne->tableau->cote_classement,
+                ];
+            }),
+
             // Lot B : issue individuelle du dossier après le feu vert.
             'motif_non_retenu' => $this->motif_non_retenu,
             'motif_non_retenu_label' => $this->motif_non_retenu ? (config('stagiaires.motifs_non_retenu')[$this->motif_non_retenu] ?? $this->motif_non_retenu) : null,

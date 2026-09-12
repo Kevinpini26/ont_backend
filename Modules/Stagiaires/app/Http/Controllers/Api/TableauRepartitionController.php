@@ -26,6 +26,7 @@ class TableauRepartitionController extends Controller
         return new TableauRepartitionResource($tableau->load([
             'direction', 'redacteur', 'approuvePar', 'courrier',
             'lignes.stagiaire', 'lignes.directionAccueilProposee',
+            'scellement.auteur',
         ]));
     }
 

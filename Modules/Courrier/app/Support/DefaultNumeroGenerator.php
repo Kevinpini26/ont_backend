@@ -41,4 +41,16 @@ class DefaultNumeroGenerator implements NumeroGenerator
 
         return sprintf('BL-%d-%04d', $annee, $sequence);
     }
+
+    public function genererCote(string $codeDirection, string $cleSequence): string
+    {
+        $annee = Date::now()->year;
+        $sequence = $this->sequences->suivant($cleSequence, $annee);
+
+        return strtr(config('courrier.format_cote_classement', '{direction}-{annee}-{sequence}'), [
+            '{direction}' => $codeDirection,
+            '{annee}' => $annee,
+            '{sequence}' => sprintf('%04d', $sequence),
+        ]);
+    }
 }

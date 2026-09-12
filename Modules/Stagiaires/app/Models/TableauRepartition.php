@@ -5,6 +5,7 @@ namespace Modules\Stagiaires\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -24,6 +25,7 @@ class TableauRepartition extends Model
         'approuve_par_id',
         'approuve_at',
         'pdf_chemin',
+        'cote_classement',
     ];
 
     protected function casts(): array
@@ -59,6 +61,11 @@ class TableauRepartition extends Model
     public function lignes(): HasMany
     {
         return $this->hasMany(TableauRepartitionLigne::class);
+    }
+
+    public function scellement(): HasOne
+    {
+        return $this->hasOne(TableauRepartitionScellement::class, 'tableau_repartition_id');
     }
 
     public function modifiable(): bool
