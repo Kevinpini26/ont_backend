@@ -32,7 +32,13 @@ class CourrierFactory extends Factory
         return [
             'numero_accuse_reception' => sprintf('AR-%d-%06d', now()->year, $sequence),
             'objet' => fake()->sentence(),
-            'contenu' => ['type' => 'doc', 'content' => []],
+            // null, comme un courrier réellement créé par la Réception
+            // (voir StoreCourrierRequest — contenu n'est renseigné que
+            // pour un courrier initié par la DG) : {type: doc, content:
+            // []} est un document ProseMirror invalide (le schéma exige
+            // "block+", au moins un bloc) et fait planter TipTapEditor à
+            // l'affichage.
+            'contenu' => null,
             'type' => CourrierType::CORRESPONDANCE_GENERALE,
             'statut' => CourrierStatut::RECU,
             'direction_origine_id' => Direction::factory(),
