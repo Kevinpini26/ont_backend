@@ -4,11 +4,14 @@ namespace Modules\Stagiaires\Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Modules\Courrier\Enums\MentionImputation;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use Modules\Stagiaires\Enums\IssueProposee;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Services\StagiaireCircuitService;
+use Modules\Stagiaires\Services\TableauRepartitionCircuitService;
 
 /**
  * Un stagiaire académique et un stagiaire professionnel à chaque étape du
@@ -24,11 +27,20 @@ class StagiaireDemoSeeder extends Seeder
 
     private Direction $direction;
 
-    public function run(StagiaireCircuitService $circuit): void
+    private TableauRepartitionCircuitService $tableaux;
+
+    private User $reception;
+
+    private User $dg;
+
+    public function run(StagiaireCircuitService $circuit, TableauRepartitionCircuitService $tableaux): void
     {
         $this->direction = Direction::query()->where('code', 'DRHL')->firstOrFail();
         $dfp = User::query()->where('email', 'dfp@ont.cd')->firstOrFail();
         $responsable = User::query()->where('email', 'responsable.drhl@ont.cd')->firstOrFail();
+        $this->tableaux = $tableaux;
+        $this->reception = User::query()->where('email', 'reception@ont.cd')->firstOrFail();
+        $this->dg = User::query()->where('email', 'dg@ont.cd')->firstOrFail();
 
         foreach (['academique', 'professionnel'] as $typeStage) {
             $this->dossierRecu($typeStage);
@@ -87,14 +99,14 @@ class StagiaireDemoSeeder extends Seeder
     {
         $stagiaire = $this->nouveauStagiaire($typeStage, 'affecté');
         $circuit->examinerDossier($stagiaire);
-        $circuit->affecter($stagiaire, $dfp, $direction->id);
+        $this->affecterViaTableau($stagiaire, $dfp, $direction);
     }
 
     private function stageEnCours(StagiaireCircuitService $circuit, string $typeStage, User $dfp, Direction $direction): void
     {
         $stagiaire = $this->nouveauStagiaire($typeStage, 'stage en cours');
         $circuit->examinerDossier($stagiaire);
-        $circuit->affecter($stagiaire, $dfp, $direction->id);
+        $this->affecterViaTableau($stagiaire, $dfp, $direction);
 
         $debut = Carbon::now()->subWeeks(2);
         $circuit->validerArrivee($stagiaire, $debut, $debut->copy()->addWeeks(8));
@@ -106,7 +118,7 @@ class StagiaireDemoSeeder extends Seeder
     {
         $stagiaire = $this->nouveauStagiaire($typeStage, 'évaluation en cours');
         $circuit->examinerDossier($stagiaire);
-        $circuit->affecter($stagiaire, $dfp, $direction->id);
+        $this->affecterViaTableau($stagiaire, $dfp, $direction);
 
         $debut = Carbon::now()->subMonths(3);
         $fin = $debut->copy()->addWeeks(8);
@@ -125,7 +137,7 @@ class StagiaireDemoSeeder extends Seeder
     {
         $stagiaire = $this->nouveauStagiaire($typeStage, 'clôturé');
         $circuit->examinerDossier($stagiaire);
-        $circuit->affecter($stagiaire, $dfp, $direction->id);
+        $this->affecterViaTableau($stagiaire, $dfp, $direction);
 
         $debut = Carbon::now()->subMonths(4);
         $fin = $debut->copy()->addWeeks(8);
@@ -138,6 +150,42 @@ class StagiaireDemoSeeder extends Seeder
         // La seconde évaluation déclenche la clôture automatique et la
         // génération de l'attestation (avec son sceau de réussite).
         $circuit->evaluerParDfp($stagiaire, $dfp, $this->grille($typeStage, 1.0));
+    }
+
+    /**
+     * Lot 5/A : l'affectation réelle n'est plus qu'un effet de
+     * l'approbation d'un tableau de répartition — reproduit tout le
+     * trajet (imputation à la DFP, tableau, ligne, soumission,
+     * présentation à la DG, approbation) pour chaque stagiaire de
+     * démonstration qui doit apparaître "affecté".
+     */
+    private function affecterViaTableau(Stagiaire $stagiaire, User $dfp, Direction $direction): void
+    {
+        /** @var Courrier $courrier */
+        $courrier = $stagiaire->courrier()->firstOrFail();
+        $courrier->imputations()->create([
+            'direction_id' => Direction::query()->where('code', config('stagiaires.direction_dfp_code'))->firstOrFail()->id,
+            'mention' => MentionImputation::POUR_ATTRIBUTION,
+            'est_principale' => true,
+            'imputee_par_id' => $this->dg->id,
+        ]);
+
+        $tableau = $this->tableaux->creer($dfp, now()->subMonth()->toDateString(), now()->addMonth()->toDateString());
+        $this->tableaux->ajouterLigne(
+            $tableau, $stagiaire, $dfp, $direction->id,
+            now()->toDateString(), now()->addMonths(3)->toDateString(),
+            'Encadrant de démonstration',
+            IssueProposee::RETENU, null, null,
+        );
+        $this->tableaux->soumettre($tableau, $dfp);
+        $this->tableaux->representerDg($tableau, $this->reception);
+        $this->tableaux->rendreAvis($tableau, $this->dg, true, null);
+
+        // L'approbation affecte $stagiaire via une tout autre instance
+        // (chargée depuis la ligne, à l'intérieur du service) : sans ce
+        // refresh(), l'appelant continue de voir "en instruction" en
+        // mémoire et toute étape suivante (validerArrivee()...) échoue.
+        $stagiaire->refresh();
     }
 
     private function enregistrerPresences(StagiaireCircuitService $circuit, Stagiaire $stagiaire, User $saisiPar, Carbon $debut, Carbon $fin): void

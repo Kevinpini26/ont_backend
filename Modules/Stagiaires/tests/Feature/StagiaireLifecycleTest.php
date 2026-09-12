@@ -48,10 +48,8 @@ class StagiaireLifecycleTest extends StagiaireTestCase
             ->assertOk()
             ->assertJsonPath('data.statut', StagiaireStatut::EN_ATTENTE_AFFECTATION->value);
 
-        $this->actingAs($dfp)
-            ->postJson("/api/v1/stagiaires/{$stagiaire->id}/affecter", ['direction_id' => $direction->id])
-            ->assertOk()
-            ->assertJsonPath('data.statut', StagiaireStatut::AFFECTE->value);
+        $this->affecterViaTableau($stagiaire, $direction, $dfp)->assertOk();
+        $this->assertSame(StagiaireStatut::AFFECTE, $stagiaire->fresh()->statut);
 
         $this->assertDatabaseHas('notifications', [
             'notifiable_id' => $responsable->id,
@@ -151,20 +149,11 @@ class StagiaireLifecycleTest extends StagiaireTestCase
         $this->assertCount(2, array_unique($numeros));
     }
 
-    public function test_seul_le_dfp_peut_affecter_un_stagiaire(): void
-    {
-        $direction = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($direction)->create();
-
-        $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
-
-        // Un dossier pas encore affecté n'a pas de direction_id : le Global
-        // Scope le rend invisible à tout responsable de direction (404),
-        // seuls DFP/admin/postes centraux le voient avant affectation.
-        $this->actingAs($responsable)
-            ->postJson("/api/v1/stagiaires/{$stagiaire->id}/affecter", ['direction_id' => $direction->id])
-            ->assertStatus(404);
-    }
+    // "Seul le DFP peut affecter" : couvert par
+    // TableauRepartitionTest::test_seule_la_dfp_peut_ajouter_une_ligne()
+    // depuis le Lot 5 (l'affectation directe n'existe plus, voir
+    // StagiaireCircuitService::affecter() — appelée uniquement par
+    // TableauRepartitionCircuitService::rendreAvis()).
 
     public function test_seule_la_direction_daccueil_correspondante_peut_evaluer_le_travail(): void
     {
@@ -202,15 +191,31 @@ class StagiaireLifecycleTest extends StagiaireTestCase
             ->assertStatus(403);
     }
 
-    public function test_laffectation_est_refusee_pour_une_direction_inactive(): void
+    /**
+     * Rejetée dès l'ajout de la ligne au tableau (voir
+     * TableauRepartitionCircuitService::ajouterLigne()), pas seulement à
+     * l'approbation : inutile de laisser la DFP composer un tableau autour
+     * d'une direction inéligible.
+     */
+    public function test_lajout_dune_ligne_est_refuse_pour_une_direction_inactive(): void
     {
+        $this->directionDfp();
         $direction = Direction::factory()->create(['actif' => false]);
         $dfp = $this->dfp();
 
         $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
 
-        $this->actingAs($dfp)
-            ->postJson("/api/v1/stagiaires/{$stagiaire->id}/affecter", ['direction_id' => $direction->id])
-            ->assertStatus(422);
+        $idTableau = $this->actingAs($dfp)->postJson('/api/v1/tableaux-repartition', [
+            'periode_debut' => now()->toDateString(),
+            'periode_fin' => now()->addMonth()->toDateString(),
+        ])->json('data.id');
+
+        $this->actingAs($dfp)->postJson("/api/v1/tableaux-repartition/{$idTableau}/lignes", [
+            'stagiaire_id' => $stagiaire->id,
+            'direction_accueil_proposee_id' => $direction->id,
+            'date_debut_proposee' => now()->addMonth()->toDateString(),
+            'date_fin_proposee' => now()->addMonths(3)->toDateString(),
+            'encadrant_pressenti' => 'x',
+        ])->assertStatus(422);
     }
 }

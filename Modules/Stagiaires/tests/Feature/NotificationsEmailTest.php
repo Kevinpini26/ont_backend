@@ -25,9 +25,7 @@ class NotificationsEmailTest extends StagiaireTestCase
         $responsable = User::factory()->responsableDirection($direction)->create();
         $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
 
-        $this->actingAs($dfp)
-            ->postJson("/api/v1/stagiaires/{$stagiaire->id}/affecter", ['direction_id' => $direction->id])
-            ->assertOk();
+        $this->affecterViaTableau($stagiaire, $direction, $dfp)->assertOk();
 
         Mail::assertQueued(StagiaireAffecteMail::class, fn ($mail) => $mail->hasTo($responsable->email));
     }

@@ -54,7 +54,11 @@ class StagiairePolicy
     }
 
     /**
-     * Action sensible : affecter un stagiaire à une direction d'accueil.
+     * Plus de route "/affecter" directe depuis le Lot 5 (l'affectation
+     * réelle n'est plus qu'un effet de l'approbation d'un tableau de
+     * répartition) — cette porte reste utilisée telle quelle par
+     * ValiderArriveeRequest, un même filtre "poste DFP" pour une action
+     * différente mais tout aussi réservée à la DFP.
      */
     public function affecter(User $user): bool
     {

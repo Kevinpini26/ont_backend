@@ -14,7 +14,6 @@ use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Support\CsvExporter;
 use Modules\Stagiaires\Contracts\BadgeStagiairePdfGenerator;
 use Modules\Stagiaires\Enums\StagiaireStatut;
-use Modules\Stagiaires\Http\Requests\AffecterStagiaireRequest;
 use Modules\Stagiaires\Http\Requests\DefinirInformationsComplementairesRequest;
 use Modules\Stagiaires\Http\Requests\DefinirObjectifsRequest;
 use Modules\Stagiaires\Http\Requests\EvaluerDfpRequest;
@@ -149,21 +148,6 @@ class StagiaireController extends Controller
         $this->authorize('gererDossier', Stagiaire::class);
 
         return new StagiaireResource($this->circuit->examinerDossier($stagiaire)->load(['direction', 'conventionSigneeDirectionPar']));
-    }
-
-    public function affecter(AffecterStagiaireRequest $request, Stagiaire $stagiaire)
-    {
-        $data = $request->validated();
-
-        $stagiaire = $this->circuit->affecter(
-            $stagiaire,
-            $request->user(),
-            $data['direction_id'],
-            $data['forcer'] ?? false,
-            $data['justification'] ?? null,
-        );
-
-        return new StagiaireResource($stagiaire->load(['direction', 'conventionSigneeDirectionPar']));
     }
 
     public function reaffecter(ReaffecterStagiaireRequest $request, Stagiaire $stagiaire)

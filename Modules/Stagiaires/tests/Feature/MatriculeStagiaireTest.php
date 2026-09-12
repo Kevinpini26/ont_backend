@@ -18,9 +18,7 @@ class MatriculeStagiaireTest extends StagiaireTestCase
         $direction = Direction::factory()->create(['actif' => true]);
         $candidat = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
 
-        $this->actingAs($dfp)
-            ->postJson("/api/v1/stagiaires/{$candidat->id}/affecter", ['direction_id' => $direction->id])
-            ->assertOk();
+        $this->affecterViaTableau($candidat, $direction, $dfp)->assertOk();
 
         $matricule = $candidat->fresh()->matricule;
         $this->assertNotNull($matricule);
@@ -33,10 +31,10 @@ class MatriculeStagiaireTest extends StagiaireTestCase
         $direction = Direction::factory()->create(['actif' => true]);
 
         $premier = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
-        $this->actingAs($dfp)->postJson("/api/v1/stagiaires/{$premier->id}/affecter", ['direction_id' => $direction->id])->assertOk();
+        $this->affecterViaTableau($premier, $direction, $dfp)->assertOk();
 
         $second = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
-        $this->actingAs($dfp)->postJson("/api/v1/stagiaires/{$second->id}/affecter", ['direction_id' => $direction->id])->assertOk();
+        $this->affecterViaTableau($second, $direction, $dfp)->assertOk();
 
         $this->assertNotSame($premier->fresh()->matricule, $second->fresh()->matricule);
     }

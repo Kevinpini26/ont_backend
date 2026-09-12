@@ -5,9 +5,12 @@ namespace Modules\Stagiaires\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Modules\Stagiaires\Enums\IssueProposee;
+use Modules\Stagiaires\Http\Requests\AjouterLignesEnLotRequest;
 use Modules\Stagiaires\Http\Requests\AjouterLigneTableauRequest;
 use Modules\Stagiaires\Http\Requests\CreerTableauRepartitionRequest;
 use Modules\Stagiaires\Http\Requests\RendreAvisTableauRequest;
+use Modules\Stagiaires\Http\Resources\StagiaireResource;
 use Modules\Stagiaires\Http\Resources\TableauRepartitionResource;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\TableauRepartition;
@@ -55,6 +58,28 @@ class TableauRepartitionController extends Controller
         return $this->ressource($tableau);
     }
 
+    /**
+     * Lot A : les dossiers proposables à un tableau — jamais toute la
+     * base des demandes de stage, seulement ceux dont le courrier a été
+     * imputé à la DFP (voir TableauRepartitionCircuitService::dossiersEligibles()).
+     */
+    public function dossiersEligibles(Request $request)
+    {
+        $this->authorize('creer', TableauRepartition::class);
+
+        return StagiaireResource::collection($this->circuit->dossiersEligibles());
+    }
+
+    /**
+     * Lot B : liste paramétrable (config('stagiaires.motifs_non_retenu')),
+     * jamais figée côté frontend — un changement de config doit se
+     * refléter sans redéploiement.
+     */
+    public function motifsNonRetenu()
+    {
+        return response()->json(['data' => config('stagiaires.motifs_non_retenu')]);
+    }
+
     public function ajouterLigne(AjouterLigneTableauRequest $request, TableauRepartition $tableau)
     {
         $data = $request->validated();
@@ -64,11 +89,28 @@ class TableauRepartitionController extends Controller
         $this->circuit->ajouterLigne(
             $tableau,
             $stagiaire,
+            $request->user(),
             $data['direction_accueil_proposee_id'],
             $data['date_debut_proposee'],
             $data['date_fin_proposee'],
             $data['encadrant_pressenti'],
+            IssueProposee::from($data['issue_proposee'] ?? IssueProposee::RETENU->value),
+            $data['motif_non_retenu'] ?? null,
+            $data['motif_non_retenu_libre'] ?? null,
         );
+
+        return $this->ressource($tableau);
+    }
+
+    /**
+     * Lot A : "un seul geste enregistre toutes les lignes cochées" — même
+     * validation, mêmes avertissements non bloquants que l'ajout unitaire,
+     * mais en une transaction (voir
+     * TableauRepartitionCircuitService::ajouterLignesEnLot()).
+     */
+    public function ajouterLignesEnLot(AjouterLignesEnLotRequest $request, TableauRepartition $tableau)
+    {
+        $this->circuit->ajouterLignesEnLot($tableau, $request->user(), $request->validated('lignes'));
 
         return $this->ressource($tableau);
     }

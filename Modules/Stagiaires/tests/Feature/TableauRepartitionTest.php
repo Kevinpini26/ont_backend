@@ -24,7 +24,10 @@ class TableauRepartitionTest extends StagiaireTestCase
 
     private function stagiaireEnAttente(): Stagiaire
     {
-        return Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
+        $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
+        $this->imputerADfp($stagiaire);
+
+        return $stagiaire;
     }
 
     public function test_le_circuit_complet_de_soumission_a_lapprobation(): void
@@ -218,9 +221,9 @@ class TableauRepartitionTest extends StagiaireTestCase
                 'date_debut_proposee' => '2026-10-01',
                 'date_fin_proposee' => '2026-12-01',
                 'encadrant_pressenti' => 'x',
-            ]);
-            $this->actingAs($dfp)->postJson("/api/v1/tableaux-repartition/{$id}/soumettre");
-            $this->actingAs($reception)->postJson("/api/v1/tableaux-repartition/{$id}/representer-dg");
+            ])->assertOk();
+            $this->actingAs($dfp)->postJson("/api/v1/tableaux-repartition/{$id}/soumettre")->assertOk();
+            $this->actingAs($reception)->postJson("/api/v1/tableaux-repartition/{$id}/representer-dg")->assertOk();
 
             return $id;
         };
@@ -230,8 +233,13 @@ class TableauRepartitionTest extends StagiaireTestCase
 
         // Le même stagiaire remis "en attente d'affectation" (hypothèse de
         // test : un second cycle démarré par erreur avant que le Lot 5
-        // ne verrouille quoi que ce soit).
-        $stagiaire->update(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
+        // ne verrouille quoi que ce soit). refresh() d'abord : $stagiaire
+        // est resté sur son statut d'origine en mémoire (jamais relu
+        // depuis la première approbation, qui l'a fait passer par
+        // en_instruction puis affecte via d'autres instances) — sans lui,
+        // Eloquent ne verrait aucun changement dirty et n'émettrait aucune
+        // requête UPDATE.
+        $stagiaire->refresh()->update(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
 
         $secondId = $creerEtApprouver();
         $this->actingAs($dg)

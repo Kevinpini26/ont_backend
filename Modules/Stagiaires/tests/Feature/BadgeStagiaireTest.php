@@ -18,7 +18,7 @@ class BadgeStagiaireTest extends StagiaireTestCase
         $direction = Direction::factory()->create(['actif' => true]);
         $candidat = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
 
-        $this->actingAs($dfp)->postJson("/api/v1/stagiaires/{$candidat->id}/affecter", ['direction_id' => $direction->id])->assertOk();
+        $this->affecterViaTableau($candidat, $direction, $dfp)->assertOk();
 
         $reponse = $this->actingAs($dfp)->get("/api/v1/stagiaires/{$candidat->id}/badge")->assertOk();
 

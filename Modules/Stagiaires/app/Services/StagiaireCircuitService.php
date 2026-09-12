@@ -75,27 +75,44 @@ class StagiaireCircuitService
         return $stagiaire;
     }
 
+    /**
+     * Lot 5 (verrouiller la diffusion) : plus jamais une action directe de
+     * la DFP — appelée uniquement par
+     * TableauRepartitionCircuitService::rendreAvis() lors de l'approbation
+     * d'un tableau, une fois par ligne, à l'intérieur de la même
+     * transaction que l'approbation elle-même. C'est cette seule action,
+     * un seul horodatage, qui rend l'affectation réelle et déclenche tout
+     * le reste (note d'affectation, notification à la direction) —
+     * jusque-là le dossier reste "en instruction" (voir
+     * StagiaireStatut::EN_INSTRUCTION), sans effet visible à l'extérieur.
+     * Le contrôle de quota se fait ici, au moment où ça compte vraiment,
+     * pas à l'ajout d'une ligne au tableau — sans possibilité de
+     * dérogation "hors quota" (l'ancienne option forcer/justification de
+     * l'action directe disparaît avec elle ; voir docs/questions-ont.md
+     * si un besoin réel de dérogation via tableau se confirme).
+     */
     public function affecter(
         Stagiaire $stagiaire,
         User $dfp,
         int $directionId,
-        bool $forcer = false,
-        ?string $justification = null,
+        string $encadrantPressenti,
     ): Stagiaire {
-        $this->assertStatut($stagiaire, StagiaireStatut::EN_ATTENTE_AFFECTATION);
+        $this->assertStatut($stagiaire, StagiaireStatut::EN_INSTRUCTION);
 
         if (! $this->affectationRules->estEligible($directionId)) {
             throw new StagiaireTransitionException("Direction non éligible à l'affectation (inactive ou inexistante).");
         }
 
-        return DB::transaction(function () use ($stagiaire, $dfp, $directionId, $forcer, $justification) {
-            $horsQuota = $this->verrouillerEtVerifierQuota($directionId, $forcer);
+        return DB::transaction(function () use ($stagiaire, $dfp, $directionId, $encadrantPressenti) {
+            // forcer: false en dur — plus de dérogation "hors quota" pour
+            // cette action automatique (voir docblock de la méthode).
+            $this->verrouillerEtVerifierQuota($directionId, forcer: false);
 
             $stagiaire->direction_id = $directionId;
             $stagiaire->affecte_par_id = $dfp->id;
             $stagiaire->affecte_at = now();
             $stagiaire->statut = StagiaireStatut::AFFECTE;
-            $stagiaire->affecte_hors_quota = $horsQuota;
+            $stagiaire->maitre_stage = $encadrantPressenti;
             // Attribué à l'affectation, jamais avant : un dossier encore en
             // attente n'a pas d'existence administrative dans une direction,
             // donc pas encore d'identifiant stable.
@@ -120,13 +137,6 @@ class StagiaireCircuitService
             $this->audit->enregistrer('stagiaire.affectation', $stagiaire, $dfp, [
                 'direction_id' => $directionId,
             ]);
-
-            if ($horsQuota) {
-                $this->audit->enregistrer('stagiaire.affectation_hors_quota', $stagiaire, $dfp, [
-                    'direction_id' => $directionId,
-                    'justification' => $justification,
-                ]);
-            }
 
             $this->notifierResponsablesAffectation($stagiaire, $directionId);
 

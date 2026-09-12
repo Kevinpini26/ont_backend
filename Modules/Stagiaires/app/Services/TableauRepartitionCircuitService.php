@@ -2,6 +2,7 @@
 
 namespace Modules\Stagiaires\Services;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Enums\AvisDg;
@@ -16,12 +17,14 @@ use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DgDisponibilite;
 use Modules\Stagiaires\Contracts\AffectationRules;
 use Modules\Stagiaires\Contracts\TableauRepartitionPdfGenerator;
+use Modules\Stagiaires\Enums\IssueProposee;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Enums\TableauRepartitionStatut;
 use Modules\Stagiaires\Exceptions\TableauRepartitionTransitionException;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\TableauRepartition;
 use Modules\Stagiaires\Models\TableauRepartitionLigne;
+use Modules\Stagiaires\Support\AvertissementsLigneTableau;
 
 /**
  * Circuit du tableau de répartition (Lot 4) — "calqué sur celui du
@@ -45,6 +48,8 @@ class TableauRepartitionCircuitService
         private readonly AffectationRules $affectationRules,
         private readonly TableauRepartitionPdfGenerator $pdf,
         private readonly AuditLogger $audit,
+        private readonly StagiaireCircuitService $stagiaires,
+        private readonly AvertissementsLigneTableau $avertissements,
     ) {}
 
     private function assertStatut(TableauRepartition $tableau, TableauRepartitionStatut $attendu): void
@@ -70,8 +75,30 @@ class TableauRepartitionCircuitService
             ->firstOrFail();
     }
 
+    /**
+     * Lot A : plusieurs tableaux par période sont autorisés par défaut,
+     * dont des compléments pour les dossiers arrivés après coup — voir
+     * config('stagiaires.tableau_un_seul_par_periode') et
+     * docs/questions-ont.md. Un tableau "en cours" est tout ce qui n'est
+     * pas encore approuvé (brouillon compris) : un tableau approuvé ne
+     * bloque jamais l'ouverture de la période suivante.
+     */
     public function creer(User $dfp, string $periodeDebut, string $periodeFin): TableauRepartition
     {
+        if (config('stagiaires.tableau_un_seul_par_periode', false)) {
+            $existeDeja = TableauRepartition::query()
+                ->where('periode_debut', $periodeDebut)
+                ->where('periode_fin', $periodeFin)
+                ->where('statut', '!=', TableauRepartitionStatut::APPROUVE)
+                ->exists();
+
+            if ($existeDeja) {
+                throw new TableauRepartitionTransitionException(
+                    'Un tableau est déjà en cours pour cette période (config("stagiaires.tableau_un_seul_par_periode")).'
+                );
+            }
+        }
+
         return TableauRepartition::query()->create([
             'direction_id' => $this->directionDfp()->id,
             'redacteur_id' => $dfp->id,
@@ -81,21 +108,66 @@ class TableauRepartitionCircuitService
         ]);
     }
 
+    /**
+     * Lot A : un dossier n'est éligible à un tableau que si son courrier
+     * porteur a été imputé à la DFP par la DG — jamais ressaisi, jamais
+     * choisi librement par la DFP dans toute la base des demandes de
+     * stage. `en_attente_affectation` reste une condition nécessaire (la
+     * DFP a examiné le dossier, voir examinerDossier()) mais pas
+     * suffisante.
+     */
+    public function estEligibleAuTableau(Stagiaire $stagiaire): bool
+    {
+        if ($stagiaire->statut !== StagiaireStatut::EN_ATTENTE_AFFECTATION) {
+            return false;
+        }
+
+        /** @var Courrier|null $courrier */
+        $courrier = $stagiaire->courrier;
+
+        if ($courrier === null) {
+            return false;
+        }
+
+        return $courrier->imputations()
+            ->where('direction_id', $this->directionDfp()->id)
+            ->exists();
+    }
+
+    /**
+     * @return Collection<int, Stagiaire>
+     */
+    public function dossiersEligibles(): Collection
+    {
+        $directionDfpId = $this->directionDfp()->id;
+
+        return Stagiaire::query()
+            ->where('statut', StagiaireStatut::EN_ATTENTE_AFFECTATION)
+            ->whereHas('courrier.imputations', fn ($q) => $q->where('direction_id', $directionDfpId))
+            ->with('courrier')
+            ->orderBy('created_at')
+            ->get();
+    }
+
     public function ajouterLigne(
         TableauRepartition $tableau,
         Stagiaire $stagiaire,
+        User $dfp,
         int $directionAccueilProposeeId,
         string $dateDebutProposee,
         string $dateFinProposee,
         string $encadrantPressenti,
+        IssueProposee $issueProposee,
+        ?string $motifNonRetenu,
+        ?string $motifNonRetenuLibre,
     ): TableauRepartitionLigne {
         if (! $tableau->modifiable()) {
             throw new TableauRepartitionTransitionException('Ce tableau est déjà soumis : il ne peut plus être modifié.');
         }
 
-        if ($stagiaire->statut !== StagiaireStatut::EN_ATTENTE_AFFECTATION) {
+        if (! $this->estEligibleAuTableau($stagiaire)) {
             throw new TableauRepartitionTransitionException(
-                "Ce dossier est au statut «{$stagiaire->statut->label()}» : seul un dossier «En attente d'affectation» peut être ajouté à un tableau."
+                "Ce dossier n'est pas éligible : il doit être «En attente d'affectation» et son courrier doit avoir été imputé à la DFP par la Direction Générale."
             );
         }
 
@@ -103,14 +175,75 @@ class TableauRepartitionCircuitService
             throw new TableauRepartitionTransitionException("Direction d'accueil proposée non éligible (inactive ou inexistante).");
         }
 
-        return TableauRepartitionLigne::query()->create([
-            'tableau_repartition_id' => $tableau->id,
-            'stagiaire_id' => $stagiaire->id,
-            'direction_accueil_proposee_id' => $directionAccueilProposeeId,
-            'date_debut_proposee' => $dateDebutProposee,
-            'date_fin_proposee' => $dateFinProposee,
-            'encadrant_pressenti' => $encadrantPressenti,
-        ]);
+        if ($issueProposee === IssueProposee::NON_RETENU && $motifNonRetenu === null) {
+            throw new TableauRepartitionTransitionException('Un motif est requis pour une issue "non retenu".');
+        }
+
+        return DB::transaction(function () use (
+            $tableau, $stagiaire, $dfp, $directionAccueilProposeeId, $dateDebutProposee, $dateFinProposee,
+            $encadrantPressenti, $issueProposee, $motifNonRetenu, $motifNonRetenuLibre,
+        ) {
+            $ligne = TableauRepartitionLigne::query()->create([
+                'tableau_repartition_id' => $tableau->id,
+                'stagiaire_id' => $stagiaire->id,
+                'direction_accueil_proposee_id' => $directionAccueilProposeeId,
+                'date_debut_proposee' => $dateDebutProposee,
+                'date_fin_proposee' => $dateFinProposee,
+                'encadrant_pressenti' => $encadrantPressenti,
+                'issue_proposee' => $issueProposee,
+                'motif_non_retenu' => $motifNonRetenu,
+                'motif_non_retenu_libre' => $motifNonRetenuLibre,
+            ]);
+
+            // Lot A : les contrôles n'ont jamais bloqué la création
+            // ci-dessus — seule leur présence est tracée, pour que le
+            // passage en force reste visible sans jamais être un obstacle.
+            $avertissements = $this->avertissements->pour($ligne->fresh(['tableau', 'stagiaire']));
+            if ($avertissements !== []) {
+                $this->audit->enregistrer('tableau_repartition.ligne_ajoutee_avec_avertissement', $ligne, $dfp, [
+                    'codes' => array_column($avertissements, 'code'),
+                ]);
+            }
+
+            // Lot 5/B : "en instruction" tant que le tableau qui le porte
+            // n'est pas approuvé — rien ne sort avant (voir
+            // StagiairePolicy, StagiaireCircuitService::validerArrivee()
+            // toujours gardée par le statut AFFECTE).
+            $stagiaire->statut = StagiaireStatut::EN_INSTRUCTION;
+            $stagiaire->save();
+
+            return $ligne;
+        });
+    }
+
+    /**
+     * @param  list<array{stagiaire_id: int, direction_accueil_proposee_id: int, date_debut_proposee: string, date_fin_proposee: string, encadrant_pressenti: string, issue_proposee?: string, motif_non_retenu?: ?string, motif_non_retenu_libre?: ?string}>  $lignes
+     * @return list<TableauRepartitionLigne>
+     */
+    public function ajouterLignesEnLot(TableauRepartition $tableau, User $dfp, array $lignes): array
+    {
+        return DB::transaction(function () use ($tableau, $dfp, $lignes) {
+            $resultat = [];
+
+            foreach ($lignes as $donnees) {
+                $stagiaire = Stagiaire::query()->findOrFail($donnees['stagiaire_id']);
+
+                $resultat[] = $this->ajouterLigne(
+                    $tableau,
+                    $stagiaire,
+                    $dfp,
+                    $donnees['direction_accueil_proposee_id'],
+                    $donnees['date_debut_proposee'],
+                    $donnees['date_fin_proposee'],
+                    $donnees['encadrant_pressenti'],
+                    IssueProposee::from($donnees['issue_proposee'] ?? IssueProposee::RETENU->value),
+                    $donnees['motif_non_retenu'] ?? null,
+                    $donnees['motif_non_retenu_libre'] ?? null,
+                );
+            }
+
+            return $resultat;
+        });
     }
 
     public function retirerLigne(TableauRepartition $tableau, TableauRepartitionLigne $ligne): void
@@ -123,7 +256,18 @@ class TableauRepartitionCircuitService
             throw new TableauRepartitionTransitionException("Cette ligne n'appartient pas à ce tableau.");
         }
 
-        $ligne->delete();
+        DB::transaction(function () use ($ligne) {
+            $stagiaire = $ligne->stagiaire()->lockForUpdate()->firstOrFail();
+            $ligne->delete();
+
+            // Proposition retirée : retour à "en attente d'affectation",
+            // sauf si le dossier a par ailleurs déjà avancé autrement
+            // (jamais le cas en pratique tant qu'il est en instruction).
+            if ($stagiaire->statut === StagiaireStatut::EN_INSTRUCTION) {
+                $stagiaire->statut = StagiaireStatut::EN_ATTENTE_AFFECTATION;
+                $stagiaire->save();
+            }
+        });
     }
 
     /**
@@ -199,10 +343,13 @@ class TableauRepartitionCircuitService
     /**
      * La DG approuve en bloc, ou renvoie avec observations (le dossier
      * revient chez la Réception, tour suivant — voir representerDg()).
-     * Contrairement à CourrierCircuitService::rendreAvisDg(), l'approbation
-     * ne rend rien effectif sur les stagiaires (direction réelle, dates,
-     * notifications) : c'est le Lot 5 qui verrouille et câble ce geste,
-     * volontairement laissé hors de ce lot.
+     * L'approbation est la seule action qui rend les propositions du
+     * tableau effectives (Lot 5, "verrouiller la diffusion") : chaque
+     * ligne devient une vraie affectation (voir
+     * StagiaireCircuitService::affecter()), avec ses effets — note
+     * d'affectation, notification à la direction — jusque-là aucun canal
+     * ne s'ouvre (voir StagiaireStatut::EN_INSTRUCTION). Un renvoi ne
+     * déclenche rien de tout cela.
      */
     public function rendreAvis(TableauRepartition $tableau, User $dg, bool $approuve, ?string $observations): TableauRepartition
     {
@@ -247,6 +394,25 @@ class TableauRepartitionCircuitService
             }
 
             $this->assertAucunDoublonApprouve($tableau);
+
+            // Lot 5 : c'est ici, et seulement ici, que chaque proposition
+            // devient une affectation réelle — une ligne, un appel, à
+            // l'intérieur de cette même transaction : si l'une échoue
+            // (quota atteint entre-temps), l'approbation entière échoue
+            // "en bloc", rien n'est affecté à moitié. redacteur (la DFP
+            // qui a composé le tableau) reste l'auteur de l'affectation,
+            // pas la DG qui ne fait qu'approuver le lot.
+            /** @var User $redacteur */
+            $redacteur = $tableau->redacteur()->firstOrFail();
+
+            foreach ($tableau->lignes()->with('stagiaire')->get() as $ligne) {
+                $this->stagiaires->affecter(
+                    $ligne->stagiaire,
+                    $redacteur,
+                    $ligne->direction_accueil_proposee_id,
+                    $ligne->encadrant_pressenti,
+                );
+            }
 
             $courrier->statut = CourrierStatut::TABLEAU_APPROUVE;
             $courrier->save();

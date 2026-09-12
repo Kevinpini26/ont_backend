@@ -5,6 +5,7 @@ namespace Modules\Stagiaires\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Kernel\Models\Direction;
+use Modules\Stagiaires\Enums\IssueProposee;
 
 class TableauRepartitionLigne extends Model
 {
@@ -17,6 +18,9 @@ class TableauRepartitionLigne extends Model
         'date_debut_proposee',
         'date_fin_proposee',
         'encadrant_pressenti',
+        'issue_proposee',
+        'motif_non_retenu',
+        'motif_non_retenu_libre',
     ];
 
     protected function casts(): array
@@ -24,6 +28,7 @@ class TableauRepartitionLigne extends Model
         return [
             'date_debut_proposee' => 'date',
             'date_fin_proposee' => 'date',
+            'issue_proposee' => IssueProposee::class,
         ];
     }
 

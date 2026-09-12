@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\MentionImputation;
 use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
@@ -29,6 +30,7 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgDisponibilite;
@@ -636,12 +638,41 @@ class CourrierCircuitService
         return DB::transaction(function () use ($courrier, $utilisateur, $avis, $commentaire) {
             $courrier = $this->lockCourrierFrais($courrier);
 
+            // Lot A (tableau généré, non ressaisi) : une demande de stage
+            // n'a de sens que traitée par la DFP — sans ce filet, un avis
+            // favorable rendu sans imputation manuelle laisserait le
+            // dossier partir en rédaction interne (projet_reponse_en_cours)
+            // au lieu de rejoindre le circuit du tableau de répartition, et
+            // la demande resterait orpheline de tout tableau. Configurable
+            // (config('stagiaires.imputation_automatique_dfp'), défaut
+            // activé) — voir docs/questions-ont.md.
+            if (
+                $avis === AvisDg::FAVORABLE
+                && $courrier->type === CourrierType::DEMANDE_STAGE
+                && config('stagiaires.imputation_automatique_dfp', true)
+                && $courrier->imputations()->where('est_principale', true)->doesntExist()
+            ) {
+                $directionDfp = Direction::query()
+                    ->where('code', config('stagiaires.direction_dfp_code'))
+                    ->first();
+
+                if ($directionDfp !== null) {
+                    $courrier->imputations()->create([
+                        'direction_id' => $directionDfp->id,
+                        'mention' => MentionImputation::POUR_ATTRIBUTION,
+                        'est_principale' => true,
+                        'imputee_par_id' => $utilisateur->id,
+                    ]);
+                }
+            }
+
             // Un avis "réservé" veut dire que la décision n'est pas
             // arrêtée : le dossier boucle (retour_reception, voir
             // config('courrier.circuit_transitions.complet.en_attente_avis_dg'))
             // plutôt que d'avancer comme si une décision avait été prise.
-            // Un avis favorable sur un courrier déjà imputé (Lot 3) part en
-            // dispatch plutôt qu'en rédaction interne de réponse.
+            // Un avis favorable sur un courrier déjà imputé (Lot 3), y
+            // compris par le filet ci-dessus, part en dispatch plutôt
+            // qu'en rédaction interne de réponse.
             $courrierImpute = $courrier->imputations()->where('est_principale', true)->exists();
             $statutCible = match (true) {
                 $avis === AvisDg::RESERVE => CourrierStatut::RETOUR_RECEPTION,

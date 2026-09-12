@@ -22,11 +22,14 @@ class ActiveDirectionsAffectationRules implements AffectationRules
 
     public function estSaturee(int $directionId): bool
     {
-        $capaciteMax = Direction::query()->whereKey($directionId)->value('capacite_max');
+        ['occupation' => $occupation, 'capacite' => $capacite] = $this->occupationEtCapacite($directionId);
 
-        if ($capaciteMax === null) {
-            return false;
-        }
+        return $capacite !== null && $occupation >= $capacite;
+    }
+
+    public function occupationEtCapacite(int $directionId): array
+    {
+        $capaciteMax = Direction::query()->whereKey($directionId)->value('capacite_max');
 
         // withoutGlobalScopes : ce comptage doit refléter l'occupation
         // réelle de la direction, indépendamment du périmètre de visibilité
@@ -37,6 +40,6 @@ class ActiveDirectionsAffectationRules implements AffectationRules
             ->whereIn('statut', [StagiaireStatut::AFFECTE, StagiaireStatut::STAGE_EN_COURS])
             ->count();
 
-        return $occupation >= $capaciteMax;
+        return ['occupation' => $occupation, 'capacite' => $capaciteMax];
     }
 }

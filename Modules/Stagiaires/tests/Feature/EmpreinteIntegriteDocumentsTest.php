@@ -27,7 +27,7 @@ class EmpreinteIntegriteDocumentsTest extends StagiaireTestCase
         $direction = Direction::factory()->create(['actif' => true]);
         $candidat = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
 
-        $this->actingAs($dfp)->postJson("/api/v1/stagiaires/{$candidat->id}/affecter", ['direction_id' => $direction->id])->assertOk();
+        $this->affecterViaTableau($candidat, $direction, $dfp)->assertOk();
 
         $document = $candidat->fresh()->documents()->where('type', DocumentType::NOTE_AFFECTATION->value)->firstOrFail();
 

@@ -41,6 +41,7 @@
             <th>Direction d'accueil proposée</th>
             <th>Dates proposées</th>
             <th>Encadrant pressenti</th>
+            <th>Issue</th>
         </tr>
         @foreach($tableau->lignes as $ligne)
             <tr>
@@ -48,6 +49,12 @@
                 <td>{{ $ligne->directionAccueilProposee?->nom }}</td>
                 <td>{{ $ligne->date_debut_proposee->format('d/m/Y') }} — {{ $ligne->date_fin_proposee->format('d/m/Y') }}</td>
                 <td>{{ $ligne->encadrant_pressenti }}</td>
+                <td>
+                    {{ $ligne->issue_proposee?->label() }}
+                    @if($ligne->issue_proposee?->value === 'non_retenu')
+                        <br><small>{{ config('stagiaires.motifs_non_retenu')[$ligne->motif_non_retenu] ?? $ligne->motif_non_retenu }}</small>
+                    @endif
+                </td>
             </tr>
         @endforeach
     </table>

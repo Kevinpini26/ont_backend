@@ -31,7 +31,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/stagiaires/{stagiaire}', [StagiaireController::class, 'show']);
 
     Route::post('/stagiaires/{stagiaire}/examiner-dossier', [StagiaireController::class, 'examinerDossier']);
-    Route::post('/stagiaires/{stagiaire}/affecter', [StagiaireController::class, 'affecter']);
+    // Plus de route directe "/affecter" (Lot 5) : l'affectation réelle
+    // n'est plus qu'un effet de l'approbation d'un tableau de répartition
+    // (voir TableauRepartitionCircuitService::rendreAvis()).
     Route::post('/stagiaires/{stagiaire}/reaffecter', [StagiaireController::class, 'reaffecter']);
     Route::post('/stagiaires/{stagiaire}/valider-arrivee', [StagiaireController::class, 'validerArrivee']);
     Route::post('/stagiaires/{stagiaire}/terminer-stage', [StagiaireController::class, 'terminerStage']);
@@ -66,8 +68,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Lot 4 — tableau de répartition.
     Route::get('/tableaux-repartition', [TableauRepartitionController::class, 'index']);
     Route::post('/tableaux-repartition', [TableauRepartitionController::class, 'store']);
+    Route::get('/tableaux-repartition/dossiers-eligibles', [TableauRepartitionController::class, 'dossiersEligibles']);
+    Route::get('/tableaux-repartition/motifs-non-retenu', [TableauRepartitionController::class, 'motifsNonRetenu']);
     Route::get('/tableaux-repartition/{tableau}', [TableauRepartitionController::class, 'show']);
     Route::post('/tableaux-repartition/{tableau}/lignes', [TableauRepartitionController::class, 'ajouterLigne']);
+    Route::post('/tableaux-repartition/{tableau}/lignes/lot', [TableauRepartitionController::class, 'ajouterLignesEnLot']);
     Route::delete('/tableaux-repartition/{tableau}/lignes/{ligne}', [TableauRepartitionController::class, 'retirerLigne']);
     Route::post('/tableaux-repartition/{tableau}/soumettre', [TableauRepartitionController::class, 'soumettre']);
     Route::post('/tableaux-repartition/{tableau}/representer-dg', [TableauRepartitionController::class, 'representerDg']);
