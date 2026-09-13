@@ -84,4 +84,39 @@ class CourrierPdfSignatureTest extends CourrierTestCase
             ->get("/api/v1/courriers/{$courrier->id}/pdf")
             ->assertStatus(404);
     }
+
+    /**
+     * Un courrier "enregistre" via le circuit court (enregistrement direct,
+     * jamais passé par "signe") n'a pas de PDF — voir signer(), seul point
+     * où pdf_chemin est renseigné. `pdf_disponible` doit refléter la
+     * présence réelle du fichier, pas seulement le statut : sinon le
+     * frontend affiche un bouton "Voir le PDF signé" qui échoue en 404.
+     */
+    public function test_pdf_disponible_est_faux_pour_un_enregistrement_direct_sans_signature(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::ENREGISTRE, 'pdf_chemin' => null]);
+
+        $reponse = $this->actingAs($secretariat2)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+
+        $this->assertFalse($reponse->json('data.pdf_disponible'));
+    }
+
+    public function test_pdf_disponible_est_vrai_apres_signature(): void
+    {
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::SIGNE,
+            'signataire_id' => $dg->id,
+            'signe_at' => now(),
+            'pdf_chemin' => 'courriers-signes/courrier-test.pdf',
+            'pdf_sha256' => hash('sha256', 'contenu-test'),
+        ]);
+
+        $reponse = $this->actingAs($dg)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+
+        $this->assertTrue($reponse->json('data.pdf_disponible'));
+    }
 }

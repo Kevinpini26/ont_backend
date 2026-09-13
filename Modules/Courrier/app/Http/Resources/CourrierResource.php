@@ -20,6 +20,11 @@ class CourrierResource extends JsonResource
             'numero_enregistrement' => $this->numero_enregistrement,
             'numero_depart' => $this->numero_depart,
             'pdf_sha256' => $this->pdf_sha256,
+            // Généré uniquement à la signature (voir CourrierCircuitService::
+            // signer()), jamais à l'enregistrement direct du circuit court —
+            // un courrier "enregistre" sans être jamais passé par "signe" n'a
+            // donc pas de PDF, même si son statut à lui seul le suggère.
+            'pdf_disponible' => filled($this->pdf_chemin),
             'numerisation_statut' => $this->numerisation_statut?->value,
             'numerisation_statut_label' => $this->numerisation_statut?->label(),
             'trouve_dans_contenu_numerise' => (bool) ($this->trouve_dans_contenu_numerise ?? false),
