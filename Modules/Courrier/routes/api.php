@@ -66,6 +66,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/{courrier}/pieces/{piece}', [CourrierController::class, 'telechargerPieceCandidat']);
     Route::get('/courriers/{courrier}/piece-jointe', [CourrierController::class, 'telechargerPieceJointe']);
     Route::get('/courriers/{courrier}/pieces-jointes/{piece}', [CourrierController::class, 'telechargerPiece']);
+    Route::get('/courriers/{courrier}/numerisations/{document}', [CourrierController::class, 'telechargerNumerisation']);
 
     Route::get('/courriers/{courrier}/annotations', [CourrierAnnotationController::class, 'index']);
     Route::post('/courriers/{courrier}/annotations', [CourrierAnnotationController::class, 'store']);

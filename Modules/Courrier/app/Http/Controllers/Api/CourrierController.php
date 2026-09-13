@@ -37,6 +37,7 @@ use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Contracts\QrCodeService;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Support\CsvExporter;
 use Modules\Kernel\Support\EmpreinteFichier;
@@ -622,6 +623,28 @@ class CourrierController extends Controller
         return Storage::disk('local')->download(
             $piece->chemin,
             "{$piece->libelle}-{$courrier->numero_accuse_reception}.{$extension}"
+        );
+    }
+
+    /**
+     * Consultation d'une version précise du document numérisé (voir
+     * docs/numerisation-courrier.md, Lot 2) — jamais la dernière version
+     * implicitement : chaque version reste consultable séparément (le
+     * papier continue de vivre après son arrivée : annotation DG, cachet
+     * Protocole...).
+     */
+    public function telechargerNumerisation(Courrier $courrier, DocumentNumerise $document)
+    {
+        $this->authorize('view', $courrier);
+
+        abort_unless(
+            $document->numerisable_type === $courrier->getMorphClass() && $document->numerisable_id === $courrier->id,
+            404,
+        );
+
+        return Storage::disk('local')->download(
+            $document->chemin,
+            "numerisation-{$courrier->numero_accuse_reception}-v{$document->version}.pdf"
         );
     }
 

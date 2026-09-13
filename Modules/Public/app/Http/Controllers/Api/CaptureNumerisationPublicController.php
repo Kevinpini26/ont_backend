@@ -22,13 +22,19 @@ class CaptureNumerisationPublicController extends Controller
 
     private function trouverJetonValide(string $token): JetonCaptureNumerisation
     {
-        $jeton = JetonCaptureNumerisation::query()->where('token', $token)->with('capturable')->firstOrFail();
+        $jeton = JetonCaptureNumerisation::query()->where('token', $token)->with('capturable')->first();
 
+        // ->first() + abort_unless (pas firstOrFail) : un jeton inconnu est
+        // un cas attendu, pas une ModelNotFoundException à laisser fuiter.
         // 404 générique (jeton inconnu, déjà consommé ou expiré) : le jeton
         // (48 caractères aléatoires) n'est de toute façon pas énumérable,
         // mais autant ne pas confirmer par le code HTTP qu'un lien donné a
         // existé — même principe que LienPublicController::trouverLienValide().
-        abort_unless($jeton->estValide(), 404);
+        // Message explicite (pas de valeur par défaut) : un message vide
+        // reste une chaîne "truthy-absente" côté JS (`?? secours` ne
+        // s'applique qu'à null/undefined) — CapturePage.jsx afficherait une
+        // alerte vide sinon.
+        abort_unless($jeton && $jeton->estValide(), 404, 'Ce lien de capture est introuvable ou a expiré.');
 
         return $jeton;
     }

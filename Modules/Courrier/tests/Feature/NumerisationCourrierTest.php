@@ -115,4 +115,46 @@ class NumerisationCourrierTest extends CourrierTestCase
 
         $this->actingAs($protocole)->getJson('/api/v1/courriers/a-numeriser')->assertStatus(403);
     }
+
+    public function test_une_version_numerisee_precise_peut_etre_telechargee(): void
+    {
+        Storage::fake('local');
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create();
+        $chemin = UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf')->store('numerisations', 'local');
+        $document = $courrier->numerisations()->create([
+            'version' => 1,
+            'chemin' => $chemin,
+            'poids_octets' => 100,
+            'sha256' => hash('sha256', 'contenu-test'),
+            'source' => SourceDocumentNumerise::TELEPHONE,
+        ]);
+
+        $this->actingAs($reception)
+            ->get("/api/v1/courriers/{$courrier->id}/numerisations/{$document->id}")
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_le_telechargement_refuse_un_document_dun_autre_courrier(): void
+    {
+        Storage::fake('local');
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create();
+        $autreCourrier = Courrier::factory()->create();
+        $chemin = UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf')->store('numerisations', 'local');
+        $document = $autreCourrier->numerisations()->create([
+            'version' => 1,
+            'chemin' => $chemin,
+            'poids_octets' => 100,
+            'sha256' => hash('sha256', 'contenu-test'),
+            'source' => SourceDocumentNumerise::TELEPHONE,
+        ]);
+
+        $this->actingAs($reception)
+            ->get("/api/v1/courriers/{$courrier->id}/numerisations/{$document->id}")
+            ->assertStatus(404);
+    }
 }

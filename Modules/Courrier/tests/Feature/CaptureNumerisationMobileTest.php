@@ -88,7 +88,10 @@ class CaptureNumerisationMobileTest extends CourrierTestCase
 
         $this->postJson("/api/v1/public/capture/{$jeton->token}", [
             'fichier' => UploadedFile::fake()->create('scan2.pdf', 200, 'application/pdf'),
-        ])->assertStatus(404);
+        ])
+            ->assertStatus(404)
+            // Message explicite, jamais vide : voir trouverJetonValide().
+            ->assertJsonPath('message', 'Ce lien de capture est introuvable ou a expiré.');
     }
 
     public function test_un_jeton_expire_est_refuse(): void
@@ -102,7 +105,19 @@ class CaptureNumerisationMobileTest extends CourrierTestCase
 
         $this->postJson("/api/v1/public/capture/{$jeton->token}", [
             'fichier' => UploadedFile::fake()->create('scan.pdf', 200, 'application/pdf'),
-        ])->assertStatus(404);
+        ])
+            ->assertStatus(404)
+            ->assertJsonPath('message', 'Ce lien de capture est introuvable ou a expiré.');
+    }
+
+    public function test_un_jeton_inconnu_est_refuse_avec_un_message_explicite(): void
+    {
+        // ?? secours ne s'applique qu'à null/undefined côté JS : un message
+        // vide (abort(404) sans argument) laisserait CapturePage.jsx
+        // afficher une alerte sans aucun texte — voir trouverJetonValide().
+        $this->getJson('/api/v1/public/capture/jeton-qui-n-existe-pas')
+            ->assertStatus(404)
+            ->assertJsonPath('message', 'Ce lien de capture est introuvable ou a expiré.');
     }
 
     public function test_afficher_les_informations_du_jeton_sans_authentification(): void
