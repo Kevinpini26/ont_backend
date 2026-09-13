@@ -45,6 +45,36 @@ class CreationAutomatiqueFicheStagiaireTest extends StagiaireTestCase
         $this->assertSame($courrier->numero_accuse_reception, $stagiaire->reference_courrier);
     }
 
+    /**
+     * candidat_contact (téléphone) est facultatif au dépôt public — seul
+     * candidat_email est requis (voir DeposerDemandeStageRequest). Un
+     * candidat qui ne renseigne pas de téléphone (cas courant, jamais
+     * couvert par CourrierFactory::demandeStage() qui remplit toujours
+     * candidat_contact) ne doit pas faire échouer la création de la fiche
+     * sur la contrainte NOT NULL de stagiaires.contact.
+     */
+    public function test_la_fiche_stagiaire_utilise_lemail_comme_contact_si_aucun_telephone_nest_fourni(): void
+    {
+        $direction = Direction::factory()->create();
+        $dg = User::factory()->agentCircuitCourrier(Poste::DG, $direction)->create();
+
+        $courrier = Courrier::factory()->demandeStage()->create([
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+            'candidat_contact' => null,
+            'candidat_email' => 'candidate-sans-telephone@example.cd',
+        ]);
+        $this->marquerDecharge($courrier);
+
+        $this->actingAs($dg)
+            ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
+            ->assertOk();
+
+        $stagiaire = Stagiaire::query()->where('courrier_id', $courrier->id)->first();
+
+        $this->assertNotNull($stagiaire);
+        $this->assertSame('candidate-sans-telephone@example.cd', $stagiaire->contact);
+    }
+
     public function test_la_lettre_de_stage_est_copiee_dans_le_dossier_stagiaire_sans_redepot(): void
     {
         Storage::fake('local');

@@ -24,9 +24,16 @@ class CourrierStageAvisFavorable
         return $this->courrier->candidat_nom;
     }
 
+    /**
+     * candidat_contact (téléphone) est facultatif au dépôt public — seul
+     * candidat_email est requis (voir DeposerDemandeStageRequest). La fiche
+     * Stagiaire exige pourtant un contact non nul : le téléphone prime
+     * quand il existe, l'e-mail (garanti présent) sert de repli plutôt que
+     * de faire échouer la création automatique de la fiche.
+     */
     public function candidatContact(): ?string
     {
-        return $this->courrier->candidat_contact;
+        return $this->courrier->candidat_contact ?: $this->courrier->candidat_email;
     }
 
     public function candidatEtablissement(): ?string
