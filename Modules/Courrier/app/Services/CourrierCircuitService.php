@@ -299,7 +299,7 @@ class CourrierCircuitService
         $destinatairePoste = null;
         $destinataireUserId = null;
 
-        if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
+        if ($courrier->enAttenteValidationRelecteur()) {
             $destinataireUserId = $courrier->relecteur_id;
         } else {
             // Contexte 'type' : seul ce qui départage réellement 'recu'
@@ -460,7 +460,7 @@ class CourrierCircuitService
                 throw TransitionNonAutoriseeException::dechargeDejaDonnee();
             }
 
-            if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
+            if ($courrier->enAttenteValidationRelecteur()) {
                 if ($courrier->relecteur_id !== $utilisateur->id) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
@@ -648,16 +648,48 @@ class CourrierCircuitService
      * pour l'alerte de tri manquant). Une fois trié, seule la DG peut
      * corriger le degré (voir requalifierUrgence()) — cette méthode-ci ne
      * repose jamais sur un degré déjà présent.
+     *
+     * Lot assistants (voir docs/questions-ont.md) : un degré urgent ou très
+     * urgent transmet directement à la DG, comme avant ; un degré normal
+     * part désormais au classeur d'attente du Secrétariat 01
+     * (CourrierStatut::EN_ATTENTE_CLASSEUR), qui le transmettra lui-même à
+     * la DG quand il le jugera bon (voir transmettreDepuisClasseur()) —
+     * voir config('courrier.circuit_transitions.complet.en_attente_tri').
      */
     public function transmettreEnAttenteAvisDg(Courrier $courrier, User $utilisateur, DegreUrgence $degreUrgence): Courrier
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $degreUrgence) {
             $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
+
+            $statutCible = match ($degreUrgence) {
+                DegreUrgence::URGENT, DegreUrgence::TRES_URGENT => CourrierStatut::EN_ATTENTE_AVIS_DG,
+                DegreUrgence::NORMAL => CourrierStatut::EN_ATTENTE_CLASSEUR,
+            };
+            $this->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, ['degre_urgence' => $degreUrgence->value]);
 
             $courrier->degre_urgence = $degreUrgence;
             $courrier->urgence_triee_at = now();
             $courrier->urgence_triee_par_id = $utilisateur->id;
+            $courrier->statut = $statutCible;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Le Secrétariat 01 transmet à la DG un dossier qu'il tenait au classeur
+     * d'attente (degré d'urgence normal, voir transmettreEnAttenteAvisDg())
+     * — à son initiative, jamais automatique : rien d'autre ne fait sortir
+     * un dossier du classeur.
+     */
+    public function transmettreDepuisClasseur(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
+
             $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
@@ -810,7 +842,7 @@ class CourrierCircuitService
             // Lot A (tableau généré, non ressaisi) : une demande de stage
             // n'a de sens que traitée par la DFP — sans ce filet, un avis
             // favorable rendu sans imputation manuelle laisserait le
-            // dossier partir en rédaction interne (projet_reponse_en_cours)
+            // dossier partir en rédaction interne (projet_a_rediger)
             // au lieu de rejoindre le circuit du tableau de répartition, et
             // la demande resterait orpheline de tout tableau. Configurable
             // (config('stagiaires.imputation_automatique_dfp'), défaut
@@ -846,7 +878,7 @@ class CourrierCircuitService
             $statutCible = match (true) {
                 $avis === AvisDg::RESERVE => CourrierStatut::RETOUR_RECEPTION,
                 $avis === AvisDg::FAVORABLE && $courrierImpute => CourrierStatut::EN_DISPATCH,
-                default => CourrierStatut::PROJET_REPONSE_EN_COURS,
+                default => CourrierStatut::PROJET_A_REDIGER,
             };
             $this->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, [
                 'avis_dg' => $avis->value,
@@ -878,7 +910,7 @@ class CourrierCircuitService
             // finalement annulé par un rollback (ex. verrou expiré, échec
             // d'assertion concurrente). Se déclenche que le courrier soit
             // imputé ou non (statutCible = en_dispatch ou
-            // projet_reponse_en_cours) : le Lot 3 ne touche pas à cet
+            // projet_a_rediger) : le Lot 3 ne touche pas à cet
             // événement — "l'avis favorable ne vaut pas acceptation" est le
             // Lot 5, pas celui-ci.
             if ($avis === AvisDg::FAVORABLE && $courrier->type === CourrierType::DEMANDE_STAGE) {
@@ -889,16 +921,22 @@ class CourrierCircuitService
         });
     }
 
+    /**
+     * Circuit complet uniquement (Lot assistants) : le rédacteur assistant
+     * soumet son projet à un relecteur désigné — cible projet_a_valider,
+     * jamais en_relecture (réservé aux circuits dg_initie/sortant, voir
+     * CourrierStatut::PROJET_A_VALIDER).
+     */
     public function soumettreProjetReponse(Courrier $courrier, User $utilisateur, array $projetReponseContenu, int $relecteurId): Courrier
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $projetReponseContenu, $relecteurId) {
             $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_RELECTURE);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::PROJET_A_VALIDER);
 
             $courrier->projet_reponse_contenu = $projetReponseContenu;
             $courrier->relecteur_id = $relecteurId;
             $courrier->relecture_validee_at = null;
-            $courrier->statut = CourrierStatut::EN_RELECTURE;
+            $courrier->statut = CourrierStatut::PROJET_A_VALIDER;
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
 
@@ -911,7 +949,7 @@ class CourrierCircuitService
         return DB::transaction(function () use ($courrier, $utilisateur, $commentaire) {
             $courrier = $this->lockCourrierFrais($courrier);
 
-            if ($courrier->statut !== CourrierStatut::EN_RELECTURE) {
+            if (! $courrier->enAttenteValidationRelecteur()) {
                 throw TransitionNonAutoriseeException::sautDetape();
             }
 
@@ -924,6 +962,46 @@ class CourrierCircuitService
             $courrier->relecture_validee_at = now();
             $courrier->relecture_commentaire = $commentaire;
             $courrier->save();
+
+            return $courrier;
+        });
+    }
+
+    /**
+     * Renvoi pour correction, du relecteur désigné vers l'assistant
+     * rédacteur — circuit complet uniquement (seul PROJET_A_VALIDER connaît
+     * cette transition, voir config('courrier.circuit_transitions.complet')
+     * qui ne la liste d'ailleurs pas : gardée manuellement, hors de la table,
+     * comme validerRelecture() ci-dessus — le relecteur désigné n'est pas un
+     * poste). Observation obligatoire (voir RenvoyerPourCorrectionRequest) :
+     * un renvoi sans justification laisserait l'assistant deviner ce qui ne
+     * va pas.
+     */
+    public function renvoyerPourCorrection(Courrier $courrier, User $utilisateur, string $observation): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur, $observation) {
+            $courrier = $this->lockCourrierFrais($courrier);
+
+            if ($courrier->statut !== CourrierStatut::PROJET_A_VALIDER) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+
+            if ($courrier->relecteur_id !== $utilisateur->id) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
+
+            $this->assertDechargeDonnee($courrier);
+
+            $courrier->statut = CourrierStatut::PROJET_A_REDIGER;
+            $courrier->projet_renvoi_observation = $observation;
+            $courrier->projet_renvoye_at = now();
+            $courrier->projet_renvoye_par_id = $utilisateur->id;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            $this->audit->enregistrer('courrier.projet_renvoye_pour_correction', $courrier, $utilisateur, [
+                'observation' => $observation,
+            ]);
 
             return $courrier;
         });

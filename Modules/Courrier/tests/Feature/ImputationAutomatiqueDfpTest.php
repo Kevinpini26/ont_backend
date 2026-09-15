@@ -86,7 +86,7 @@ class ImputationAutomatiqueDfpTest extends CourrierTestCase
             ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertOk();
 
-        $this->assertSame(CourrierStatut::PROJET_REPONSE_EN_COURS->value, $reponse->json('data.statut'));
+        $this->assertSame(CourrierStatut::PROJET_A_REDIGER->value, $reponse->json('data.statut'));
         $this->assertTrue($courrier->fresh()->imputations()->doesntExist());
     }
 }

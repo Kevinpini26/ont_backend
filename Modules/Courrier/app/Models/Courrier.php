@@ -91,6 +91,9 @@ class Courrier extends Model
         'relecteur_id',
         'relecture_validee_at',
         'relecture_commentaire',
+        'projet_renvoi_observation',
+        'projet_renvoye_at',
+        'projet_renvoye_par_id',
         'signataire_id',
         'signe_at',
         'pdf_chemin',
@@ -154,6 +157,7 @@ class Courrier extends Model
             'periode_souhaitee_debut' => 'date',
             'periode_souhaitee_fin' => 'date',
             'relecture_validee_at' => 'datetime',
+            'projet_renvoye_at' => 'datetime',
             'signe_at' => 'datetime',
             'enregistre_at' => 'datetime',
             'relance_avis_dg_envoyee_at' => 'datetime',
@@ -203,6 +207,11 @@ class Courrier extends Model
     public function avisDgRenduPar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'avis_dg_rendu_par_id');
+    }
+
+    public function projetRenvoyePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'projet_renvoye_par_id');
     }
 
     public function urgenceTrieePar(): BelongsTo
@@ -355,6 +364,19 @@ class Courrier extends Model
     public function relectureEstValidee(): bool
     {
         return $this->relecture_validee_at !== null;
+    }
+
+    /**
+     * EN_RELECTURE (circuits dg_initie/sortant) et PROJET_A_VALIDER (circuit
+     * complet, depuis le lot assistants) jouent le même rôle — un projet
+     * soumis à un relecteur désigné (Courrier::relecteur_id), jamais un
+     * poste — sous deux noms distincts (voir le docblock de
+     * CourrierStatut::PROJET_A_VALIDER). Centralise la vérification plutôt
+     * que de répéter le in_array partout (Policy, Service, CourrierEnSouffrance).
+     */
+    public function enAttenteValidationRelecteur(): bool
+    {
+        return $this->statut === CourrierStatut::EN_RELECTURE || $this->statut === CourrierStatut::PROJET_A_VALIDER;
     }
 
     /**

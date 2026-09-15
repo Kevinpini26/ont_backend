@@ -36,9 +36,17 @@ return [
      *       à la DG — le tri précède toujours la DG, qu'il y ait eu
      *       Protocole ou non.
      *     - en_attente_tri -> en_attente_avis_dg : le Secrétariat 01 trie
-     *       par degré d'urgence puis transmet à la DG. La porte métier
-     *       réelle (urgence obligatoire, bannettes) est ajoutée au Lot 2 ;
-     *       ce statut n'est pour l'instant qu'un point de passage.
+     *       par degré d'urgence puis transmet à la DG — condition
+     *       'urgence_signalee' (urgent ou très urgent), vérifiée AVANT le
+     *       repli vers en_attente_classeur ci-dessous.
+     *     - en_attente_tri -> en_attente_classeur : sans condition (repli),
+     *       pour un degré d'urgence normal — le dossier n'a jamais quitté le
+     *       bureau du Secrétariat 01, qui le transmettra lui-même à la DG
+     *       quand il le jugera bon (voir
+     *       CourrierCircuitService::transmettreDepuisClasseur()). Distinct de
+     *       retour_reception, qui revient d'un tour déjà instruit par la DG.
+     *     - en_attente_classeur -> en_attente_avis_dg : le Secrétariat 01
+     *       transmet depuis le classeur, à son initiative.
      *     - en_attente_avis_dg -> en_dispatch : condition
      *       'avis_dg_favorable_impute' (Lot 3), vérifiée AVANT
      *       'avis_dg_tranche' ci-dessous puisque les deux conditions
@@ -46,13 +54,13 @@ return [
      *       avis favorable sur un courrier déjà imputé (voir
      *       Courrier::imputations, direction principale) part vers le
      *       dispatch plutôt que vers une rédaction interne de réponse.
-     *     - en_attente_avis_dg -> projet_reponse_en_cours : condition
+     *     - en_attente_avis_dg -> projet_a_rediger : condition
      *       'avis_dg_tranche' (favorable sans imputation, ou défavorable).
      *       La DG (ou la DGA, uniquement lorsque la DG est marquée
      *       indisponible — garde métier dynamique dans
      *       CourrierCircuitService::rendreAvisDg(), pas dans cette table
-     *       statique) transmet au Secrétariat 01 pour rédaction du projet
-     *       de réponse.
+     *       statique) transmet à l'assistant pour rédaction du projet de
+     *       réponse (voir docs/questions-ont.md).
      *     - en_attente_avis_dg -> retour_reception : condition
      *       'avis_dg_reserve'. Un avis "réservé" veut dire que la décision
      *       n'est pas arrêtée : le dossier boucle plutôt que d'avancer
@@ -67,11 +75,16 @@ return [
      *       courrier imputé au secrétariat de la direction imputée à titre
      *       principal (Lot 3). Étape terminale pour ce lot — la suite
      *       (tableau de répartition, retour vers la DG) est le Lot 4.
-     *     - projet_reponse_en_cours -> en_relecture : le Secrétariat 01
-     *       soumet son projet de réponse à un relecteur désigné — le second
-     *       rôle du Secrétariat 01, distinct du tri (statut distinct,
-     *       jamais confondus dans une seule étape).
-     *     - en_relecture -> signe : la DG signe — refusé si le relecteur
+     *     - projet_a_rediger -> projet_a_valider : un assistant (Protocole,
+     *       Ass1, Ass2 ou du DGA — voir Poste::ASSISTANT_*) soumet son projet
+     *       de réponse à un relecteur désigné. Le Secrétariat 01 ne rédige
+     *       plus : il garde le tri et l'établissement des accusés de
+     *       réception (voir docs/questions-ont.md).
+     *     - projet_a_valider -> projet_a_rediger : renvoi pour correction,
+     *       observation obligatoire — hors de cette table (comme
+     *       validerRelecture()), gardé par le relecteur désigné lui-même,
+     *       voir CourrierCircuitService::renvoyerPourCorrection().
+     *     - projet_a_valider -> signe : la DG signe — refusé si le relecteur
      *       désigné n'a pas explicitement validé la relecture.
      *     - signe -> enregistre : le Secrétariat 02 enregistre le courrier
      *       signé (numérotation, classification interne/externe).
@@ -132,6 +145,20 @@ return [
                     'action' => 'transmettre_dg',
                     'statut_arrivee' => 'en_attente_avis_dg',
                     'postes' => [Poste::SECRETARIAT_1->value],
+                    'condition' => 'urgence_signalee',
+                ],
+                [
+                    'action' => 'transmettre_dg',
+                    'statut_arrivee' => 'en_attente_classeur',
+                    'postes' => [Poste::SECRETARIAT_1->value],
+                    'condition' => null,
+                ],
+            ],
+            'en_attente_classeur' => [
+                [
+                    'action' => 'transmettre_depuis_classeur',
+                    'statut_arrivee' => 'en_attente_avis_dg',
+                    'postes' => [Poste::SECRETARIAT_1->value],
                     'condition' => null,
                 ],
             ],
@@ -144,7 +171,7 @@ return [
                 ],
                 [
                     'action' => 'rendre_avis_tranche',
-                    'statut_arrivee' => 'projet_reponse_en_cours',
+                    'statut_arrivee' => 'projet_a_rediger',
                     'postes' => [Poste::DG->value, Poste::DGA->value],
                     'condition' => 'avis_dg_tranche',
                 ],
@@ -172,15 +199,20 @@ return [
                 ],
             ],
             'chez_direction' => [],
-            'projet_reponse_en_cours' => [
+            'projet_a_rediger' => [
                 [
                     'action' => 'soumettre_projet_reponse',
-                    'statut_arrivee' => 'en_relecture',
-                    'postes' => [Poste::SECRETARIAT_1->value],
+                    'statut_arrivee' => 'projet_a_valider',
+                    'postes' => [
+                        Poste::ASSISTANT_PROTOCOLE->value,
+                        Poste::ASSISTANT_1->value,
+                        Poste::ASSISTANT_2->value,
+                        Poste::ASSISTANT_DGA->value,
+                    ],
                     'condition' => null,
                 ],
             ],
-            'en_relecture' => [
+            'projet_a_valider' => [
                 [
                     'action' => 'signer',
                     'statut_arrivee' => 'signe',
@@ -333,6 +365,7 @@ return [
     'delais_indicatifs_heures' => [
         'en_attente_avis_dg' => 48,
         'en_relecture' => 24,
-        'projet_reponse_en_cours' => 72,
+        'projet_a_rediger' => 72,
+        'projet_a_valider' => 24,
     ],
 ];

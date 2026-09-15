@@ -106,7 +106,7 @@ class BordereauTransmissionTest extends CourrierTestCase
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-tri")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
         $transitions = $this->actingAs($dg)
@@ -209,14 +209,14 @@ class BordereauTransmissionTest extends CourrierTestCase
     public function test_le_bordereau_en_relecture_vise_le_relecteur_designe_pas_un_poste(): void
     {
         $direction = Direction::factory()->create();
-        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
         $autreAssistant = $this->agent(Poste::ASSISTANT_2, $direction);
 
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_REPONSE_EN_COURS]);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+        $this->actingAs($redacteur)->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
             'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
             'relecteur_id' => $relecteur->id,
         ])->assertOk();
@@ -228,7 +228,7 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $this->assertTrue($fiche['en_transit']);
         $dernier = end($fiche['transitions']);
-        $this->assertSame(CourrierStatut::EN_RELECTURE->value, $dernier['statut']);
+        $this->assertSame(CourrierStatut::PROJET_A_VALIDER->value, $dernier['statut']);
         $this->assertSame($relecteur->name, $dernier['destinataire']);
 
         // Un autre assistant, même poste éligible en général, n'est pas le

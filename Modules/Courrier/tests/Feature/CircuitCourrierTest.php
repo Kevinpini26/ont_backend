@@ -28,6 +28,7 @@ class CircuitCourrierTest extends CourrierTestCase
         $dg = $this->agent(Poste::DG, $direction);
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
 
         $courrier = $this->actingAs($reception)->post('/api/v1/courriers', [
@@ -84,19 +85,19 @@ class CircuitCourrierTest extends CourrierTestCase
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_REPONSE_EN_COURS->value)
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value)
             ->assertJsonPath('data.avis_dg_rendu_par', $dg->name)
             ->assertJsonPath('data.avis_dg_rendu_en_interim', false);
 
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $this->actingAs($redacteur)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
-        $this->actingAs($secretariat1)
+        $this->actingAs($redacteur)
             ->postJson("/api/v1/courriers/{$id}/soumettre-projet-reponse", [
                 'projet_reponse_contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph']]],
                 'relecteur_id' => $relecteur->id,
             ])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_RELECTURE->value);
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_VALIDER->value);
 
         $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
@@ -170,13 +171,13 @@ class CircuitCourrierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
-        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
 
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_REPONSE_EN_COURS]);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+        $this->actingAs($redacteur)->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
             'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
             'relecteur_id' => $relecteur->id,
         ])->assertOk();
@@ -189,7 +190,7 @@ class CircuitCourrierTest extends CourrierTestCase
             ->assertStatus(422);
 
         $courrier->refresh();
-        $this->assertSame(CourrierStatut::EN_RELECTURE, $courrier->statut);
+        $this->assertSame(CourrierStatut::PROJET_A_VALIDER, $courrier->statut);
         $this->assertNull($courrier->signe_at);
 
         // Une fois la relecture validée, la signature devient possible.
@@ -208,7 +209,7 @@ class CircuitCourrierTest extends CourrierTestCase
         $autreAssistant = $this->agent(Poste::ASSISTANT_2, $direction);
 
         $courrier = Courrier::factory()->create([
-            'statut' => CourrierStatut::EN_RELECTURE,
+            'statut' => CourrierStatut::PROJET_A_VALIDER,
             'relecteur_id' => $relecteur->id,
         ]);
 
@@ -217,5 +218,74 @@ class CircuitCourrierTest extends CourrierTestCase
             ->assertStatus(403);
 
         $this->assertNull($courrier->refresh()->relecture_validee_at);
+    }
+
+    /**
+     * Lot assistants (voir docs/questions-ont.md) : seul le poste des
+     * assistants rédige désormais le projet de réponse — le Secrétariat 01,
+     * qui garde le tri, n'y est plus habilité.
+     */
+    public function test_le_secretariat_01_ne_peut_plus_rediger_le_projet_de_reponse(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+        $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+        $this->marquerDecharge($courrier);
+
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+                'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
+                'relecteur_id' => $relecteur->id,
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_le_relecteur_peut_renvoyer_le_projet_pour_correction_avec_observation_obligatoire(): void
+    {
+        $direction = Direction::factory()->create();
+        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
+        $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $autreAssistant = $this->agent(Poste::ASSISTANT_2, $direction);
+
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::PROJET_A_VALIDER,
+            'relecteur_id' => $relecteur->id,
+        ]);
+        $this->marquerDecharge($courrier);
+
+        // Sans observation : refusé (obligatoire, voir
+        // RenvoyerPourCorrectionRequest).
+        $this->actingAs($relecteur)
+            ->postJson("/api/v1/courriers/{$courrier->id}/renvoyer-pour-correction", [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['observation']);
+
+        // Un autre assistant, même éligible en général à la rédaction,
+        // n'est pas LE relecteur désigné de ce dossier précis.
+        $this->actingAs($autreAssistant)
+            ->postJson("/api/v1/courriers/{$courrier->id}/renvoyer-pour-correction", ['observation' => 'Manque la référence du dossier.'])
+            ->assertStatus(403);
+
+        $reponse = $this->actingAs($relecteur)
+            ->postJson("/api/v1/courriers/{$courrier->id}/renvoyer-pour-correction", ['observation' => 'Manque la référence du dossier.'])
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value)
+            ->assertJsonPath('data.projet_renvoi_observation', 'Manque la référence du dossier.')
+            ->assertJsonPath('data.projet_renvoye_par', $relecteur->name);
+
+        $this->assertNotNull($reponse->json('data.projet_renvoye_at'));
+
+        // Le rédacteur peut soumettre à nouveau depuis PROJET_A_REDIGER.
+        $courrier->refresh();
+        $this->marquerDecharge($courrier);
+        $this->actingAs($redacteur)
+            ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+                'projet_reponse_contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph']]],
+                'relecteur_id' => $relecteur->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_VALIDER->value);
     }
 }

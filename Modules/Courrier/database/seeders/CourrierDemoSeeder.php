@@ -35,6 +35,11 @@ class CourrierDemoSeeder extends Seeder
         $dg = User::query()->where('email', 'dg@ont.cd')->firstOrFail();
         $secretariat1 = User::query()->where('email', 'secretariat_1@ont.cd')->firstOrFail();
         $secretariat2 = User::query()->where('email', 'secretariat_2@ont.cd')->firstOrFail();
+        // Lot assistants : le rédacteur du projet de réponse et son relecteur
+        // désigné doivent être deux comptes distincts (voir
+        // SoumettreProjetReponseRequest::withValidator()) — jamais
+        // Secrétariat 01, qui ne rédige plus (voir docs/questions-ont.md).
+        $redacteur = User::query()->where('email', 'assistant_protocole@ont.cd')->firstOrFail();
         $relecteur = User::query()->where('email', 'assistant_1@ont.cd')->firstOrFail();
 
         // Liste ordonnée (pas de tableau associatif indexé par l'enum : PHP
@@ -45,9 +50,10 @@ class CourrierDemoSeeder extends Seeder
         $objets = [
             [CourrierStatut::RECU, 'Demande de partenariat touristique — Office du Tourisme du Kwilu'],
             [CourrierStatut::EN_ATTENTE_TRI, 'Invitation au Forum régional du tourisme durable'],
+            [CourrierStatut::EN_ATTENTE_CLASSEUR, 'Courrier sans caractère urgent — gardé au classeur d\'attente'],
             [CourrierStatut::EN_ATTENTE_AVIS_DG, "Sollicitation d'avis sur une convention de coopération"],
-            [CourrierStatut::PROJET_REPONSE_EN_COURS, 'Demande de subvention — festival culturel de Matadi'],
-            [CourrierStatut::EN_RELECTURE, 'Réponse à une requête de la Fédération des hôteliers'],
+            [CourrierStatut::PROJET_A_REDIGER, 'Demande de subvention — festival culturel de Matadi'],
+            [CourrierStatut::PROJET_A_VALIDER, 'Réponse à une requête de la Fédération des hôteliers'],
             [CourrierStatut::SIGNE, "Autorisation d'exploitation d'un site touristique"],
             [CourrierStatut::ENREGISTRE, 'Correspondance avec le Ministère du Tourisme — accusé de suivi'],
         ];
@@ -67,26 +73,29 @@ class CourrierDemoSeeder extends Seeder
             }
 
             $circuit->accuserReception($courrier, $secretariat1);
-            $courrier = $circuit->transmettreEnAttenteAvisDg($courrier, $secretariat1, DegreUrgence::NORMAL);
+            // Normal reste au classeur (voir CourrierStatut::EN_ATTENTE_CLASSEUR) ;
+            // tout le reste de la liste doit franchir cette étape, donc urgent.
+            $degreUrgence = $statutCible === CourrierStatut::EN_ATTENTE_CLASSEUR ? DegreUrgence::NORMAL : DegreUrgence::URGENT;
+            $courrier = $circuit->transmettreEnAttenteAvisDg($courrier, $secretariat1, $degreUrgence);
 
-            if ($statutCible === CourrierStatut::EN_ATTENTE_AVIS_DG) {
+            if ($statutCible === CourrierStatut::EN_ATTENTE_CLASSEUR || $statutCible === CourrierStatut::EN_ATTENTE_AVIS_DG) {
                 continue;
             }
 
             $circuit->accuserReception($courrier, $dg);
             $courrier = $circuit->rendreAvisDg($courrier, $dg, AvisDg::FAVORABLE, 'Avis favorable — dossier conforme.');
 
-            if ($statutCible === CourrierStatut::PROJET_REPONSE_EN_COURS) {
+            if ($statutCible === CourrierStatut::PROJET_A_REDIGER) {
                 continue;
             }
 
-            $circuit->accuserReception($courrier, $secretariat1);
-            $courrier = $circuit->soumettreProjetReponse($courrier, $secretariat1, [
+            $circuit->accuserReception($courrier, $redacteur);
+            $courrier = $circuit->soumettreProjetReponse($courrier, $redacteur, [
                 'type' => 'doc',
                 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Projet de réponse — brouillon de démonstration.']]]],
             ], $relecteur->id);
 
-            if ($statutCible === CourrierStatut::EN_RELECTURE) {
+            if ($statutCible === CourrierStatut::PROJET_A_VALIDER) {
                 continue;
             }
 

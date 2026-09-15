@@ -39,7 +39,8 @@ class CourrierStatistiqueController extends Controller
             ->groupBy('statut')
             ->pluck('total', 'statut');
 
-        $enAttenteRelecture = (int) ($parStatut[CourrierStatut::EN_RELECTURE->value] ?? 0);
+        $enAttenteRelecture = (int) ($parStatut[CourrierStatut::EN_RELECTURE->value] ?? 0)
+            + (int) ($parStatut[CourrierStatut::PROJET_A_VALIDER->value] ?? 0);
         $enCoursTotal = (int) collect($parStatut)->except([CourrierStatut::ENREGISTRE->value])->sum();
 
         // Temps moyen (en heures) entre deux transitions consécutives d'un
@@ -134,7 +135,7 @@ class CourrierStatistiqueController extends Controller
 
         $enAttenteDecision = Courrier::query()
             ->withoutGlobalScopes()
-            ->whereIn('statut', [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_RELECTURE])
+            ->whereIn('statut', [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
             ->count();
 
         // Courriers dont la dernière transition remonte à plus de

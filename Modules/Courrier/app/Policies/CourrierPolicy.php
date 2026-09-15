@@ -75,7 +75,17 @@ class CourrierPolicy
 
     public function validerRelecture(User $user, Courrier $courrier): bool
     {
-        return $courrier->statut === CourrierStatut::EN_RELECTURE && $courrier->relecteur_id === $user->id;
+        return $courrier->enAttenteValidationRelecteur() && $courrier->relecteur_id === $user->id;
+    }
+
+    /**
+     * Même filtre que validerRelecture() : réservé au relecteur désigné,
+     * seul PROJET_A_VALIDER connaît cette transition (voir
+     * CourrierCircuitService::renvoyerPourCorrection()).
+     */
+    public function renvoyerPourCorrection(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::PROJET_A_VALIDER && $courrier->relecteur_id === $user->id;
     }
 
     /**
@@ -120,7 +130,7 @@ class CourrierPolicy
      */
     public function accuserReception(User $user, Courrier $courrier): bool
     {
-        if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
+        if ($courrier->enAttenteValidationRelecteur()) {
             return $courrier->relecteur_id === $user->id;
         }
 

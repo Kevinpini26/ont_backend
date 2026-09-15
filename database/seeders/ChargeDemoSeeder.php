@@ -77,7 +77,7 @@ class ChargeDemoSeeder extends Seeder
         $statutsPonderes = [
             ...array_fill(0, 70, CourrierStatut::ENREGISTRE),
             ...array_fill(0, 10, CourrierStatut::SIGNE),
-            ...array_fill(0, 10, CourrierStatut::PROJET_REPONSE_EN_COURS),
+            ...array_fill(0, 10, CourrierStatut::PROJET_A_REDIGER),
             ...array_fill(0, 5, CourrierStatut::EN_ATTENTE_AVIS_DG),
             ...array_fill(0, 5, CourrierStatut::AU_PROTOCOLE),
         ];

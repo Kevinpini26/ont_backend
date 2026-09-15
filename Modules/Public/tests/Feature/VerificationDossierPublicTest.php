@@ -83,7 +83,7 @@ class VerificationDossierPublicTest extends TestCase
     {
         Courrier::factory()->demandeStage()->create([
             'numero_accuse_reception' => 'AR-2026-000051',
-            'statut' => CourrierStatut::PROJET_REPONSE_EN_COURS,
+            'statut' => CourrierStatut::PROJET_A_REDIGER,
             'avis_dg' => AvisDg::FAVORABLE,
             'candidat_nom' => 'Kabasele Jean Pierre',
         ]);
@@ -97,7 +97,7 @@ class VerificationDossierPublicTest extends TestCase
     {
         Courrier::factory()->demandeStage()->create([
             'numero_accuse_reception' => 'AR-2026-000052',
-            'statut' => CourrierStatut::PROJET_REPONSE_EN_COURS,
+            'statut' => CourrierStatut::PROJET_A_REDIGER,
             'avis_dg' => AvisDg::DEFAVORABLE,
             'candidat_nom' => 'Kabasele Jean Pierre',
         ]);

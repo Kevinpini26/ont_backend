@@ -41,7 +41,7 @@ class DispatchImputationCourrierTest extends CourrierTestCase
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_DISPATCH->value);
 
-        $this->assertNotSame(CourrierStatut::PROJET_REPONSE_EN_COURS->value, $reponse->json('data.statut'));
+        $this->assertNotSame(CourrierStatut::PROJET_A_REDIGER->value, $reponse->json('data.statut'));
 
         // Le Secrétariat 02 doit accuser réception du bordereau avant de
         // pouvoir dispatcher — même discipline que le reste du circuit.
@@ -69,7 +69,7 @@ class DispatchImputationCourrierTest extends CourrierTestCase
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_REPONSE_EN_COURS->value);
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
     }
 
     public function test_avis_reserve_sur_courrier_impute_retourne_quand_meme_a_la_reception(): void

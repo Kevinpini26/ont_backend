@@ -6,6 +6,7 @@ use LogicException;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Kernel\Enums\Poste;
 
 class ConfigCircuitTransitionRules implements CircuitTransitionRules
@@ -74,6 +75,14 @@ class ConfigCircuitTransitionRules implements CircuitTransitionRules
             // transitions, qui matcherait aussi un avis favorable.
             'avis_dg_favorable_impute' => ($contexte['avis_dg'] ?? null) === AvisDg::FAVORABLE->value
                 && ($contexte['courrier_impute'] ?? false) === true,
+            // Lot assistants (voir docs/questions-ont.md) : un degré normal
+            // part au classeur d'attente (repli 'condition' => null),
+            // jamais ici — seul urgent/très urgent transmet directement à
+            // la DG.
+            'urgence_signalee' => in_array($contexte['degre_urgence'] ?? null, [
+                DegreUrgence::URGENT->value,
+                DegreUrgence::TRES_URGENT->value,
+            ], true),
             default => throw new LogicException("Condition de circuit inconnue : {$condition}"),
         };
     }

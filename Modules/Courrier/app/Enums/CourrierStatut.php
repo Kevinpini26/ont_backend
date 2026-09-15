@@ -30,25 +30,60 @@ enum CourrierStatut: string
      * (ou le Protocole, si applicable) et la Direction Générale. Ajouté au
      * Lot 1 (bouclage) ; la porte métier réelle (urgence obligatoire avant
      * de sortir de ce statut, bannettes dédiées) reste à construire au Lot 2.
+     * Depuis l'étape assistants/classeur (voir EN_ATTENTE_CLASSEUR
+     * ci-dessous), ne mène plus systématiquement ici : seul un degré urgent
+     * ou très urgent y conduit désormais (voir
+     * CourrierCircuitService::transmettreEnAttenteAvisDg()).
      */
     case EN_ATTENTE_TRI = 'en_attente_tri';
     case EN_ATTENTE_AVIS_DG = 'en_attente_avis_dg';
 
     /**
+     * Le classeur d'attente du Secrétariat 01 — distinct de RETOUR_RECEPTION
+     * ci-dessous (voir le contraste dans son docblock) : un dossier trié ici
+     * n'a jamais quitté le bureau, alors que RETOUR_RECEPTION revient d'un
+     * tour complet chez la DG. Atteint depuis en_attente_tri quand le degré
+     * d'urgence retenu est "normal" ; en reparts vers en_attente_avis_dg
+     * quand le Secrétariat 01 choisit de le transmettre (voir
+     * CourrierCircuitService::transmettreDepuisClasseur()).
+     */
+    case EN_ATTENTE_CLASSEUR = 'en_attente_classeur';
+
+    /**
      * Point de passage du bouclage interne (Lot 1) : un avis DG "réservé"
-     * renvoie le dossier ici plutôt qu'en projet_reponse_en_cours — la
+     * renvoie le dossier ici plutôt qu'en projet_a_rediger — la
      * Réception le représente ensuite à la DG, tour suivant. Décision prise
      * au Lot 3 : ce point de passage reste la Réception, y compris pour un
      * courrier déjà imputé — seul un avis favorable sur un courrier imputé
      * part vers EN_DISPATCH (voir plus bas), jamais un avis réservé.
+     * Distinct d'EN_ATTENTE_CLASSEUR ci-dessus : celui-ci revient d'un tour
+     * complet (la DG a déjà examiné le dossier), celui-là n'est jamais parti.
      */
     case RETOUR_RECEPTION = 'retour_reception';
-    case PROJET_REPONSE_EN_COURS = 'projet_reponse_en_cours';
+
+    /**
+     * Rédaction du projet de réponse — poste des assistants
+     * (ASSISTANT_PROTOCOLE/ASSISTANT_1/ASSISTANT_2/ASSISTANT_DGA), jamais le
+     * Secrétariat 01 (qui garde le tri et l'établissement des accusés de
+     * réception, voir config('courrier.circuit_transitions.complet')).
+     */
+    case PROJET_A_REDIGER = 'projet_a_rediger';
+
+    /**
+     * Projet soumis par l'assistant rédacteur à un relecteur désigné —
+     * distinct d'EN_RELECTURE (partagé par les circuits dg_initie/sortant,
+     * jamais atteint par le circuit complet) : même mécanique de relecteur
+     * désigné (voir Courrier::enAttenteValidationRelecteur()), mais un nom
+     * propre au circuit complet, qui seul connaît le renvoi pour correction
+     * (voir CourrierCircuitService::renvoyerPourCorrection()) vers
+     * PROJET_A_REDIGER.
+     */
+    case PROJET_A_VALIDER = 'projet_a_valider';
 
     /**
      * Lot 3 (orientation et dispatch) : un avis DG favorable rendu sur un
      * courrier déjà imputé (voir Courrier::imputations) part ici plutôt
-     * qu'en PROJET_REPONSE_EN_COURS — l'imputation route le dossier vers une
+     * qu'en PROJET_A_REDIGER — l'imputation route le dossier vers une
      * direction plutôt que vers une rédaction interne de réponse. Le
      * Secrétariat 02 transmet ensuite au secrétariat de la direction
      * imputée à titre principal.
@@ -105,9 +140,11 @@ enum CourrierStatut: string
             self::AU_PROTOCOLE => 'Au protocole',
             self::EN_CIRCUIT_HIERARCHIQUE => 'En circuit hiérarchique',
             self::EN_ATTENTE_TRI => 'En attente de tri',
+            self::EN_ATTENTE_CLASSEUR => 'Au classeur d\'attente',
             self::RETOUR_RECEPTION => 'Retour à la Réception',
             self::EN_ATTENTE_AVIS_DG => "En attente d'avis DG",
-            self::PROJET_REPONSE_EN_COURS => 'Projet de réponse en cours',
+            self::PROJET_A_REDIGER => 'Projet de réponse à rédiger',
+            self::PROJET_A_VALIDER => 'Projet en attente de validation',
             self::EN_DISPATCH => 'En dispatch vers la direction',
             self::CHEZ_DIRECTION => 'Chez le secrétariat de la direction',
             self::TABLEAU_CHEZ_RECEPTION => 'Chez la Réception (tableau)',

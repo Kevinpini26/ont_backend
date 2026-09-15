@@ -91,7 +91,7 @@ class DgInterimTest extends CourrierTestCase
             'auditable_id' => $courrier->id,
         ]);
 
-        $response->assertJsonPath('data.statut', CourrierStatut::PROJET_REPONSE_EN_COURS->value);
+        $response->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
     }
 
     public function test_la_dg_reste_toujours_habilitee_meme_marquee_indisponible(): void
@@ -142,7 +142,7 @@ class DgInterimTest extends CourrierTestCase
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
 
         $this->actingAs($secretariat1)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
 
@@ -151,7 +151,7 @@ class DgInterimTest extends CourrierTestCase
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_REPONSE_EN_COURS->value);
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
 
         // Aucun événement de création de fiche stagiaire pour ce type.
         $this->assertDatabaseMissing('stagiaires', ['courrier_id' => $courrier->id]);

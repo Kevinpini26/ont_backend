@@ -170,7 +170,7 @@ class TriUrgenceCourrierTest extends CourrierTestCase
         $dg = $this->agent(Poste::DG, $direction);
 
         $courrier = Courrier::factory()->create([
-            'statut' => CourrierStatut::PROJET_REPONSE_EN_COURS,
+            'statut' => CourrierStatut::PROJET_A_REDIGER,
             'degre_urgence' => 'normal',
             'urgence_triee_at' => now()->subHour(),
         ]);
@@ -181,7 +181,7 @@ class TriUrgenceCourrierTest extends CourrierTestCase
             ->assertJsonPath('data.degre_urgence', 'tres_urgent')
             // Le statut ne change pas : ce n'est pas une transition de
             // circuit, juste une correction du degré.
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_REPONSE_EN_COURS->value);
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
 
         $courrier->refresh();
         $this->assertSame('tres_urgent', $courrier->degre_urgence->value);
@@ -229,5 +229,45 @@ class TriUrgenceCourrierTest extends CourrierTestCase
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$courrier->id}/requalifier-urgence", ['degre_urgence' => 'tres_urgent'])
             ->assertStatus(422);
+    }
+
+    /**
+     * Lot assistants (voir docs/questions-ont.md) : un degré normal ne part
+     * plus systématiquement à la DG — il reste au classeur d'attente du
+     * Secrétariat 01, qui décide seul quand le transmettre.
+     */
+    public function test_un_degre_normal_part_au_classeur_dattente_pas_directement_a_la_dg(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_TRI]);
+        $this->marquerDecharge($courrier);
+
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_CLASSEUR->value);
+
+        $courrier->refresh();
+        $this->assertSame(CourrierStatut::EN_ATTENTE_CLASSEUR, $courrier->statut);
+    }
+
+    public function test_le_secretariat_01_transmet_depuis_le_classeur_a_son_initiative(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::EN_ATTENTE_CLASSEUR,
+            'degre_urgence' => 'normal',
+            'urgence_triee_at' => now()->subDay(),
+        ]);
+        $this->marquerDecharge($courrier);
+
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-depuis-classeur")
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
     }
 }

@@ -20,6 +20,12 @@ class CourrierPdfSignatureTest extends CourrierTestCase
         $dg = $this->agent(Poste::DG, $direction);
 
         $courrier = Courrier::factory()->create([
+            // sens=sortant (plutôt que la valeur par défaut 'entrant') :
+            // en_relecture n'est atteignable, pour un courrier nécessitant
+            // l'avis DG, que via le circuit 'sortant'/'dg_initie' — le
+            // circuit 'complet' route désormais ce même rôle vers
+            // PROJET_A_VALIDER (voir CourrierStatut::PROJET_A_VALIDER).
+            'sens' => 'sortant',
             'statut' => CourrierStatut::EN_RELECTURE,
             'relecteur_id' => $relecteur->id,
             'relecture_validee_at' => now(),

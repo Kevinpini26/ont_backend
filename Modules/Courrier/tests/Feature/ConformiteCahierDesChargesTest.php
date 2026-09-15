@@ -71,19 +71,19 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
     public function test_le_redacteur_ne_peut_pas_se_designer_lui_meme_comme_relecteur(): void
     {
         $direction = Direction::factory()->create();
-        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
 
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_REPONSE_EN_COURS]);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
 
-        $this->actingAs($secretariat1)
+        $this->actingAs($redacteur)
             ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
                 'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
-                'relecteur_id' => $secretariat1->id,
+                'relecteur_id' => $redacteur->id,
             ])
             ->assertStatus(422);
 
         $courrier->refresh();
-        $this->assertSame(CourrierStatut::PROJET_REPONSE_EN_COURS, $courrier->statut);
+        $this->assertSame(CourrierStatut::PROJET_A_REDIGER, $courrier->statut);
         $this->assertNull($courrier->relecteur_id);
     }
 

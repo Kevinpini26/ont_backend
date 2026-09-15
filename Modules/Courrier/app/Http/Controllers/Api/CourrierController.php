@@ -22,6 +22,7 @@ use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
 use Modules\Courrier\Http\Requests\InitierReponseSortanteRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
 use Modules\Courrier\Http\Requests\RenvoyerAuTriRequest;
+use Modules\Courrier\Http\Requests\RenvoyerPourCorrectionRequest;
 use Modules\Courrier\Http\Requests\RequalifierUrgenceRequest;
 use Modules\Courrier\Http\Requests\SortirOriginalRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
@@ -316,6 +317,13 @@ class CourrierController extends Controller
         ));
     }
 
+    public function transmettreDepuisClasseur(Request $request, Courrier $courrier)
+    {
+        $this->authorize('transmettre', $courrier);
+
+        return $this->ressource($this->circuit->transmettreDepuisClasseur($courrier, $request->user()));
+    }
+
     public function requalifierUrgence(RequalifierUrgenceRequest $request, Courrier $courrier)
     {
         return $this->ressource($this->circuit->requalifierUrgence(
@@ -382,6 +390,17 @@ class CourrierController extends Controller
             $courrier,
             $request->user(),
             $request->validated()['relecture_commentaire'] ?? null,
+        );
+
+        return $this->ressource($courrier);
+    }
+
+    public function renvoyerPourCorrection(RenvoyerPourCorrectionRequest $request, Courrier $courrier)
+    {
+        $courrier = $this->circuit->renvoyerPourCorrection(
+            $courrier,
+            $request->user(),
+            $request->validated('observation'),
         );
 
         return $this->ressource($courrier);
@@ -710,7 +729,7 @@ class CourrierController extends Controller
     private function ressource(Courrier $courrier): CourrierResource
     {
         return new CourrierResource($courrier->load([
-            'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar',
+            'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
             'imputations.direction', 'imputations.imputeePar',
             'piecesJointes', 'reponses', 'courrierOrigine', 'numerisations.capturePar',

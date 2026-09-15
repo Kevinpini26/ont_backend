@@ -43,7 +43,7 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-tri")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])->assertOk();
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
         $courrier = Courrier::withoutGlobalScopes()->findOrFail($id);
@@ -84,7 +84,7 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         $final = $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_REPONSE_EN_COURS->value);
+            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
 
         $this->assertSame(2, $final->json('data.tour'));
     }

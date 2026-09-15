@@ -587,3 +587,55 @@ Questions supplémentaires découvertes en implémentant (Lot A/B) :
   vue à temps. Les cinq vérifications couvrent les scénarios cités
   explicitement ; d'autres incohérences pourraient exister sans être
   détectées par cette première version.
+
+## Rédaction rendue aux assistants, classeur d'attente créé
+
+(Nommage volontairement non numéroté — la Direction a demandé ces deux
+évolutions sous les termes "lot 2" et "lot 3", mais `config.php`/`CourrierStatut`
+utilisent déjà "Lot 2"/"Lot 3" pour un chantier antérieur distinct, le tri par
+urgence et le dispatch d'imputation : réutiliser les mêmes numéros ici aurait
+prêté à confusion dans les commentaires de code.)
+
+- **« Le Secrétariat 01 garde le tri et récupère l'établissement des accusés
+  de réception » — traduit ici comme une simple reformulation, pas comme un
+  changement fonctionnel.** `numero_accuse_reception` est généré
+  automatiquement à la création du courrier (`CourrierCircuitService::creer()`
+  et les méthodes `creerDepuisPublic()`/`creerCourrierExterneDepuisPublic()`/
+  `creerCourrierSortant()` apparentées), sans geste humain distinct — y
+  compris pour un dépôt du portail public, où aucun agent n'intervient. Rien
+  dans le code actuel ne fait de cette génération une action "détenue" par un
+  poste qu'on pourrait "retirer" puis "rendre" à un autre. Faute d'une
+  définition plus précise de ce que serait ce geste distinct (une lettre
+  d'accusé de réception envoyée à l'expéditeur ? une reprise en main d'une
+  réimpression de la feuille de couverture, voir
+  `CourrierController::feuilleCouverture()` ? autre chose ?), ce lot n'a
+  changé ni la génération automatique du numéro, ni l'envoi des mails
+  `AccuseReceptionCandidatMail`/`AccuseReceptionCourrierExterneMail` — modifier
+  ce mécanisme risquerait de casser le parcours déjà livré et testé du portail
+  public. À confirmer avec la Direction ce que ce geste doit concrètement
+  devenir ; si une action distincte est attendue, elle reste à construire.
+
+- **« Le classeur d'attente... on en repart vers le signataire » — traduit
+  comme un retour vers la file d'avis de la DG, pas vers la signature.**
+  `EN_ATTENTE_CLASSEUR` (voir `CourrierStatut`) est atteint depuis le tri
+  quand `degre_urgence` vaut `normal`, et en repart vers `EN_ATTENTE_AVIS_DG`
+  via `CourrierCircuitService::transmettreDepuisClasseur()` — jamais
+  directement vers `SIGNE`, qui suppose une rédaction, une relecture validée
+  et un projet de réponse déjà écrits, aucun desquels n'existe encore à ce
+  stade du circuit pour un dossier qui vient tout juste du tri. Lu comme "le
+  signataire" désignant la DG dans le sens où le vocabulaire administratif de
+  l'ONT semble l'employer pour l'avis/l'arbitrage, pas littéralement
+  `Courrier::signataire_id`. À confirmer ce point avec la Direction si
+  l'intention était différente (un chemin direct vers la signature existerait
+  alors à construire séparément).
+
+- **Rédacteur et relecteur du projet de réponse : n'importe lequel des
+  quatre postes assistants pour chaque rôle, aucune règle d'affectation par
+  type de dossier.** `soumettreProjetReponse()` accepte
+  `ASSISTANT_PROTOCOLE`/`ASSISTANT_1`/`ASSISTANT_2`/`ASSISTANT_DGA`
+  indifféremment comme rédacteur (voir
+  `config('courrier.circuit_transitions.complet.projet_a_rediger')`), et le
+  relecteur reste un identifiant choisi librement à la soumission (`relecteur_id`),
+  comme avant ce lot — aucune répartition du travail entre les quatre
+  assistants (par direction, par type de courrier...) n'est imposée. À
+  préciser si la pratique réelle attribue les dossiers différemment.

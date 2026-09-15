@@ -58,7 +58,7 @@ class CourrierEnSouffrance
 
     private function actionnableParUtilisateur(Courrier $courrier, User $utilisateur): bool
     {
-        if ($courrier->statut === CourrierStatut::EN_RELECTURE) {
+        if ($courrier->enAttenteValidationRelecteur()) {
             return $courrier->relecteur_id === $utilisateur->id;
         }
 

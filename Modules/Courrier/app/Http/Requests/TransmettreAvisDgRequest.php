@@ -8,9 +8,10 @@ use Modules\Courrier\Enums\DegreUrgence;
 
 /**
  * Le tri par degré d'urgence du Secrétariat 01 (Lot 2) se fait exactement
- * ici : transmettre à la DG exige désormais de choisir un degré, jamais
- * laissé à une valeur par défaut silencieuse — voir
- * CourrierCircuitService::transmettreEnAttenteAvisDg().
+ * ici : transmettre depuis le tri exige désormais de choisir un degré,
+ * jamais laissé à une valeur par défaut silencieuse — le degré choisi
+ * décide ensuite de la destination (DG directement, ou classeur d'attente,
+ * voir CourrierCircuitService::transmettreEnAttenteAvisDg()).
  */
 class TransmettreAvisDgRequest extends FormRequest
 {
