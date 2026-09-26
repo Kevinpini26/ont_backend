@@ -12,9 +12,7 @@ return [
      */
     'circuit_courrier_central_postes' => [
         Poste::RECEPTION->value,
-        Poste::PROTOCOLE->value,
         Poste::DGA->value,
-        Poste::ASSISTANT_PROTOCOLE->value,
         Poste::ASSISTANT_1->value,
         Poste::ASSISTANT_2->value,
         Poste::ASSISTANT_DGA->value,
@@ -33,7 +31,7 @@ return [
      * docs/questions-ont.md.
      */
     'mention_information' => [
-        'responsable_traitement' => 'Office National du Tourisme (ONT) — Direction de la Formation et de la Professionnalisation, pour les dossiers de stage ; Protocole/circuit courrier, pour la correspondance.',
+        'responsable_traitement' => 'Office National du Tourisme (ONT) — Direction de la Formation et de la Professionnalisation, pour les dossiers de stage ; service du courrier, pour la correspondance.',
         'finalites' => [
             'Instruction et suivi des demandes de stage.',
             'Traitement et suivi de la correspondance adressée à l\'ONT.',
@@ -52,10 +50,10 @@ return [
      * clés ci-dessous une fois un fournisseur retenu (voir docs/questions-ont.md).
      */
     'sms' => [
-        'driver' => env('SMS_DRIVER', 'log'),
-        'http_url' => env('SMS_HTTP_URL'),
-        'http_champ_destinataire' => env('SMS_HTTP_CHAMP_DESTINATAIRE', 'to'),
-        'http_champ_message' => env('SMS_HTTP_CHAMP_MESSAGE', 'message'),
+        'driver' => config('ont.sms.driver', 'log'),
+        'http_url' => config('ont.sms.http_url'),
+        'http_champ_destinataire' => config('ont.sms.http_champ_destinataire', 'to'),
+        'http_champ_message' => config('ont.sms.http_champ_message', 'message'),
         'http_params_supplementaires' => [],
     ],
 
@@ -89,6 +87,6 @@ return [
      * PDF, à l'objet et aux métadonnées).
      */
     'ocr' => [
-        'active' => env('OCR_ACTIVE', false),
+        'active' => config('ont.ocr.active', false),
     ],
 ];

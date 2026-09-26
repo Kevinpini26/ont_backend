@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Enums\MentionImputation;
 use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\NumerisationStatut;
@@ -53,18 +54,16 @@ class CourrierCircuitService
         private readonly AuditLogger $audit,
         private readonly NotificationService $notifications,
         private readonly DelegationResolver $delegations,
+        private readonly DocumentRelationService $relationsDocumentaires,
     ) {}
 
     public function creer(User $auteur, array $donnees, bool $numerisationImpossible = false): Courrier
     {
         $estReception = $auteur->poste === $this->regles->posteDeCreation();
-        $estDirection = $auteur->role === UserRole::RESPONSABLE_DIRECTION;
 
-        // Une direction rédige elle-même son contenu (TipTap), sans
-        // document physique à numériser : "non applicable", jamais "à
-        // numériser" — voir docs/numerisation-courrier.md.
+        // À la Réception, un scan est normalement requis ; la dérogation
+        // explicite signale qu'il devra être rattrapé ultérieurement.
         $numerisationStatut = match (true) {
-            ! $estReception => NumerisationStatut::NON_APPLICABLE,
             $numerisationImpossible => NumerisationStatut::A_NUMERISER,
             // La pièce jointe est obligatoire à la Réception sauf
             // numerisation_impossible (voir StoreCourrierRequest) : à ce
@@ -72,39 +71,26 @@ class CourrierCircuitService
             default => NumerisationStatut::NUMERISE,
         };
 
-        if (! $estReception && ! $estDirection) {
+        if (! $estReception) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
 
-        // Une direction ne peut initier un courrier qu'en son propre nom :
-        // la direction d'origine est forcée à la sienne, jamais choisie.
-        if ($estDirection) {
-            $donnees['direction_origine_id'] = $auteur->direction_id;
-        }
-
-        // Circuit déterminé automatiquement, jamais choisi par l'agent :
-        // seul un courrier initié par une direction, à destination d'une
-        // autre direction précise (pas la DG), et qui n'est pas une demande
-        // de stage, suit le circuit court. Tout le reste (mail externe
-        // trié par la Réception, courrier à destination de la DG, demande
-        // de stage qui exige structurellement son avis) suit le circuit
-        // complet.
-        $estCircuitCourt = $estDirection
-            && ! empty($donnees['direction_destination_id'])
-            && $donnees['type'] !== CourrierType::DEMANDE_STAGE->value;
-
-        $courrier = DB::transaction(function () use ($auteur, $donnees, $estCircuitCourt, $numerisationStatut) {
+        $courrier = DB::transaction(function () use ($auteur, $donnees, $numerisationStatut) {
             $courrier = Courrier::query()->create([
                 ...$donnees,
                 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
                 'statut' => CourrierStatut::RECU,
-                'necessite_avis_dg' => ! $estCircuitCourt,
+                'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
                 'created_by' => $auteur->id,
                 'numerisation_statut' => $numerisationStatut,
             ]);
 
             $this->tracerTransition($courrier, $auteur);
+            if ($courrier->numero_enregistrement !== null) {
+                $this->auditerIdentite($courrier, $auteur, 'numero_enregistrement', $courrier->numero_enregistrement);
+            }
 
             return $courrier;
         });
@@ -114,7 +100,7 @@ class CourrierCircuitService
         if ($courrier->direction_destination_id) {
             $responsables = User::query()
                 ->where('direction_id', $courrier->direction_destination_id)
-                ->where('role', UserRole::RESPONSABLE_DIRECTION)
+                ->whereIn('role', [UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION])
                 ->get();
 
             foreach ($responsables as $responsable) {
@@ -139,9 +125,9 @@ class CourrierCircuitService
                 ...$donnees,
                 'type' => CourrierType::DEMANDE_STAGE,
                 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
                 'statut' => CourrierStatut::RECU,
-                // Une demande de stage exige structurellement l'avis de la DG :
-                // toujours le circuit complet, jamais le circuit court.
+                // Une demande de stage suit structurellement le circuit central.
                 'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
                 'created_by' => null,
@@ -152,6 +138,7 @@ class CourrierCircuitService
             ]);
 
             $this->tracerTransition($courrier, null);
+            $this->auditerIdentite($courrier, null, 'numero_enregistrement', $courrier->numero_enregistrement);
 
             return $courrier;
         });
@@ -166,10 +153,8 @@ class CourrierCircuitService
     /**
      * Dépôt public d'un courrier externe (partenaire, sans compte) : même
      * traitement que creerDepuisPublic(), mais type=correspondance_generale
-     * et pas de candidat — un expéditeur externe. Circuit complet
-     * obligatoire (necessite_avis_dg=true) : un dépôt externe non trié par
-     * la Réception ne peut pas emprunter le circuit court, réservé aux
-     * échanges direction-à-direction.
+     * et pas de candidat — un expéditeur externe. Circuit central
+     * obligatoire (necessite_avis_dg=true).
      */
     public function creerCourrierExterneDepuisPublic(array $donnees): Courrier
     {
@@ -178,6 +163,7 @@ class CourrierCircuitService
                 ...$donnees,
                 'type' => CourrierType::CORRESPONDANCE_GENERALE,
                 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
                 'statut' => CourrierStatut::RECU,
                 'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
@@ -186,6 +172,7 @@ class CourrierCircuitService
             ]);
 
             $this->tracerTransition($courrier, null);
+            $this->auditerIdentite($courrier, null, 'numero_enregistrement', $courrier->numero_enregistrement);
 
             return $courrier;
         });
@@ -246,7 +233,7 @@ class CourrierCircuitService
 
         $responsables = User::query()
             ->where('direction_id', $courrier->direction_destination_id)
-            ->where('role', UserRole::RESPONSABLE_DIRECTION)
+            ->whereIn('role', [UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION])
             ->get();
 
         foreach ($responsables as $responsable) {
@@ -294,20 +281,18 @@ class CourrierCircuitService
      * intermédiaire de initierParDg()) n'a pas de destinataire : rien à
      * décharger.
      */
-    private function tracerTransition(Courrier $courrier, ?User $utilisateur, ?int $bordereauLotId = null): void
+    private function tracerTransition(Courrier $courrier, ?User $utilisateur, ?int $bordereauLotId = null, ?string $instruction = null): void
     {
+        $ancienStatut = CourrierTransition::query()
+            ->where('courrier_id', $courrier->id)
+            ->latest('id')
+            ->value('nouveau_statut');
         $destinatairePoste = null;
         $destinataireUserId = null;
 
         if ($courrier->enAttenteValidationRelecteur()) {
             $destinataireUserId = $courrier->relecteur_id;
         } else {
-            // Contexte 'type' : seul ce qui départage réellement 'recu'
-            // (Protocole si un jour requis, Secrétariat 01 sinon) — sans
-            // lui, l'union inclurait à tort le Protocole comme destinataire
-            // possible d'un courrier qui, dans les faits, va toujours au
-            // tri. Sans effet sur les autres statuts (aucune de leurs
-            // candidates ne conditionne sur le type).
             $postesAutorises = $this->regles->postesPourTransitionResolue(
                 $courrier->statut,
                 $courrier->necessite_avis_dg,
@@ -321,8 +306,12 @@ class CourrierCircuitService
         CourrierTransition::query()->create([
             'courrier_id' => $courrier->id,
             'statut' => $courrier->statut,
+            'ancien_statut' => $ancienStatut,
+            'nouveau_statut' => $courrier->statut,
             'tour' => $courrier->tour,
             'changed_by_id' => $utilisateur?->id,
+            'expediteur_poste' => $utilisateur?->poste?->value,
+            'instruction' => $instruction,
             // Proxy volontairement simple : "cet utilisateur détient une
             // délégation active aujourd'hui", pas une vérification que
             // CETTE transition précise en dépendait — reconstituer ce fait
@@ -390,12 +379,26 @@ class CourrierCircuitService
     private function genererCoteClassement(Courrier $courrier): string
     {
         $codeDirection = $courrier->directionPrincipale()?->direction?->code ?? 'ONT';
+
+        if ($courrier->numero_enregistrement === null) {
+            return $this->numeros->genererCote($codeDirection, 'classement_courrier');
+        }
+
         [$annee, $sequence] = array_pad(explode('-', (string) $courrier->numero_enregistrement, 2), 2, '0000');
 
         return strtr(config('courrier.format_cote_classement', '{direction}-{annee}-{sequence}'), [
             '{direction}' => $codeDirection,
             '{annee}' => $annee,
             '{sequence}' => $sequence,
+        ]);
+    }
+
+    private function auditerIdentite(Courrier $courrier, ?User $acteur, string $type, string $valeur): void
+    {
+        $this->audit->enregistrer("courrier.{$type}_attribue", $courrier, $acteur, [
+            'type_identite' => $type,
+            'valeur' => $valeur,
+            'attribuee_at' => now()->toISOString(),
         ]);
     }
 
@@ -460,11 +463,22 @@ class CourrierCircuitService
                 throw TransitionNonAutoriseeException::dechargeDejaDonnee();
             }
 
-            if ($courrier->enAttenteValidationRelecteur()) {
-                if ($courrier->relecteur_id !== $utilisateur->id) {
+            if ($bordereau->destinataire_user_id !== null) {
+                if ($bordereau->destinataire_user_id !== $utilisateur->id) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
+            } elseif ($bordereau->destinataire_poste !== null) {
+                $posteDestinataire = Poste::from($bordereau->destinataire_poste);
+                $estInterimDg = $posteDestinataire === Poste::DG
+                    && $utilisateur->poste === Poste::DGA
+                    && DgDisponibilite::estDisponible() === false;
+
+                if (! $estInterimDg && ! $this->delegations->utilisateurHabilite($utilisateur, [$posteDestinataire])) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
             } else {
+                // Compatibilité avec les bordereaux historiques créés avant
+                // l'ajout du destinataire explicite.
                 $estSortant = $courrier->sens === SensCourrier::SORTANT;
                 $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
                 $enInterim = $utilisateur->poste === Poste::DGA;
@@ -491,40 +505,18 @@ class CourrierCircuitService
     }
 
     /**
-     * Reste défini pour le jour où une catégorie de courrier confirmée
-     * exigera le Protocole (voir config('courrier.categories_protocole'),
-     * vide aujourd'hui) — inatteignable en pratique tant qu'aucune
-     * catégorie n'y figure : le tri du Secrétariat 01 (transmettreTri())
-     * est le chemin par défaut depuis "recu".
+     * Après la remise initiale par la Réception, le Secrétariat 01 acquitte
+     * le bordereau puis place le dossier dans sa file de tri.
      */
-    public function transmettreAuProtocole(Courrier $courrier, User $utilisateur): Courrier
+    public function transmettreTri(Courrier $courrier, User $utilisateur, ?string $instruction = null): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
-            $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::AU_PROTOCOLE, ['type' => $courrier->type->value]);
-
-            $courrier->statut = CourrierStatut::AU_PROTOCOLE;
-            $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
-
-            return $courrier;
-        });
-    }
-
-    /**
-     * Chemin par défaut depuis "recu" (voir transmettreAuProtocole()) : la
-     * Réception transmet directement au tri du Secrétariat 01, sans
-     * Protocole, conformément au circuit décrit par la Direction.
-     */
-    public function transmettreTri(Courrier $courrier, User $utilisateur): Courrier
-    {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $instruction) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI, ['type' => $courrier->type->value]);
 
             $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;
             $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
+            $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
             return $courrier;
         });
@@ -622,24 +614,6 @@ class CourrierCircuitService
     }
 
     /**
-     * Si le Protocole a été emprunté, il transmet lui aussi au tri, jamais
-     * directement à la DG — le tri précède toujours la DG.
-     */
-    public function transmettreAuTriDepuisProtocole(Courrier $courrier, User $utilisateur): Courrier
-    {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
-            $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI);
-
-            $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;
-            $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
-
-            return $courrier;
-        });
-    }
-
-    /**
      * C'est ICI, et seulement ici, que le tri par degré d'urgence du
      * Secrétariat 01 est réellement effectué (voir CourrierStatut::EN_ATTENTE_TRI)
      * — jamais un statut à part qui bloquerait le dossier : le courrier
@@ -656,9 +630,9 @@ class CourrierCircuitService
      * la DG quand il le jugera bon (voir transmettreDepuisClasseur()) —
      * voir config('courrier.circuit_transitions.complet.en_attente_tri').
      */
-    public function transmettreEnAttenteAvisDg(Courrier $courrier, User $utilisateur, DegreUrgence $degreUrgence): Courrier
+    public function transmettreEnAttenteAvisDg(Courrier $courrier, User $utilisateur, DegreUrgence $degreUrgence, ?string $instruction = null): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur, $degreUrgence) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $degreUrgence, $instruction) {
             $courrier = $this->lockCourrierFrais($courrier);
 
             $statutCible = match ($degreUrgence) {
@@ -672,7 +646,7 @@ class CourrierCircuitService
             $courrier->urgence_triee_par_id = $utilisateur->id;
             $courrier->statut = $statutCible;
             $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
+            $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
             return $courrier;
         });
@@ -684,15 +658,15 @@ class CourrierCircuitService
      * — à son initiative, jamais automatique : rien d'autre ne fait sortir
      * un dossier du classeur.
      */
-    public function transmettreDepuisClasseur(Courrier $courrier, User $utilisateur): Courrier
+    public function transmettreDepuisClasseur(Courrier $courrier, User $utilisateur, ?string $instruction = null): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $instruction) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
 
             $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
             $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
+            $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
             return $courrier;
         });
@@ -790,16 +764,16 @@ class CourrierCircuitService
      * transition qui incrémente le tour de boucle (voir
      * Courrier::tour, config('courrier.circuit.tours_avant_alerte')).
      */
-    public function representerDg(Courrier $courrier, User $utilisateur): Courrier
+    public function transmettreRetourVersSec1(Courrier $courrier, User $utilisateur, ?string $instruction = null): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $instruction) {
             $courrier = $this->lockCourrierFrais($courrier);
-            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_AVIS_DG);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI);
 
             $courrier->tour += 1;
-            $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
+            $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;
             $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
+            $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
             return $courrier;
         });
@@ -811,15 +785,15 @@ class CourrierCircuitService
      * principal (Lot 3). Étape terminale pour ce lot : la suite (tableau de
      * répartition, retour vers la DG) est le Lot 4.
      */
-    public function dispatcherVersDirection(Courrier $courrier, User $utilisateur): Courrier
+    public function dispatcherVersDirection(Courrier $courrier, User $utilisateur, ?string $instruction = null): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur) {
+        return DB::transaction(function () use ($courrier, $utilisateur, $instruction) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::CHEZ_DIRECTION);
 
             $courrier->statut = CourrierStatut::CHEZ_DIRECTION;
             $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
+            $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
             return $courrier;
         });
@@ -963,6 +937,11 @@ class CourrierCircuitService
             $courrier->relecture_commentaire = $commentaire;
             $courrier->save();
 
+            $this->audit->enregistrer('courrier.relecture_validee', $courrier, $utilisateur, [
+                'commentaire_fourni' => $commentaire !== null && $commentaire !== '',
+                'relecture_validee_at' => $courrier->relecture_validee_at->toIso8601String(),
+            ]);
+
             return $courrier;
         });
     }
@@ -1039,6 +1018,10 @@ class CourrierCircuitService
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
 
+            if ($courrier->numero_depart !== null) {
+                $this->auditerIdentite($courrier, $utilisateur, 'numero_depart', $courrier->numero_depart);
+            }
+
             $this->audit->enregistrer('courrier.signature', $courrier, $utilisateur, [
                 'description' => "Signature du courrier {$courrier->numero_accuse_reception}",
             ]);
@@ -1062,7 +1045,6 @@ class CourrierCircuitService
             $courrier->classification = $classification;
             $courrier->note_technique = $noteTechnique;
             $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
-            $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
             $courrier->cote_classement = $this->genererCoteClassement($courrier);
             if ($emplacementPhysique !== null) {
                 $courrier->emplacement_physique = $emplacementPhysique;
@@ -1087,7 +1069,7 @@ class CourrierCircuitService
      */
     public function initierReponseSortante(User $auteur, Courrier $original, array $donnees): Courrier
     {
-        $estResponsableConcerne = $auteur->role === UserRole::RESPONSABLE_DIRECTION
+        $estResponsableConcerne = $auteur->role->estDirecteurDirection()
             && in_array($auteur->direction_id, [$original->direction_origine_id, $original->direction_destination_id], true);
         $estSecretariat1 = $auteur->poste === Poste::SECRETARIAT_1;
 
@@ -1106,7 +1088,7 @@ class CourrierCircuitService
      */
     public function initierCourrierSortant(User $auteur, array $donnees): Courrier
     {
-        if ($auteur->role !== UserRole::RESPONSABLE_DIRECTION && $auteur->poste !== Poste::SECRETARIAT_1) {
+        if (! $auteur->role->estDirecteurDirection() && $auteur->poste !== Poste::SECRETARIAT_1) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
 
@@ -1122,6 +1104,7 @@ class CourrierCircuitService
                 'type' => CourrierType::CORRESPONDANCE_GENERALE,
                 'sens' => SensCourrier::SORTANT,
                 'en_reponse_a_courrier_id' => $original?->id,
+                'dossier_id' => $original?->dossier_id,
                 // Visible par la même direction que le rédacteur (ou celle
                 // de l'original s'il y en a un) — jamais
                 // direction_destination_id : le destinataire est externe,
@@ -1135,6 +1118,10 @@ class CourrierCircuitService
             ]);
 
             $this->tracerTransition($courrier, $auteur);
+
+            if ($original !== null) {
+                $this->relationsDocumentaires->relier($courrier, $original, DocumentRelationType::REPONSE_A, $auteur);
+            }
 
             return $courrier;
         });
@@ -1191,11 +1178,22 @@ class CourrierCircuitService
 
     public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation
     {
-        /** @var CourrierAnnotation */
-        return $courrier->annotations()->create([
-            'auteur_id' => $auteur->id,
-            'contenu' => $contenu,
-        ]);
+        return DB::transaction(function () use ($courrier, $auteur, $contenu) {
+            /** @var CourrierAnnotation $annotation */
+            $annotation = $courrier->annotations()->create([
+                'auteur_id' => $auteur->id,
+                'contenu' => $contenu,
+            ]);
+
+            $this->audit->enregistrer('courrier.annotation_creee', $courrier, $auteur, [
+                'annotation_id' => $annotation->id,
+                // Le contenu reste dans la table métier protégée ; le journal
+                // ne conserve qu'une donnée non sensible utile au contrôle.
+                'contenu_longueur' => mb_strlen($contenu),
+            ]);
+
+            return $annotation;
+        });
     }
 
     /**
@@ -1206,28 +1204,48 @@ class CourrierCircuitService
      */
     public function sortirOriginal(Courrier $courrier, User $utilisateur, string $motif): EmpruntOriginal
     {
-        if ($courrier->empruntEnCours() !== null) {
-            throw EmpruntOriginalException::dejaEmprunte();
-        }
+        return DB::transaction(function () use ($courrier, $utilisateur, $motif) {
+            $courrier = $this->lockCourrierFrais($courrier);
 
-        /** @var EmpruntOriginal */
-        return $courrier->empruntsOriginaux()->create([
-            'emprunte_par_id' => $utilisateur->id,
-            'emprunte_le' => now(),
-            'motif' => $motif,
-        ]);
+            if ($courrier->empruntEnCours() !== null) {
+                throw EmpruntOriginalException::dejaEmprunte();
+            }
+
+            /** @var EmpruntOriginal $emprunt */
+            $emprunt = $courrier->empruntsOriginaux()->create([
+                'emprunte_par_id' => $utilisateur->id,
+                'emprunte_le' => now(),
+                'motif' => $motif,
+            ]);
+
+            $this->audit->enregistrer('courrier.original_sorti', $courrier, $utilisateur, [
+                'emprunt_id' => $emprunt->id,
+                'emprunte_le' => $emprunt->emprunte_le?->toIso8601String(),
+            ]);
+
+            return $emprunt;
+        });
     }
 
     public function restituerOriginal(Courrier $courrier, User $utilisateur): EmpruntOriginal
     {
-        $emprunt = $courrier->empruntEnCours();
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $emprunt = $courrier->empruntEnCours();
 
-        if ($emprunt === null) {
-            throw EmpruntOriginalException::aucunEmpruntEnCours();
-        }
+            if ($emprunt === null) {
+                throw EmpruntOriginalException::aucunEmpruntEnCours();
+            }
 
-        $emprunt->update(['restitue_le' => now(), 'restitue_par_id' => $utilisateur->id]);
+            $emprunt->update(['restitue_le' => now(), 'restitue_par_id' => $utilisateur->id]);
 
-        return $emprunt;
+            $this->audit->enregistrer('courrier.original_restitue', $courrier, $utilisateur, [
+                'emprunt_id' => $emprunt->id,
+                'emprunte_par_id' => $emprunt->emprunte_par_id,
+                'restitue_le' => $emprunt->restitue_le?->toIso8601String(),
+            ]);
+
+            return $emprunt;
+        });
     }
 }

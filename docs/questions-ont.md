@@ -321,20 +321,17 @@ périmètre du code :
 
 ## Bouclage du circuit courrier (correction du circuit réel vs codé)
 
-- **Quelle catégorie de courrier passe réellement par le Protocole ?** Le
-  document de flux officiel de l'ONT (Réception, Protocole, DGA, Ass.P,
-  Ass1, Ass2, Ass.Dga, DG, Sec01, Sec02) place le Protocole dans le
-  circuit, mais la description de la Direction du chemin d'une demande de
-  stage ne le mentionne pas. Provisoire : le Protocole n'est ni supprimé ni
-  obligatoire — une condition dédiée
-  (`config('courrier.categories_protocole')`, vide aujourd'hui) le rend
-  activable par catégorie de courrier sans nouvelle migration. Hypothèse à
-  tester avec l'ONT : le Protocole traite-t-il les invitations
-  officielles, les correspondances protocolaires, les missions et les
-  visites, plutôt que le courrier ordinaire (demande de stage,
-  correspondance générale) ? Voir
-  `config('courrier.circuit_transitions.complet.recu')`, condition
-  `protocole_requis`.
+- **Décision confirmée — le Protocole ne fait plus partie de
+  l'organisation actuelle.** Tout document entrant est créé par la
+  Réception, qui remet le bordereau au Secrétariat 01 ; celui-ci en accuse
+  réception puis effectue le tri. Le statut `au_protocole` et le poste
+  `protocole` restent définis uniquement pour lire les anciens dossiers et
+  comptes sans réécrire l'historique. Aucune nouvelle affectation,
+  délégation ou action de circuit ne peut les utiliser. Le poste distinct
+  `assistant_protocole` est lui aussi strictement historique et doit encore
+  être réaffecté par décision métier : il
+  reste provisoirement parmi les assistants rédacteurs pour ne pas deviner
+  son successeur.
 
 - **Qui attribue réellement le numéro d'accusé de réception ?** Trois
   sources se contredisent : le code le génère au poste Réception (voir
@@ -632,7 +629,7 @@ prêté à confusion dans les commentaires de code.)
 - **Rédacteur et relecteur du projet de réponse : n'importe lequel des
   quatre postes assistants pour chaque rôle, aucune règle d'affectation par
   type de dossier.** `soumettreProjetReponse()` accepte
-  `ASSISTANT_PROTOCOLE`/`ASSISTANT_1`/`ASSISTANT_2`/`ASSISTANT_DGA`
+  `ASSISTANT_1`/`ASSISTANT_2`/`ASSISTANT_DGA`
   indifféremment comme rédacteur (voir
   `config('courrier.circuit_transitions.complet.projet_a_rediger')`), et le
   relecteur reste un identifiant choisi librement à la soumission (`relecteur_id`),

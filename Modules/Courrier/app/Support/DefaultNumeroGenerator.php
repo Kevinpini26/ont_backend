@@ -5,6 +5,7 @@ namespace Modules\Courrier\Support;
 use Illuminate\Support\Facades\Date;
 use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Contracts\SequenceGenerator;
+use Modules\Kernel\Models\Direction;
 
 class DefaultNumeroGenerator implements NumeroGenerator
 {
@@ -32,6 +33,14 @@ class DefaultNumeroGenerator implements NumeroGenerator
         $sequence = $this->sequences->suivant('depart', $annee);
 
         return sprintf(config('courrier.format_numero_depart', '%d-D%04d'), $annee, $sequence);
+    }
+
+    public function genererReferenceDocumentaire(Direction $direction, ?int $annee = null): string
+    {
+        $annee ??= Date::now()->year;
+        $sequence = $this->sequences->suivantPourDirection('reference_documentaire', $annee, $direction->getKey());
+
+        return sprintf('%03d/ONT/%s/%d', $sequence, mb_strtoupper($direction->code), $annee);
     }
 
     public function genererNumeroBordereauLot(): string

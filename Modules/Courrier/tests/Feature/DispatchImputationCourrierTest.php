@@ -54,7 +54,7 @@ class DispatchImputationCourrierTest extends CourrierTestCase
         $this->actingAs($secretariat2)
             ->postJson("/api/v1/courriers/{$courrier->id}/dispatcher-direction")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::CHEZ_DIRECTION->value)
+            ->assertJsonPath('data.statut', CourrierStatut::DISPATCH_EXECUTE->value)
             ->assertJsonPath('data.en_transit', false);
     }
 

@@ -1,15 +1,22 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Courrier\Http\Controllers\Api\ArchivageDossierController;
 use Modules\Courrier\Http\Controllers\Api\BordereauLotController;
+use Modules\Courrier\Http\Controllers\Api\ClassementDocumentController;
 use Modules\Courrier\Http\Controllers\Api\CourrierAnnotationController;
 use Modules\Courrier\Http\Controllers\Api\CourrierController;
 use Modules\Courrier\Http\Controllers\Api\CourrierEnSouffranceController;
 use Modules\Courrier\Http\Controllers\Api\CourrierRattrapageNumerisationController;
 use Modules\Courrier\Http\Controllers\Api\CourrierStatistiqueController;
 use Modules\Courrier\Http\Controllers\Api\DelegationPosteController;
+use Modules\Courrier\Http\Controllers\Api\DispatchCourrierController;
+use Modules\Courrier\Http\Controllers\Api\DocumentProduitDirectionController;
+use Modules\Courrier\Http\Controllers\Api\DossierController;
 use Modules\Courrier\Http\Controllers\Api\EmpruntOriginalController;
+use Modules\Courrier\Http\Controllers\Api\MissionDocumentaireController;
 use Modules\Courrier\Http\Controllers\Api\RegistreCourrierController;
+use Modules\Courrier\Http\Controllers\Api\TraitementDirectionController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/statistiques', [CourrierStatistiqueController::class, 'index']);
@@ -32,23 +39,52 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/import-lot', [CourrierController::class, 'importerLot']);
     Route::get('/courriers/originaux-empruntes', [EmpruntOriginalController::class, 'index']);
     Route::get('/courriers', [CourrierController::class, 'index']);
+    Route::get('/dispatchs/centre', [DispatchCourrierController::class, 'centre']);
+    Route::get('/dispatchs/boite-direction', [DispatchCourrierController::class, 'boiteDirection']);
+    Route::post('/dispatchs/{dispatch}/executer', [DispatchCourrierController::class, 'executer']);
+    Route::post('/dispatchs/{dispatch}/accuser-reception', [DispatchCourrierController::class, 'accuserReception']);
+    Route::get('/traitements-direction', [TraitementDirectionController::class, 'index']);
+    Route::post('/traitements-direction/{traitement}/transmettre-directeur', [TraitementDirectionController::class, 'transmettreDirecteur']);
+    Route::post('/traitements-direction/{traitement}/prendre-en-charge', [TraitementDirectionController::class, 'prendreEnCharge']);
+    Route::post('/traitements-direction/{traitement}/decision', [TraitementDirectionController::class, 'decider']);
+    Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
+    Route::post('/traitements-direction/{traitement}/document-produit', [DocumentProduitDirectionController::class, 'store']);
+    Route::post('/documents-produits-direction/{document}/soumettre', [DocumentProduitDirectionController::class, 'soumettre']);
+    Route::post('/documents-produits-direction/{document}/demander-correction', [DocumentProduitDirectionController::class, 'correction']);
+    Route::post('/documents-produits-direction/{document}/valider', [DocumentProduitDirectionController::class, 'valider']);
+    Route::post('/documents-produits-direction/{document}/transmettre-reception', [DocumentProduitDirectionController::class, 'transmettreReception']);
+    Route::post('/documents-produits-direction/{document}/recevoir', [DocumentProduitDirectionController::class, 'recevoir']);
+    Route::get('/classements-documents', [ClassementDocumentController::class, 'index']);
+    Route::post('/dispatchs/{dispatch}/classer', [ClassementDocumentController::class, 'classer']);
+    Route::post('/classements-documents/{classement}/archiver', [ClassementDocumentController::class, 'archiver']);
+    Route::post('/classements-documents/{classement}/corriger', [ClassementDocumentController::class, 'corriger']);
+    Route::post('/dossiers/{dossier}/decision-archivage', [ArchivageDossierController::class, 'decider']);
+    Route::post('/dossiers/{dossier}/archiver', [ArchivageDossierController::class, 'archiver']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);
     Route::post('/courriers/initier-sortant', [CourrierController::class, 'initierSortant']);
     Route::get('/courriers/{courrier}', [CourrierController::class, 'show']);
+    Route::get('/courriers/{courrier}/dispatchs', [DispatchCourrierController::class, 'index']);
+    Route::post('/courriers/{courrier}/dispatchs', [DispatchCourrierController::class, 'store']);
+    Route::get('/courriers/{courrier}/relations', [DossierController::class, 'relations']);
+    Route::get('/courriers/{courrier}/missions', [MissionDocumentaireController::class, 'index']);
+    Route::post('/courriers/{courrier}/missions', [MissionDocumentaireController::class, 'store']);
+    Route::get('/missions-documentaires/mes-missions', [MissionDocumentaireController::class, 'mesMissions']);
+    Route::post('/missions-documentaires/{mission}/prendre-en-charge', [MissionDocumentaireController::class, 'prendreEnCharge']);
+    Route::post('/missions-documentaires/{mission}/retourner', [MissionDocumentaireController::class, 'retourner']);
+    Route::post('/missions-documentaires/{mission}/annuler', [MissionDocumentaireController::class, 'annuler']);
+    Route::get('/dossiers/{dossier}', [DossierController::class, 'show']);
 
     Route::post('/courriers/{courrier}/accuser-reception', [CourrierController::class, 'accuserReception']);
     Route::post('/courriers/{courrier}/imputer', [CourrierController::class, 'imputer']);
     Route::post('/courriers/{courrier}/initier-reponse', [CourrierController::class, 'initierReponse']);
     Route::post('/courriers/{courrier}/envoyer', [CourrierController::class, 'envoyer']);
     Route::post('/courriers/{courrier}/enregistrer-remise', [CourrierController::class, 'enregistrerRemise']);
-    Route::post('/courriers/{courrier}/transmettre-protocole', [CourrierController::class, 'transmettreProtocole']);
     Route::post('/courriers/{courrier}/transmettre-tri', [CourrierController::class, 'transmettreTri']);
-    Route::post('/courriers/{courrier}/transmettre-au-tri-depuis-protocole', [CourrierController::class, 'transmettreAuTriDepuisProtocole']);
     Route::post('/courriers/{courrier}/valider-avant-diffusion', [CourrierController::class, 'validerAvantDiffusion']);
     Route::post('/courriers/{courrier}/transmettre-avis-dg', [CourrierController::class, 'transmettreAvisDg']);
     Route::post('/courriers/{courrier}/transmettre-depuis-classeur', [CourrierController::class, 'transmettreDepuisClasseur']);
-    Route::post('/courriers/{courrier}/representer-dg', [CourrierController::class, 'representerDg']);
+    Route::post('/courriers/{courrier}/transmettre-sec1', [CourrierController::class, 'transmettreSec1']);
     Route::post('/courriers/{courrier}/dispatcher-direction', [CourrierController::class, 'dispatcherVersDirection']);
     Route::post('/courriers/{courrier}/requalifier-urgence', [CourrierController::class, 'requalifierUrgence']);
     Route::post('/courriers/{courrier}/rendre-avis', [CourrierController::class, 'rendreAvis']);

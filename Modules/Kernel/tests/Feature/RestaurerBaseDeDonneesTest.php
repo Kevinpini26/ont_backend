@@ -23,6 +23,8 @@ class RestaurerBaseDeDonneesTest extends TestCase
 
     private array $configOriginal;
 
+    private bool $peutCreerBase = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -32,8 +34,10 @@ class RestaurerBaseDeDonneesTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_SOURCE);
-        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_CIBLE);
+        if ($this->peutCreerBase) {
+            $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_SOURCE);
+            $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_CIBLE);
+        }
 
         // La connexion "pgsql" par défaut a pu être redirigée vers une base
         // jetable pendant le test (voir pointerVers()) : la restaurer et
@@ -80,8 +84,25 @@ class RestaurerBaseDeDonneesTest extends TestCase
         config(['database.connections.pgsql.database' => $base]);
     }
 
+    private function exigerPrivilegeCreationBase(): void
+    {
+        $peutCreer = $this->pdoMaintenance()
+            ->query('SELECT CASE WHEN rolcreatedb OR rolsuper THEN 1 ELSE 0 END FROM pg_roles WHERE rolname = current_user')
+            ->fetchColumn();
+
+        $this->peutCreerBase = (int) $peutCreer === 1;
+
+        if (! $this->peutCreerBase) {
+            $this->markTestSkipped(
+                'Le cycle réel sauvegarde/restauration exige un rôle PostgreSQL avec CREATE DATABASE.',
+            );
+        }
+    }
+
     public function test_un_cycle_sauvegarde_puis_restauration_reproduit_fidelement_les_donnees(): void
     {
+        $this->exigerPrivilegeCreationBase();
+
         Storage::fake('backups-local');
         config(['backup.disk' => 'backups-local']);
 
@@ -122,6 +143,8 @@ class RestaurerBaseDeDonneesTest extends TestCase
 
     public function test_la_restauration_sans_fichier_precise_prend_la_sauvegarde_la_plus_recente(): void
     {
+        $this->exigerPrivilegeCreationBase();
+
         Storage::fake('backups-local');
         config(['backup.disk' => 'backups-local']);
 

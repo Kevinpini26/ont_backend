@@ -19,9 +19,15 @@ class CourrierPolicy
         private readonly DelegationResolver $delegations,
     ) {}
 
+    private function estAgentCircuitActif(User $user): bool
+    {
+        return $user->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && ! $user->poste?->estHistorique();
+    }
+
     public function viewAny(User $user): bool
     {
-        return true;
+        return ! ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste?->estHistorique());
     }
 
     /**
@@ -36,27 +42,37 @@ class CourrierPolicy
      */
     public function view(User $user, Courrier $courrier): bool
     {
+        if ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste?->estHistorique()) {
+            return false;
+        }
+
+        if (in_array($user->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA], true)) {
+            return $courrier->relecteur_id === $user->id
+                || $courrier->missionsDocumentaires()
+                    ->where('assistant_id', $user->id)
+                    ->whereIn('statut', ['assignee', 'en_cours'])
+                    ->exists();
+        }
+
         if ($courrier->niveau_confidentialite === NiveauConfidentialite::ORDINAIRE) {
             return true;
         }
 
-        if ($user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER) {
+        if ($user->role === UserRole::ADMINISTRATEUR || $this->estAgentCircuitActif($user)) {
             return true;
         }
 
-        return $user->direction_id !== null && $courrier->imputations->contains('direction_id', $user->direction_id);
+        return $user->direction_id !== null && (
+            $courrier->imputations->contains('direction_id', $user->direction_id)
+            || $courrier->dispatchs()->where('type_destination', 'direction')->where('statut', 'execute')
+                ->where('direction_id', $user->direction_id)->exists()
+        );
     }
 
-    /**
-     * Deux points d'entrée dans le circuit : la réception (courrier externe
-     * physique) et une direction elle-même, qui peut initier un courrier à
-     * destination d'une autre direction ou de la DG — celui-ci suit ensuite
-     * le même circuit normal (recu -> au_protocole -> ...).
-     */
+    /** La Réception est l'unique point d'entrée du courrier entrant. */
     public function create(User $user): bool
     {
-        return $user->poste === $this->regles->posteDeCreation()
-            || $user->role === UserRole::RESPONSABLE_DIRECTION;
+        return $user->poste === $this->regles->posteDeCreation();
     }
 
     /**
@@ -71,6 +87,18 @@ class CourrierPolicy
         $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
 
         return $this->delegations->utilisateurHabilite($user, $postesAutorises);
+    }
+
+    public function creerMission(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::EN_ATTENTE_AVIS_DG
+            && $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
+    }
+
+    public function deciderDispatch(User $user, Courrier $courrier): bool
+    {
+        return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
+            && $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
     }
 
     public function validerRelecture(User $user, Courrier $courrier): bool
@@ -173,21 +201,19 @@ class CourrierPolicy
 
     public function annoter(User $user, Courrier $courrier): bool
     {
-        return true;
+        return $this->view($user, $courrier);
     }
 
     /**
      * Qui impute un courrier vers une ou plusieurs directions — restreint
      * aux postes du circuit central et à l'administrateur, comme
      * voirStatistiques(). Périmètre volontairement large en attendant
-     * confirmation (voir docs/questions-ont.md) : dans la pratique décrite,
-     * c'est la DG qui impute, mais rien n'empêche le Protocole de le faire
-     * en amont — à restreindre si la DFP/le Secrétariat Général précise
-     * que ce doit être un poste unique.
+     * confirmation (voir docs/questions-ont.md) — à restreindre si la
+     * DFP/le Secrétariat Général précise que ce doit être un poste unique.
      */
     public function imputer(User $user, Courrier $courrier): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+        return $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
     }
 
     /**
@@ -198,7 +224,7 @@ class CourrierPolicy
      */
     public function initierReponse(User $user, Courrier $courrier): bool
     {
-        return $user->role === UserRole::RESPONSABLE_DIRECTION || $user->poste === Poste::SECRETARIAT_1;
+        return $user->role->estDirecteurDirection() || $user->poste === Poste::SECRETARIAT_1;
     }
 
     public function envoyer(User $user, Courrier $courrier): bool
@@ -220,7 +246,7 @@ class CourrierPolicy
      */
     public function voirStatistiques(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+        return $user->role === UserRole::ADMINISTRATEUR || $this->estAgentCircuitActif($user);
     }
 
     /**
@@ -231,7 +257,7 @@ class CourrierPolicy
      */
     public function voirRegistre(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+        return $user->role === UserRole::ADMINISTRATEUR || $this->estAgentCircuitActif($user);
     }
 
     /**
@@ -259,6 +285,6 @@ class CourrierPolicy
     public function voirTableauDeBordDirection(User $user): bool
     {
         return $user->role === UserRole::AGENT_DFP
-            || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id !== null);
+            || ($user->role->estDirecteurDirection() && $user->direction_id !== null);
     }
 }

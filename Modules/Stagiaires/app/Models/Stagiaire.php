@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Concerns\BelongsToDirectionScope;
+use Modules\Kernel\Contracts\Numerisable;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
@@ -18,7 +19,7 @@ use Modules\Stagiaires\Enums\StagiaireOrigine;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Enums\StagiaireTypeStage;
 
-class Stagiaire extends Model
+class Stagiaire extends Model implements Numerisable
 {
     /** @use HasFactory<StagiaireFactory> */
     use BelongsToDirectionScope, HasFactory;
@@ -184,6 +185,7 @@ class Stagiaire extends Model
      * version numérisée d'un document du dossier qui continue de vivre
      * après réception — voir Modules\Kernel\Models\DocumentNumerise.
      */
+    /** @return MorphMany<DocumentNumerise, $this> */
     public function numerisations(): MorphMany
     {
         return $this->morphMany(DocumentNumerise::class, 'numerisable')->oldest('version');

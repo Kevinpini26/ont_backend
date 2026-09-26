@@ -29,8 +29,7 @@ interface CircuitTransitionRules
     /**
      * Union des postes habilités sur TOUTES les destinations candidates
      * depuis ce statut, sans évaluer leurs conditions — reste une
-     * habilitation correcte même quand les candidates divergent (ex. recu :
-     * Protocole ou Secrétariat 01 selon protocole_requis) puisqu'une
+     * habilitation correcte même quand les candidates divergent puisqu'une
      * tentative avec le mauvais poste échouera de toute façon à la
      * résolution du statut cible (voir statutSuivant()). Utilisée pour
      * l'habilitation (CourrierCircuitService::assertTransitionAutorisee(),

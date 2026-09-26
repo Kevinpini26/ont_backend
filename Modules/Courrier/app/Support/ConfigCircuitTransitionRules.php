@@ -64,9 +64,6 @@ class ConfigCircuitTransitionRules implements CircuitTransitionRules
     {
         return match ($condition) {
             null => true,
-            // Jamais vraie tant que 'categories_protocole' est vide — voir
-            // docs/questions-ont.md.
-            'protocole_requis' => in_array($contexte['type'] ?? null, config('courrier.categories_protocole', []), true),
             'avis_dg_reserve' => ($contexte['avis_dg'] ?? null) === AvisDg::RESERVE->value,
             'avis_dg_tranche' => isset($contexte['avis_dg']) && $contexte['avis_dg'] !== AvisDg::RESERVE->value,
             // Lot 3 : un avis favorable sur un courrier déjà imputé (voir

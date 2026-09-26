@@ -153,7 +153,7 @@ class CourrierStatistiqueController extends Controller
         $initiesParDgPrecedent = Courrier::query()->withoutGlobalScopes()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
         // Un dossier qui a bouclé au-delà du seuil configuré est un dossier
-        // bloqué (voir CourrierCircuitService::representerDg()) : signalé
+        // bloqué dans sa boucle de retour : signalé
         // ici plutôt que de tourner indéfiniment sans que personne ne le
         // voie. Le dernier commentaire d'avis porte la dernière observation
         // en date ; l'historique complet reste consultable sur la fiche.

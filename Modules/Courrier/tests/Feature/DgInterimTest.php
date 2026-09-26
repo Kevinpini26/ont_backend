@@ -78,6 +78,12 @@ class DgInterimTest extends CourrierTestCase
         $this->actingAs($dg)->postJson('/api/v1/dg-disponibilite', ['disponible' => false])->assertOk();
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        $courrier->imputations()->create([
+            'direction_id' => Direction::factory()->create()->id,
+            'mention' => 'pour_attribution',
+            'est_principale' => true,
+            'imputee_par_id' => $dga->id,
+        ]);
         $this->marquerDecharge($courrier);
 
         $response = $this->actingAs($dga)
@@ -91,7 +97,7 @@ class DgInterimTest extends CourrierTestCase
             'auditable_id' => $courrier->id,
         ]);
 
-        $response->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
+        $response->assertJsonPath('data.statut', CourrierStatut::EN_DISPATCH->value);
     }
 
     public function test_la_dg_reste_toujours_habilitee_meme_marquee_indisponible(): void
@@ -110,17 +116,9 @@ class DgInterimTest extends CourrierTestCase
             ->assertJsonPath('data.avis_dg_rendu_en_interim', false);
     }
 
-    /**
-     * La correction s'applique à tout courrier exigeant un avis DG, pas
-     * seulement aux demandes de stage — ici une correspondance générale
-     * routée vers la DG (pas de direction_destination_id, donc circuit
-     * complet, voir CourrierCircuitService::creer()).
-     */
-    public function test_le_circuit_direct_sapplique_a_la_correspondance_generale(): void
+    public function test_un_ancien_dossier_au_protocole_reste_lisible_mais_na_plus_daction_operationnelle(): void
     {
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
-        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $dg = $this->agent(Poste::DG, $direction);
 
         $courrier = Courrier::factory()->create([
@@ -128,32 +126,13 @@ class DgInterimTest extends CourrierTestCase
             'statut' => CourrierStatut::AU_PROTOCOLE,
             'necessite_avis_dg' => true,
         ]);
-        $this->marquerDecharge($courrier);
-
-        // Même si le Protocole a été emprunté (hypothèse simulée ici — voir
-        // config('courrier.categories_protocole'), vide en pratique
-        // aujourd'hui), il transmet au tri du Secrétariat 01, jamais
-        // directement à la DG : le tri précède toujours la DG.
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-au-tri-depuis-protocole")
+        $this->actingAs($dg)
+            ->getJson("/api/v1/courriers/{$courrier->id}")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value);
-
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
-
-        $this->actingAs($secretariat1)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])
-            ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
-
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
+            ->assertJsonPath('data.statut', CourrierStatut::AU_PROTOCOLE->value);
 
         $this->actingAs($dg)
-            ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
-            ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
-
-        // Aucun événement de création de fiche stagiaire pour ce type.
-        $this->assertDatabaseMissing('stagiaires', ['courrier_id' => $courrier->id]);
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-au-tri-depuis-protocole")
+            ->assertNotFound();
     }
 }

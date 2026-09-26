@@ -23,7 +23,7 @@ class CreerDelegationPosteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'poste' => ['required', Rule::enum(Poste::class)],
+            'poste' => ['required', Rule::enum(Poste::class), Rule::notIn([Poste::PROTOCOLE->value, Poste::ASSISTANT_PROTOCOLE->value])],
             'delegataire_id' => ['required', 'integer', 'exists:users,id'],
             'debut' => ['required', 'date'],
             'fin' => ['required', 'date', 'after_or_equal:debut'],

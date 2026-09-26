@@ -16,11 +16,27 @@ class DatabaseSequenceGenerator implements SequenceGenerator
             <<<'SQL'
                 insert into courrier_numero_compteurs (type, annee, dernier_compteur)
                 values (?, ?, 1)
-                on conflict (type, annee)
+                on conflict (type, annee) where direction_id is null
                 do update set dernier_compteur = courrier_numero_compteurs.dernier_compteur + 1
                 returning dernier_compteur
             SQL,
             [$type, $annee],
+        );
+
+        return (int) $ligne->dernier_compteur;
+    }
+
+    public function suivantPourDirection(string $type, int $annee, int $directionId): int
+    {
+        $ligne = DB::selectOne(
+            <<<'SQL'
+                insert into courrier_numero_compteurs (type, annee, direction_id, dernier_compteur)
+                values (?, ?, ?, 1)
+                on conflict (type, annee, direction_id) where direction_id is not null
+                do update set dernier_compteur = courrier_numero_compteurs.dernier_compteur + 1
+                returning dernier_compteur
+            SQL,
+            [$type, $annee, $directionId],
         );
 
         return (int) $ligne->dernier_compteur;

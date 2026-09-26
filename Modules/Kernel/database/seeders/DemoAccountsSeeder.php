@@ -28,9 +28,13 @@ class DemoAccountsSeeder extends Seeder
         // dossiers de toutes les directions. La direction de rattachement
         // ci-dessous n'a donc qu'une valeur administrative, jamais une
         // portée réelle sur ce qu'ils peuvent voir ou traiter.
-        $directionRattachement = Direction::query()->where('code', 'DRHL')->firstOrFail();
+        $directionRattachement = Direction::query()->where('code', 'DG')->firstOrFail();
 
         foreach (Poste::cases() as $poste) {
+            if ($poste->estHistorique()) {
+                continue;
+            }
+
             User::query()->updateOrCreate(
                 ['email' => "{$poste->value}@ont.cd"],
                 [
@@ -56,13 +60,13 @@ class DemoAccountsSeeder extends Seeder
             ],
         );
 
-        foreach (Direction::all() as $direction) {
+        foreach (Direction::query()->where('est_operationnelle', true)->get() as $direction) {
             User::query()->updateOrCreate(
                 ['email' => 'responsable.'.strtolower($direction->code).'@ont.cd'],
                 [
                     'name' => 'Responsable '.$direction->code,
                     'password' => self::MOT_DE_PASSE,
-                    'role' => UserRole::RESPONSABLE_DIRECTION,
+                    'role' => UserRole::DIRECTEUR_DIRECTION,
                     'poste' => null,
                     'direction_id' => $direction->id,
                     'email_verified_at' => now(),

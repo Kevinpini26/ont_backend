@@ -39,7 +39,7 @@ class CourrierDemoSeeder extends Seeder
         // désigné doivent être deux comptes distincts (voir
         // SoumettreProjetReponseRequest::withValidator()) — jamais
         // Secrétariat 01, qui ne rédige plus (voir docs/questions-ont.md).
-        $redacteur = User::query()->where('email', 'assistant_protocole@ont.cd')->firstOrFail();
+        $redacteur = User::query()->where('email', 'assistant_1@ont.cd')->firstOrFail();
         $relecteur = User::query()->where('email', 'assistant_1@ont.cd')->firstOrFail();
 
         // Liste ordonnée (pas de tableau associatif indexé par l'enum : PHP

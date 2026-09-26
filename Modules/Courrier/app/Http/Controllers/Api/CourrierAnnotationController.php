@@ -21,6 +21,8 @@ class CourrierAnnotationController extends Controller
 
     public function store(StoreAnnotationRequest $request, Courrier $courrier)
     {
+        $this->authorize('view', $courrier);
+
         $annotation = $this->circuit->ajouterAnnotation($courrier, $request->user(), $request->validated()['contenu']);
 
         return (new CourrierAnnotationResource($annotation->load('auteur')))->response()->setStatusCode(201);

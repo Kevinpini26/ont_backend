@@ -72,7 +72,7 @@ class ConcurrenceCircuitCourrierTest extends CourrierTestCase
     public function test_deux_accuses_de_reception_concurrents_le_second_echoue(): void
     {
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
         // Bordereau non acquitté (accuse_reception_at nul) : un courrier
@@ -81,13 +81,14 @@ class ConcurrenceCircuitCourrierTest extends CourrierTestCase
         // justement l'inverse : un bordereau "en transit" à accuser.
         $courrier->transitions()->create([
             'statut' => $courrier->statut,
+            'destinataire_poste' => Poste::SECRETARIAT_1,
             'accuse_reception_at' => null,
             'created_at' => now(),
         ]);
 
-        $this->service()->accuserReception($courrier, $protocole);
+        $this->service()->accuserReception($courrier, $secretariat1);
 
         $this->expectExceptionObject(TransitionNonAutoriseeException::dechargeDejaDonnee());
-        $this->service()->accuserReception($courrier, $protocole);
+        $this->service()->accuserReception($courrier, $secretariat1);
     }
 }

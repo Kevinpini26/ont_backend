@@ -14,7 +14,7 @@ class DelegationPosteTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_un_administrateur_peut_creer_une_delegation(): void
+    public function test_lancien_poste_protocole_ne_peut_plus_etre_delegue(): void
     {
         $admin = User::factory()->administrateur()->create();
         $delegataire = User::factory()->responsableDirection()->create();
@@ -27,22 +27,33 @@ class DelegationPosteTest extends CourrierTestCase
             'motif' => 'Congé du titulaire du Protocole',
         ]);
 
-        $response->assertCreated();
-        $this->assertDatabaseHas('delegations_poste', [
-            'poste' => Poste::PROTOCOLE->value,
+        $response->assertUnprocessable()->assertJsonValidationErrors('poste');
+    }
+
+    public function test_lancien_poste_assistant_protocole_ne_peut_plus_etre_delegue(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $delegataire = User::factory()->responsableDirection()->create();
+
+        $response = $this->actingAs($admin)->postJson('/api/v1/delegations-poste', [
+            'poste' => Poste::ASSISTANT_PROTOCOLE->value,
             'delegataire_id' => $delegataire->id,
-            'cree_par_id' => $admin->id,
+            'debut' => now()->toDateString(),
+            'fin' => now()->addDays(5)->toDateString(),
+            'motif' => "Suppression de l'ancien poste",
         ]);
+
+        $response->assertUnprocessable()->assertJsonValidationErrors('poste');
     }
 
     public function test_un_non_administrateur_ne_peut_pas_creer_une_delegation(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::SECRETARIAT_1, $direction);
         $delegataire = User::factory()->responsableDirection()->create();
 
         $this->actingAs($agent)->postJson('/api/v1/delegations-poste', [
-            'poste' => Poste::PROTOCOLE->value,
+            'poste' => Poste::SECRETARIAT_1->value,
             'delegataire_id' => $delegataire->id,
             'debut' => now()->toDateString(),
             'fin' => now()->addDays(5)->toDateString(),
@@ -105,7 +116,7 @@ class DelegationPosteTest extends CourrierTestCase
         ]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($responsable)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")
+        $this->actingAs($responsable)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")
             ->assertForbidden();
     }
 
@@ -115,7 +126,7 @@ class DelegationPosteTest extends CourrierTestCase
         $admin = User::factory()->administrateur()->create();
         $delegataire = User::factory()->responsableDirection($direction)->create();
         DelegationPoste::query()->create([
-            'poste' => Poste::PROTOCOLE,
+            'poste' => Poste::SECRETARIAT_1,
             'delegataire_id' => $delegataire->id,
             'debut' => now()->subDays(10)->toDateString(),
             'fin' => now()->subDays(3)->toDateString(),
@@ -131,7 +142,7 @@ class DelegationPosteTest extends CourrierTestCase
         ]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($delegataire)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")
+        $this->actingAs($delegataire)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")
             ->assertForbidden();
     }
 }

@@ -4,6 +4,7 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
@@ -47,9 +48,9 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
     public function test_un_poste_du_circuit_central_voit_un_courrier_secret_sans_imputation(): void
     {
         $courrier = Courrier::factory()->create(['niveau_confidentialite' => 'secret']);
-        $protocole = $this->agent(Poste::PROTOCOLE, Direction::factory()->create());
+        $reception = $this->agent(Poste::RECEPTION, Direction::factory()->create());
 
-        $this->actingAs($protocole)
+        $this->actingAs($reception)
             ->getJson("/api/v1/courriers/{$courrier->id}")
             ->assertOk();
     }
@@ -57,24 +58,24 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
     public function test_lacces_a_un_courrier_confidentiel_est_journalise(): void
     {
         $courrier = Courrier::factory()->create(['niveau_confidentialite' => 'confidentiel']);
-        $protocole = $this->agent(Poste::PROTOCOLE, Direction::factory()->create());
+        $reception = $this->agent(Poste::RECEPTION, Direction::factory()->create());
 
-        $this->actingAs($protocole)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+        $this->actingAs($reception)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
 
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.acces_confidentiel',
             'auditable_type' => (new Courrier)->getMorphClass(),
             'auditable_id' => $courrier->id,
-            'user_id' => $protocole->id,
+            'user_id' => $reception->id,
         ]);
     }
 
     public function test_lacces_a_un_courrier_ordinaire_nest_pas_journalise(): void
     {
         $courrier = Courrier::factory()->create(['niveau_confidentialite' => 'ordinaire']);
-        $protocole = $this->agent(Poste::PROTOCOLE, Direction::factory()->create());
+        $reception = $this->agent(Poste::RECEPTION, Direction::factory()->create());
 
-        $this->actingAs($protocole)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+        $this->actingAs($reception)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
 
         $this->assertDatabaseMissing('audit_logs', ['action' => 'courrier.acces_confidentiel']);
     }
@@ -118,5 +119,35 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
 
         $response->assertJsonPath('data.degre_urgence', 'tres_urgent')
             ->assertJsonPath('data.niveau_confidentialite', 'secret');
+    }
+
+    public function test_une_mission_nominative_naccorde_aucun_acces_aux_autres_assistants_et_expire_au_retour(): void
+    {
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $assistant1 = $this->agent(Poste::ASSISTANT_1, $direction);
+        $assistant2 = $this->agent(Poste::ASSISTANT_2, $direction);
+        $assistantDga = $this->agent(Poste::ASSISTANT_DGA, $direction);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+            'niveau_confidentialite' => 'secret',
+        ]);
+
+        $missionId = $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/missions", [
+            'assistant_id' => $assistant1->id, 'instruction' => 'Analyser ce dossier.',
+        ])->assertCreated()->json('data.id');
+
+        $this->actingAs($assistant1)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+        $this->actingAs($assistant2)->getJson("/api/v1/courriers/{$courrier->id}")->assertForbidden();
+        $this->actingAs($assistantDga)->getJson("/api/v1/courriers/{$courrier->id}")->assertForbidden();
+
+        $this->actingAs($assistant1)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertOk();
+        $this->actingAs($assistant1)->postJson("/api/v1/missions-documentaires/{$missionId}/retourner", ['compte_rendu' => 'Analyse terminée.'])->assertOk();
+        $this->actingAs($assistant1)->getJson("/api/v1/courriers/{$courrier->id}")->assertForbidden();
+
+        $projetSansMission = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER, 'niveau_confidentialite' => 'secret']);
+        $this->actingAs($assistant1)->getJson("/api/v1/courriers/{$projetSansMission->id}")->assertForbidden();
+        $this->actingAs($assistant2)->getJson("/api/v1/courriers/{$projetSansMission->id}")->assertForbidden();
+        $this->actingAs($assistantDga)->getJson("/api/v1/courriers/{$projetSansMission->id}")->assertForbidden();
     }
 }

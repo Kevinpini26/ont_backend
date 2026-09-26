@@ -4,7 +4,9 @@ namespace Modules\Courrier\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\CycleDecisionnelService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Kernel\Http\Resources\UserResource;
@@ -16,14 +18,15 @@ class CourrierResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'dossier_id' => $this->dossier_id,
             'numero_accuse_reception' => $this->numero_accuse_reception,
             'numero_enregistrement' => $this->numero_enregistrement,
+            'reference_documentaire' => $this->reference_documentaire,
             'numero_depart' => $this->numero_depart,
             'pdf_sha256' => $this->pdf_sha256,
             // Généré uniquement à la signature (voir CourrierCircuitService::
-            // signer()), jamais à l'enregistrement direct du circuit court —
-            // un courrier "enregistre" sans être jamais passé par "signe" n'a
-            // donc pas de PDF, même si son statut à lui seul le suggère.
+            // signer()). Les dossiers courts historiques peuvent donc être
+            // enregistrés sans disposer d'un PDF signé.
             'pdf_disponible' => filled($this->pdf_chemin),
             'numerisation_statut' => $this->numerisation_statut?->value,
             'numerisation_statut_label' => $this->numerisation_statut?->label(),
@@ -47,6 +50,7 @@ class CourrierResource extends JsonResource
                 fn () => $this->reponses->map(fn ($reponse) => [
                     'id' => $reponse->id,
                     'numero_depart' => $reponse->numero_depart,
+                    'reference_documentaire' => $reponse->reference_documentaire,
                     'numero_accuse_reception' => $reponse->numero_accuse_reception,
                     'objet' => $reponse->objet,
                     'statut' => $reponse->statut?->value,
@@ -67,8 +71,7 @@ class CourrierResource extends JsonResource
             'statut' => $this->statut?->value,
             'statut_label' => $this->statut?->label(),
             // Tour de la boucle interne (Lot 1) — incrémenté uniquement
-            // quand la Réception représente un dossier revenu en "réservé"
-            // à la DG, voir CourrierCircuitService::representerDg().
+            // quand la Réception remet à SEC1 un dossier revenu en "réservé".
             'tour' => $this->tour,
             'necessite_avis_dg' => $this->necessite_avis_dg,
             'initie_par_dg' => $this->initie_par_dg,
@@ -134,8 +137,12 @@ class CourrierResource extends JsonResource
                 fn () => $this->transitions->map(fn ($transition) => [
                     'statut' => $transition->statut?->value,
                     'statut_label' => $transition->statut?->label(),
+                    'ancien_statut' => $transition->ancien_statut?->value,
+                    'nouveau_statut' => $transition->nouveau_statut?->value,
                     'tour' => $transition->tour,
                     'emetteur' => $transition->auteur?->name,
+                    'expediteur_poste' => $transition->expediteur_poste,
+                    'instruction' => $transition->instruction,
                     'destinataire' => match (true) {
                         $transition->destinataire_user_id !== null => $transition->destinataireUser?->name,
                         $transition->destinataire_poste !== null => Poste::from($transition->destinataire_poste)->label(),
@@ -146,6 +153,27 @@ class CourrierResource extends JsonResource
                     'accuse_reception_at' => $transition->accuse_reception_at,
                 ]),
             ),
+            'missions_documentaires' => MissionDocumentaireResource::collection($this->whenLoaded(
+                'missionsDocumentaires',
+                fn () => in_array($request->user()?->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA], true)
+                    ? $this->missionsDocumentaires->where('assistant_id', $request->user()->id)->values()
+                    : $this->missionsDocumentaires,
+            )),
+            'dispatchs' => DispatchCourrierResource::collection($this->whenLoaded('dispatchs')),
+            'peut_ouvrir_nouveau_cycle' => in_array($this->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
+                && app(CycleDecisionnelService::class)->peutOuvrir($this->resource),
+            'provenance_directionnelle' => $this->whenLoaded('documentProduitDirection', fn () => $this->documentProduitDirection ? [
+                'direction_id' => $this->documentProduitDirection->direction_id,
+                'document_source_id' => $this->documentProduitDirection->document_source_id,
+                'traitement_direction_id' => $this->documentProduitDirection->traitement_direction_id,
+            ] : null),
+            'classement' => $this->whenLoaded('classement', fn () => $this->classement ? [
+                'id' => $this->classement->id, 'statut' => $this->classement->statut?->value,
+                'statut_label' => $this->classement->statut?->label(), 'cote' => $this->classement->cote,
+                'emplacement' => $this->classement->emplacement, 'observation' => $this->classement->observation,
+                'classe_par' => $this->classement->classePar?->name, 'classe_at' => $this->classement->classe_at,
+                'archive_par' => $this->classement->archivePar?->name, 'archive_at' => $this->classement->archive_at,
+            ] : null),
             'pieces_jointes' => $this->when(
                 $this->relationLoaded('piecesJointes'),
                 fn () => $this->piecesJointes->map(fn ($piece) => [

@@ -98,12 +98,13 @@ class AuthenticationTest extends TestCase
 
     public function test_any_authenticated_user_can_list_directions(): void
     {
+        $attendu = Direction::query()->count() + 3;
         Direction::factory()->count(3)->create();
         $user = User::factory()->administrateur()->create();
 
         $this->actingAs($user)
             ->getJson('/api/v1/directions')
             ->assertOk()
-            ->assertJsonCount(3, 'data');
+            ->assertJsonCount($attendu, 'data');
     }
 }

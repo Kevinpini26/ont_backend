@@ -23,8 +23,8 @@ class StagiairePolicy
     public function viewAny(User $user): bool
     {
         return match ($user->role) {
-            UserRole::ADMINISTRATEUR, UserRole::AGENT_DFP, UserRole::RESPONSABLE_DIRECTION => true,
-            UserRole::AGENT_CIRCUIT_COURRIER => $user->poste !== null,
+            UserRole::ADMINISTRATEUR, UserRole::AGENT_DFP, UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION => true,
+            UserRole::AGENT_CIRCUIT_COURRIER => $user->poste !== null && ! $user->poste->estHistorique(),
             default => false,
         };
     }
@@ -41,8 +41,9 @@ class StagiairePolicy
     {
         return match ($user->role) {
             UserRole::ADMINISTRATEUR, UserRole::AGENT_DFP => true,
-            UserRole::RESPONSABLE_DIRECTION => $user->direction_id === $stagiaire->direction_id,
+            UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION => $user->direction_id === $stagiaire->direction_id,
             UserRole::AGENT_CIRCUIT_COURRIER => $user->poste !== null
+                && ! $user->poste->estHistorique()
                 && $this->visibiliteCircuitCourrier->estVisible($user->poste, $stagiaire),
             default => false,
         };
@@ -77,7 +78,7 @@ class StagiairePolicy
     public function terminerStage(User $user, Stagiaire $stagiaire): bool
     {
         return $user->role === UserRole::AGENT_DFP
-            || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id);
+            || ($user->role->estDirecteurDirection() && $user->direction_id === $stagiaire->direction_id);
     }
 
     /**
@@ -87,7 +88,7 @@ class StagiairePolicy
      */
     public function evaluerEnTantQueDirection(User $user, Stagiaire $stagiaire): bool
     {
-        return $user->role === UserRole::RESPONSABLE_DIRECTION
+        return $user->role->estDirecteurDirection()
             && $user->direction_id === $stagiaire->direction_id
             && $stagiaire->periode_evaluation_ouverte_at !== null;
     }
@@ -166,7 +167,7 @@ class StagiairePolicy
      */
     public function gererSuivi(User $user, Stagiaire $stagiaire): bool
     {
-        return ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id)
+        return ($user->role->estDirecteurDirection() && $user->direction_id === $stagiaire->direction_id)
             || $user->id === $stagiaire->maitre_stage_id
             || $user->role === UserRole::AGENT_DFP;
     }
@@ -174,7 +175,7 @@ class StagiairePolicy
     public function gererDocument(User $user, Stagiaire $stagiaire): bool
     {
         return $user->role === UserRole::AGENT_DFP
-            || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id);
+            || ($user->role->estDirecteurDirection() && $user->direction_id === $stagiaire->direction_id);
     }
 
     /**
@@ -200,7 +201,7 @@ class StagiairePolicy
             DocumentType::PHOTO, DocumentType::RAPPORT_FIN_STAGE,
             DocumentType::NOTE_AFFECTATION, DocumentType::CERTIFICAT_FIN_STAGE,
             DocumentType::ENGAGEMENT_CONFIDENTIALITE => $user->role === UserRole::AGENT_DFP
-                || ($user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id),
+                || ($user->role->estDirecteurDirection() && $user->direction_id === $stagiaire->direction_id),
             DocumentType::ATTESTATION_STAGE => $this->voirEvaluationFinale($user),
         };
     }
@@ -220,7 +221,7 @@ class StagiairePolicy
         return $user->role === UserRole::AGENT_DFP
             || $user->role === UserRole::ADMINISTRATEUR
             || ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::DG)
-            || $user->role === UserRole::RESPONSABLE_DIRECTION;
+            || $user->role->estDirecteurDirection();
     }
 
     /**
@@ -229,12 +230,12 @@ class StagiairePolicy
      */
     public function definirObjectifs(User $user, Stagiaire $stagiaire): bool
     {
-        return $user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id;
+        return $user->role->estDirecteurDirection() && $user->direction_id === $stagiaire->direction_id;
     }
 
     public function signerConventionDirection(User $user, Stagiaire $stagiaire): bool
     {
-        return $user->role === UserRole::RESPONSABLE_DIRECTION && $user->direction_id === $stagiaire->direction_id;
+        return $user->role->estDirecteurDirection() && $user->direction_id === $stagiaire->direction_id;
     }
 
     /**

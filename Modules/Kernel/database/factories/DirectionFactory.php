@@ -18,6 +18,7 @@ class DirectionFactory extends Factory
             'code' => strtoupper(fake()->unique()->lexify('????')),
             'nom' => fake()->company(),
             'actif' => true,
+            'est_operationnelle' => true,
         ];
     }
 }

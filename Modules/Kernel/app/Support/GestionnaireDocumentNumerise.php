@@ -4,6 +4,8 @@ namespace Modules\Kernel\Support;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
+use LogicException;
+use Modules\Kernel\Contracts\Numerisable;
 use Modules\Kernel\Enums\QualiteDocumentNumerise;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Exceptions\DocumentNumeriseRejeteException;
@@ -22,12 +24,12 @@ use Modules\Kernel\Models\User;
 class GestionnaireDocumentNumerise
 {
     /**
-     * @param  Model  $numerisable  Courrier ou Stagiaire
+     * @param  Model&Numerisable  $numerisable  Courrier ou Stagiaire
      *
      * @throws DocumentNumeriseRejeteException si le poids par page est trop faible
      */
     public function enregistrerVersion(
-        Model $numerisable,
+        Model&Numerisable $numerisable,
         string $chemin,
         SourceDocumentNumerise $source,
         ?User $capturePar = null,
@@ -54,7 +56,6 @@ class GestionnaireDocumentNumerise
         // leur propre enum : la valeur brute suffit ici comme simple
         // libellé d'étape, sans avoir besoin de connaître le type concret
         // de $numerisable.
-        /** @var DocumentNumerise $document */
         $document = $numerisable->numerisations()->create([
             'version' => $versionSuivante,
             'etape_circuit' => $numerisable->statut?->value,
@@ -66,6 +67,10 @@ class GestionnaireDocumentNumerise
             'qualite' => $qualite,
             'capture_par_id' => $capturePar?->id,
         ]);
+
+        if (! $document instanceof DocumentNumerise) {
+            throw new LogicException('La relation de numérisation doit créer un DocumentNumerise.');
+        }
 
         // Jamais dans la requête HTTP : un OCR peut prendre plusieurs
         // secondes par page (voir docs/numerisation-courrier.md, Lot 4).

@@ -6,9 +6,8 @@ return [
     'name' => 'Courrier',
 
     /**
-     * Deux circuits possibles pour un courrier, selon qu'il exige ou non un
-     * arbitrage de la DG (Courrier::necessite_avis_dg, déterminé
-     * automatiquement à la création — voir CourrierCircuitService::creer).
+     * Le circuit complet est le seul circuit actif pour les nouvelles
+     * entrées. La branche `court` reste uniquement lisible pour l'historique.
      * Chaque statut courant porte une LISTE de transitions candidates (pas
      * un unique "suivant" scalaire) : la première dont la condition est
      * satisfaite (voir ConfigCircuitTransitionRules::conditionSatisfaite())
@@ -21,20 +20,11 @@ return [
      *
      * - 'complet' : mail externe entrant (toujours), demande de stage
      *   (toujours), ou courrier à destination de la DG elle-même.
-     *     - recu -> au_protocole : condition 'protocole_requis', jamais
-     *       satisfaite aujourd'hui (voir 'categories_protocole' plus bas,
-     *       vide) — le Protocole n'est pas supprimé du circuit (il figure
-     *       dans le document de flux officiel de l'ONT), mais aucune
-     *       catégorie de courrier confirmée n'en a besoin pour l'instant.
-     *       Voir docs/questions-ont.md.
-     *     - recu -> en_attente_tri : sans condition, le comportement par
-     *       défaut — la Réception transmet directement au tri du
-     *       Secrétariat 01, sans Protocole, conformément au circuit décrit
-     *       par la Direction.
-     *     - au_protocole -> en_attente_tri : si jamais le Protocole est un
-     *       jour emprunté, il transmet lui aussi au tri, jamais directement
-     *       à la DG — le tri précède toujours la DG, qu'il y ait eu
-     *       Protocole ou non.
+     *     - recu -> en_attente_tri : la Réception crée le dossier et remet
+     *       son bordereau au Secrétariat 01. Après décharge, le Secrétariat
+     *       01 place le dossier dans sa file de tri. L'ancien Protocole ne
+     *       fait plus partie de l'organisation ; le statut au_protocole est
+     *       conservé uniquement pour relire les historiques existants.
      *     - en_attente_tri -> en_attente_avis_dg : le Secrétariat 01 trie
      *       par degré d'urgence puis transmet à la DG — condition
      *       'urgence_signalee' (urgent ou très urgent), vérifiée AVANT le
@@ -67,16 +57,15 @@ return [
      *       comme si une décision avait été prise — y compris sur un
      *       courrier déjà imputé (Lot 3 : seul un avis favorable exploite
      *       l'imputation, jamais un avis réservé).
-     *     - retour_reception -> en_attente_avis_dg : la Réception représente
-     *       le dossier à la DG — c'est cette transition, et elle seule, qui
-     *       incrémente le tour de boucle (voir
-     *       CourrierCircuitService::representerDg()).
+     *     - retour_reception -> en_attente_tri : la Réception remet le
+     *       dossier à SEC1. Cette transition incrémente le tour ; SEC1 doit
+     *       ensuite retrier avant toute nouvelle présentation à la DG.
      *     - en_dispatch -> chez_direction : le Secrétariat 02 transmet le
      *       courrier imputé au secrétariat de la direction imputée à titre
      *       principal (Lot 3). Étape terminale pour ce lot — la suite
      *       (tableau de répartition, retour vers la DG) est le Lot 4.
-     *     - projet_a_rediger -> projet_a_valider : un assistant (Protocole,
-     *       Ass1, Ass2 ou du DGA — voir Poste::ASSISTANT_*) soumet son projet
+     *     - projet_a_rediger -> projet_a_valider : un assistant actif
+     *       (Ass1, Ass2 ou assistant du DGA) soumet son projet
      *       de réponse à un relecteur désigné. Le Secrétariat 01 ne rédige
      *       plus : il garde le tri et l'établissement des accusés de
      *       réception (voir docs/questions-ont.md).
@@ -89,14 +78,9 @@ return [
      *     - signe -> enregistre : le Secrétariat 02 enregistre le courrier
      *       signé (numérotation, classification interne/externe).
      *
-     * - 'court' : courrier initié directement par une direction à
-     *   destination d'une autre direction (jamais vers la DG, jamais une
-     *   demande de stage) — aucun besoin d'arbitrage DG, donc aucun tri par
-     *   le Secrétariat 01 (réservé au circuit 'complet').
-     *     - recu -> enregistre : le Secrétariat 02 enregistre directement
-     *       le courrier (numérotation, traçabilité), sans passer par le
-     *       Protocole, la DGA, ni attendre d'avis DG. Il arrive ensuite tel
-     *       quel dans l'espace de la direction destinataire.
+     * - 'court' : conservé exclusivement pour relire les dossiers
+     *   historiques. Aucune transition active ne permet désormais de créer
+     *   ou de poursuivre ce contournement du circuit central.
      *
      * - 'dg_initie' : courrier sortant initié par la DG elle-même
      *   (instruction, note de service), sans courrier entrant déclencheur
@@ -120,23 +104,9 @@ return [
         'complet' => [
             'recu' => [
                 [
-                    'action' => 'transmettre_protocole',
-                    'statut_arrivee' => 'au_protocole',
-                    'postes' => [Poste::PROTOCOLE->value],
-                    'condition' => 'protocole_requis',
-                ],
-                [
                     'action' => 'transmettre_tri',
                     'statut_arrivee' => 'en_attente_tri',
                     'postes' => [Poste::SECRETARIAT_1->value],
-                    'condition' => null,
-                ],
-            ],
-            'au_protocole' => [
-                [
-                    'action' => 'transmettre_au_tri',
-                    'statut_arrivee' => 'en_attente_tri',
-                    'postes' => [Poste::PROTOCOLE->value],
                     'condition' => null,
                 ],
             ],
@@ -184,8 +154,8 @@ return [
             ],
             'retour_reception' => [
                 [
-                    'action' => 'representer_dg',
-                    'statut_arrivee' => 'en_attente_avis_dg',
+                    'action' => 'transmettre_sec1',
+                    'statut_arrivee' => 'en_attente_tri',
                     'postes' => [Poste::RECEPTION->value],
                     'condition' => null,
                 ],
@@ -204,7 +174,6 @@ return [
                     'action' => 'soumettre_projet_reponse',
                     'statut_arrivee' => 'projet_a_valider',
                     'postes' => [
-                        Poste::ASSISTANT_PROTOCOLE->value,
                         Poste::ASSISTANT_1->value,
                         Poste::ASSISTANT_2->value,
                         Poste::ASSISTANT_DGA->value,
@@ -231,14 +200,7 @@ return [
             'enregistre' => [],
         ],
         'court' => [
-            'recu' => [
-                [
-                    'action' => 'enregistrer',
-                    'statut_arrivee' => 'enregistre',
-                    'postes' => [Poste::SECRETARIAT_2->value],
-                    'condition' => null,
-                ],
-            ],
+            'recu' => [],
             'enregistre' => [],
         ],
         'dg_initie' => [
@@ -299,15 +261,6 @@ return [
             'envoye' => [],
         ],
     ],
-
-    /**
-     * Catégories de courrier (Courrier::type) pour lesquelles le passage par
-     * le Protocole est requis avant le tri — vide aujourd'hui : aucune
-     * catégorie confirmée. Voir docs/questions-ont.md. Activer un jour ne
-     * demande qu'une entrée ici (et, si besoin, un nouveau cas
-     * CourrierType), jamais une nouvelle migration ni un nouveau statut.
-     */
-    'categories_protocole' => [],
 
     'circuit' => [
         /**

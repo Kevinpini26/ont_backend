@@ -2,6 +2,8 @@
 
 namespace Modules\Courrier\Contracts;
 
+use Modules\Kernel\Models\Direction;
+
 interface NumeroGenerator
 {
     public function genererAccuseReception(): string;
@@ -15,6 +17,8 @@ interface NumeroGenerator
      * docs/questions-ont.md.
      */
     public function genererNumeroDepart(): string;
+
+    public function genererReferenceDocumentaire(Direction $direction, ?int $annee = null): string;
 
     /**
      * Lot C (transmission par lot) — numéro du bordereau qui porte

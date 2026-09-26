@@ -7,7 +7,6 @@ use Illuminate\Http\UploadedFile;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
-use Modules\Kernel\Models\User;
 
 class MetadonneesLettreTest extends CourrierTestCase
 {
@@ -41,12 +40,12 @@ class MetadonneesLettreTest extends CourrierTestCase
     public function test_les_metadonnees_de_la_lettre_sont_facultatives(): void
     {
         $direction = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($direction)->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
 
-        $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Note interne',
+        $this->actingAs($reception)->postJson('/api/v1/courriers', [
+            'objet' => 'Lettre sans métadonnées',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_destination_id' => Direction::factory()->create()->id,
+            'numerisation_impossible' => true,
         ])->assertCreated()
             ->assertJsonPath('data.nombre_annexes', 0)
             ->assertJsonPath('data.mode_reception', null);

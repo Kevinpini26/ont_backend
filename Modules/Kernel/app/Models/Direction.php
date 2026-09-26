@@ -13,12 +13,13 @@ class Direction extends Model
     /** @use HasFactory<DirectionFactory> */
     use HasFactory;
 
-    protected $fillable = ['code', 'nom', 'actif', 'capacite_max', 'site_id'];
+    protected $fillable = ['code', 'nom', 'actif', 'est_operationnelle', 'capacite_max', 'site_id'];
 
     protected function casts(): array
     {
         return [
             'actif' => 'boolean',
+            'est_operationnelle' => 'boolean',
             'capacite_max' => 'integer',
         ];
     }

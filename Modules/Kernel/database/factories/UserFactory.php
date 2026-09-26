@@ -27,7 +27,7 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
-            'role' => UserRole::RESPONSABLE_DIRECTION,
+            'role' => UserRole::DIRECTEUR_DIRECTION,
             'poste' => null,
             'direction_id' => Direction::factory(),
         ];
@@ -53,8 +53,13 @@ class UserFactory extends Factory
 
     public function responsableDirection(?Direction $direction = null): static
     {
+        return $this->directeurDirection($direction);
+    }
+
+    public function directeurDirection(?Direction $direction = null): static
+    {
         return $this->state(fn () => [
-            'role' => UserRole::RESPONSABLE_DIRECTION,
+            'role' => UserRole::DIRECTEUR_DIRECTION,
             'poste' => null,
             'direction_id' => $direction?->id ?? Direction::factory(),
         ]);

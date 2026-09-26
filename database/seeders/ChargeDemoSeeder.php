@@ -79,7 +79,7 @@ class ChargeDemoSeeder extends Seeder
             ...array_fill(0, 10, CourrierStatut::SIGNE),
             ...array_fill(0, 10, CourrierStatut::PROJET_A_REDIGER),
             ...array_fill(0, 5, CourrierStatut::EN_ATTENTE_AVIS_DG),
-            ...array_fill(0, 5, CourrierStatut::AU_PROTOCOLE),
+            ...array_fill(0, 5, CourrierStatut::EN_ATTENTE_TRI),
         ];
 
         for ($debut = 0; $debut < self::NB_COURRIERS; $debut += self::TAILLE_LOT) {

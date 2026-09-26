@@ -24,6 +24,7 @@ class TransmettreAvisDgRequest extends FormRequest
     {
         return [
             'degre_urgence' => ['required', Rule::enum(DegreUrgence::class)],
+            'instruction' => ['nullable', 'string', 'max:2000'],
         ];
     }
 

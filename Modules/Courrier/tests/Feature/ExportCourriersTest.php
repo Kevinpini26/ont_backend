@@ -15,7 +15,7 @@ class ExportCourriersTest extends CourrierTestCase
     public function test_un_agent_peut_exporter_les_courriers_visibles_en_csv(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::RECEPTION, $direction);
         Courrier::factory()->create(['objet' => 'Objet visible dans l\'export']);
 
         $reponse = $this->actingAs($agent)->get('/api/v1/courriers/export');
@@ -28,7 +28,7 @@ class ExportCourriersTest extends CourrierTestCase
     public function test_lexport_respecte_le_filtre_de_statut(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::RECEPTION, $direction);
         Courrier::factory()->create(['objet' => 'Courrier recu', 'statut' => CourrierStatut::RECU]);
         Courrier::factory()->create(['objet' => 'Courrier enregistre', 'statut' => CourrierStatut::ENREGISTRE]);
 

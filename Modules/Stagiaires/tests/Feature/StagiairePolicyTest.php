@@ -56,13 +56,13 @@ class StagiairePolicyTest extends TestCase
         $this->actingAs($responsable)->getJson("/api/v1/stagiaires/{$stagiaireDuneAutreDirection->id}")->assertNotFound();
     }
 
-    public function test_le_protocole_voit_un_stagiaire_tant_que_le_courrier_dorigine_est_dans_sa_file(): void
+    public function test_le_secretariat_01_voit_un_stagiaire_tant_que_le_courrier_dorigine_est_dans_sa_file(): void
     {
-        $protocole = User::factory()->agentCircuitCourrier(Poste::PROTOCOLE)->create();
-        $courrier = $this->demandeDeStageAuStatut(CourrierStatut::AU_PROTOCOLE);
+        $secretariat1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1)->create();
+        $courrier = $this->demandeDeStageAuStatut(CourrierStatut::RECU);
         $stagiaire = Stagiaire::factory()->create(['courrier_id' => $courrier->id]);
 
-        $this->actingAs($protocole)->getJson("/api/v1/stagiaires/{$stagiaire->id}")->assertOk();
+        $this->actingAs($secretariat1)->getJson("/api/v1/stagiaires/{$stagiaire->id}")->assertOk();
     }
 
     /**
@@ -80,13 +80,13 @@ class StagiairePolicyTest extends TestCase
         $this->actingAs($reception)->getJson("/api/v1/stagiaires/{$stagiaire->id}")->assertForbidden();
     }
 
-    public function test_le_protocole_perd_la_visibilite_une_fois_le_courrier_transmis_a_letape_suivante(): void
+    public function test_le_secretariat_01_perd_la_visibilite_une_fois_le_courrier_transmis_a_letape_suivante(): void
     {
-        $protocole = User::factory()->agentCircuitCourrier(Poste::PROTOCOLE)->create();
+        $secretariat1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1)->create();
         $courrier = $this->demandeDeStageAuStatut(CourrierStatut::EN_ATTENTE_AVIS_DG);
         $stagiaire = Stagiaire::factory()->create(['courrier_id' => $courrier->id]);
 
-        $this->actingAs($protocole)->getJson("/api/v1/stagiaires/{$stagiaire->id}")->assertForbidden();
+        $this->actingAs($secretariat1)->getJson("/api/v1/stagiaires/{$stagiaire->id}")->assertForbidden();
     }
 
     public function test_personne_du_circuit_courrier_ne_voit_plus_le_stagiaire_une_fois_le_courrier_enregistre(): void
@@ -100,15 +100,15 @@ class StagiairePolicyTest extends TestCase
 
     public function test_la_liste_des_stagiaires_est_filtree_pour_un_agent_du_circuit_courrier(): void
     {
-        $protocole = User::factory()->agentCircuitCourrier(Poste::PROTOCOLE)->create();
+        $secretariat1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1)->create();
 
-        $courrierVisible = $this->demandeDeStageAuStatut(CourrierStatut::AU_PROTOCOLE);
+        $courrierVisible = $this->demandeDeStageAuStatut(CourrierStatut::RECU);
         $stagiaireVisible = Stagiaire::factory()->create(['courrier_id' => $courrierVisible->id]);
 
         $courrierInvisible = $this->demandeDeStageAuStatut(CourrierStatut::ENREGISTRE);
         Stagiaire::factory()->create(['courrier_id' => $courrierInvisible->id]);
 
-        $response = $this->actingAs($protocole)->getJson('/api/v1/stagiaires')->assertOk();
+        $response = $this->actingAs($secretariat1)->getJson('/api/v1/stagiaires')->assertOk();
 
         $ids = collect($response->json('data'))->pluck('id');
         $this->assertTrue($ids->contains($stagiaireVisible->id));

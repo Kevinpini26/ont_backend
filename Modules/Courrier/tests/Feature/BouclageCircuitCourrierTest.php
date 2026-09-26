@@ -16,7 +16,7 @@ use Modules\Kernel\Models\User;
  * Vérifie le bouclage interne introduit au Lot 1 : un avis DG "réservé"
  * renvoie le dossier à la Réception (tour+1) plutôt que de le faire
  * avancer comme si une décision avait été prise — voir
- * CourrierCircuitService::rendreAvisDg()/representerDg() et
+ * CourrierCircuitService::rendreAvisDg()/transmettreRetourVersSec1() et
  * config('courrier.circuit_transitions.complet.en_attente_avis_dg').
  */
 class BouclageCircuitCourrierTest extends CourrierTestCase
@@ -32,12 +32,15 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $dg = $this->agent(Poste::DG, $direction);
 
-        $id = $this->actingAs($reception)->post('/api/v1/courriers', [
+        $initial = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
-        ])->assertCreated()->json('data.id');
+        ])->assertCreated()->json('data');
+        $id = $initial['id'];
+        $dossierId = $initial['dossier_id'];
+        $numeroEnregistrement = $initial['numero_enregistrement'];
 
         // Reçu, trié, présenté à la DG — premier tour.
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
@@ -61,14 +64,26 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
 
         $this->assertSame(1, $reponse->json('data.tour'));
 
-        // La Réception représente le dossier à la DG — tour suivant.
+        // La Réception remet le dossier à SEC1. SEC1 retrie ensuite avant
+        // toute nouvelle présentation à la DG.
         $this->actingAs($reception)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
         $representation = $this->actingAs($reception)
-            ->postJson("/api/v1/courriers/{$id}/representer-dg")
+            ->postJson("/api/v1/courriers/{$id}/transmettre-sec1", ['instruction' => 'Compléter puis retrier.'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value)
+            ->assertJsonPath('data.transitions.4.instruction', 'Compléter puis retrier.');
 
         $this->assertSame(2, $representation->json('data.tour'));
+        $this->assertSame($id, $representation->json('data.id'));
+        $this->assertSame($dossierId, $representation->json('data.dossier_id'));
+        $this->assertSame($numeroEnregistrement, $representation->json('data.numero_enregistrement'));
+        $this->assertDatabaseCount('courriers', 1);
+
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
 
         // La garde d'intérim de la DGA s'applique à ce chemin comme aux
         // deux autres (favorable/défavorable) — même mécanisme, pas

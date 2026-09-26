@@ -21,7 +21,7 @@ class StagiaireEnSouffrance
     private const STATUTS_TERMINAUX = [StagiaireStatut::CLOTURE, StagiaireStatut::NON_RETENU];
 
     /**
-     * @return Collection<int, array{stagiaire: Stagiaire, anciennete_heures: int, seuil_heures: int, niveau: int}>
+     * @return Collection<int, array{stagiaire: Stagiaire, anciennete_heures: int, seuil_heures: int, niveau: 1|2|3}>
      */
     public function pourUtilisateur(User $utilisateur): Collection
     {
@@ -36,17 +36,18 @@ class StagiaireEnSouffrance
                 $depuis = $stagiaire->statut_change_at ?? $stagiaire->created_at;
                 $heures = (int) $depuis->diffInHours(now());
                 $seuil = (int) ($delaisParStatut[$stagiaire->statut->value] ?? $seuilDefaut);
+                $niveau = (int) match (true) {
+                    $heures >= $seuil * 3 => 3,
+                    $heures >= $seuil * 2 => 2,
+                    $heures >= $seuil => 1,
+                    default => 0,
+                };
 
                 return [
                     'stagiaire' => $stagiaire,
                     'anciennete_heures' => $heures,
                     'seuil_heures' => $seuil,
-                    'niveau' => match (true) {
-                        $heures >= $seuil * 3 => 3,
-                        $heures >= $seuil * 2 => 2,
-                        $heures >= $seuil => 1,
-                        default => 0,
-                    },
+                    'niveau' => $niveau,
                 ];
             })
             ->filter(fn (array $ligne) => $ligne['niveau'] > 0)
@@ -66,7 +67,7 @@ class StagiaireEnSouffrance
             // En évaluation, aussi bien la DFP (sa propre grille) que la
             // direction d'accueil (la sienne) sont responsables d'agir.
             StagiaireStatut::EVALUATION_EN_COURS => $utilisateur->role === UserRole::AGENT_DFP
-                || (in_array($utilisateur->role, [UserRole::RESPONSABLE_DIRECTION, UserRole::SECRETARIAT_DIRECTION], true)
+                || (($utilisateur->role->estDirecteurDirection() || $utilisateur->role === UserRole::SECRETARIAT_DIRECTION)
                     && $utilisateur->direction_id === $stagiaire->direction_id),
 
             default => false,

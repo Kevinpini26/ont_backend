@@ -3,6 +3,7 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 use Tests\TestCase;
 
@@ -22,6 +23,32 @@ class DoitChangerMotDePasseTest extends TestCase
         ])->assertCreated();
 
         $this->assertTrue(User::query()->find($reponse->json('data.id'))->doit_changer_mot_de_passe);
+    }
+
+    public function test_lancien_poste_protocole_ne_peut_plus_etre_attribue_a_un_nouveau_compte(): void
+    {
+        $administrateur = User::factory()->administrateur()->create();
+
+        $this->actingAs($administrateur)->postJson('/api/v1/users', [
+            'name' => 'Ancien poste',
+            'email' => 'ancien.protocole@ont.cd',
+            'password' => 'Xk9mQprT4vLw#26',
+            'role' => 'agent_circuit_courrier',
+            'poste' => Poste::PROTOCOLE->value,
+        ])->assertUnprocessable()->assertJsonValidationErrors('poste');
+    }
+
+    public function test_lancien_poste_assistant_protocole_ne_peut_plus_etre_attribue_a_un_nouveau_compte(): void
+    {
+        $administrateur = User::factory()->administrateur()->create();
+
+        $this->actingAs($administrateur)->postJson('/api/v1/users', [
+            'name' => 'Ancien assistant',
+            'email' => 'ancien.assistant.protocole@ont.cd',
+            'password' => 'Xk9mQprT4vLw#26',
+            'role' => 'agent_circuit_courrier',
+            'poste' => Poste::ASSISTANT_PROTOCOLE->value,
+        ])->assertUnprocessable()->assertJsonValidationErrors('poste');
     }
 
     public function test_lapi_est_bloquee_tant_que_le_mot_de_passe_nest_pas_change(): void

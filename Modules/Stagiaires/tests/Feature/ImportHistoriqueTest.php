@@ -23,7 +23,7 @@ class ImportHistoriqueTest extends StagiaireTestCase
     public function test_ladministrateur_peut_importer_un_csv_valide(): void
     {
         $admin = User::factory()->administrateur()->create();
-        $direction = Direction::factory()->create(['code' => 'DFP']);
+        $direction = Direction::query()->where('code', 'DFP')->firstOrFail();
 
         $csv = self::ENTETE
             ."Jean Kabila,jean@example.com,Université de Kinshasa,DFP,cloture,2024-01-10,2024-03-10,15.5,REF-001\n"

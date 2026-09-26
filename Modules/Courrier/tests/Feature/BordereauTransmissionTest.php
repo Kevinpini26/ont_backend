@@ -10,7 +10,6 @@ use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
-use Modules\Kernel\Models\User;
 
 /**
  * Vérifie le mécanisme du bordereau de transmission et de la décharge
@@ -154,8 +153,8 @@ class BordereauTransmissionTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
 
-        // Ni le Protocole ni la DG ne sont destinataires d'un courrier
-        // fraîchement reçu (voir test ci-dessus : c'est le Secrétariat 01).
+        // La DG n'est pas destinataire du bordereau fraîchement remis :
+        // celui-ci vise explicitement le Secrétariat 01.
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$id}/accuser-reception")
             ->assertStatus(403);
@@ -164,52 +163,42 @@ class BordereauTransmissionTest extends CourrierTestCase
     public function test_une_decharge_deja_donnee_ne_peut_pas_etre_redonnee(): void
     {
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($protocole)
+        $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")
             ->assertStatus(422)
             ->assertJsonPath('message', 'La réception de ce dossier a déjà été accusée.');
     }
 
-    public function test_le_circuit_court_direction_a_direction_exige_aussi_la_decharge(): void
+    public function test_un_ancien_circuit_court_reste_fige_meme_avec_une_decharge(): void
     {
         $directionEmettrice = Direction::factory()->create();
         $directionDestinataire = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $directionEmettrice);
-
-        $id = $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Demande de collaboration',
-            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::RECU,
+            'necessite_avis_dg' => false,
             'direction_destination_id' => $directionDestinataire->id,
-        ])->assertCreated()->json('data.id');
+        ]);
 
         $this->actingAs($secretariat2)
-            ->postJson("/api/v1/courriers/{$id}/enregistrer", [
+            ->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", [
                 'classification' => 'interne',
                 'note_technique' => 'RAS',
             ])
-            ->assertStatus(422);
+            ->assertForbidden();
 
-        $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-
-        $this->actingAs($secretariat2)
-            ->postJson("/api/v1/courriers/{$id}/enregistrer", [
-                'classification' => 'interne',
-                'note_technique' => 'RAS',
-            ])
-            ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::ENREGISTRE->value);
+        $this->assertSame(CourrierStatut::RECU, $courrier->fresh()->statut);
     }
 
     public function test_le_bordereau_en_relecture_vise_le_relecteur_designe_pas_un_poste(): void
     {
         $direction = Direction::factory()->create();
-        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_2, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
         $autreAssistant = $this->agent(Poste::ASSISTANT_2, $direction);
 

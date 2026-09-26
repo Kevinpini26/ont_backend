@@ -8,25 +8,35 @@ use Modules\Kernel\Models\Direction;
 class DirectionSeeder extends Seeder
 {
     /**
-     * Les huit directions réelles de l'Office National du Tourisme de la RDC.
+     * La Direction Générale institutionnelle et les huit directions
+     * opérationnelles validées. Les codes historiques sont renommés en
+     * conservant les lignes (et donc leurs clés étrangères).
      */
     public function run(): void
     {
+        Direction::query()->where('code', 'DRHL')->update(['code' => 'DRH']);
+        Direction::query()->where('code', 'DMFPT')->update(['code' => 'DMR']);
+
         $directions = [
-            ['code' => 'DRHL', 'nom' => 'Direction des Ressources Humaines et de la Logistique'],
-            ['code' => 'DMFPT', 'nom' => 'Direction de la Mobilisation du Fonds de Promotion du Tourisme'],
+            ['code' => 'DG', 'nom' => 'Direction Générale', 'est_operationnelle' => false],
+            ['code' => 'DRH', 'nom' => 'Direction des Ressources Humaines', 'est_operationnelle' => true],
+            ['code' => 'DMR', 'nom' => 'Direction de Mobilisation des Ressources', 'est_operationnelle' => true],
             ['code' => 'DF', 'nom' => 'Direction Financière'],
-            ['code' => 'DMC', 'nom' => 'Direction Marketing et Communication'],
-            ['code' => 'DEP', 'nom' => 'Direction des Études, de la Planification et du Développement Touristique'],
-            ['code' => 'DIPP', 'nom' => 'Direction des Investissements, Partenariats et Patrimoine touristique'],
-            ['code' => 'DFP', 'nom' => 'Direction de la Formation et de la Professionnalisation'],
-            ['code' => 'DAI', 'nom' => "Direction de l'Audit Interne"],
+            ['code' => 'DMC', 'nom' => 'Direction de Marketing et Communication'],
+            ['code' => 'DEP', 'nom' => 'Direction des Études, Planification et Développement Touristique'],
+            ['code' => 'DIPP', 'nom' => 'Direction des Investissements, Partenariats et Patrimoines Touristiques'],
+            ['code' => 'DFP', 'nom' => 'Direction de Formation et de Professionnalisation'],
+            ['code' => 'DAI', 'nom' => 'Direction de l’Audit Interne'],
         ];
 
         foreach ($directions as $direction) {
             Direction::query()->updateOrCreate(
                 ['code' => $direction['code']],
-                ['nom' => $direction['nom'], 'actif' => true],
+                [
+                    'nom' => $direction['nom'],
+                    'actif' => true,
+                    'est_operationnelle' => $direction['est_operationnelle'] ?? true,
+                ],
             );
         }
     }

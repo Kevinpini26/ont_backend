@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 
 class CircuitCourrierTest extends CourrierTestCase
@@ -23,13 +24,12 @@ class CircuitCourrierTest extends CourrierTestCase
         $direction = Direction::factory()->create();
 
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
         $dga = $this->agent(Poste::DGA, $direction);
         $dg = $this->agent(Poste::DG, $direction);
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
-        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
-        $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $relecteur = $this->agent(Poste::ASSISTANT_2, $direction);
 
         $courrier = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
@@ -39,6 +39,8 @@ class CircuitCourrierTest extends CourrierTestCase
         ])->assertCreated()->json('data');
 
         $this->assertSame(CourrierStatut::RECU->value, $courrier['statut']);
+        $this->assertNotNull($courrier['numero_enregistrement']);
+        $numeroEnregistrementReception = $courrier['numero_enregistrement'];
         $id = $courrier['id'];
 
         // Chaque transition exige désormais une décharge explicite du
@@ -46,12 +48,8 @@ class CircuitCourrierTest extends CourrierTestCase
         // BordereauTransmissionTest.php pour la vérification dédiée du
         // mécanisme lui-même.
         //
-        // Correction du bouclage (Lot 1) : le Protocole n'est plus une étape
-        // obligatoire — la Réception transmet directement au tri du
-        // Secrétariat 01, sans Protocole, conformément au circuit décrit par
-        // la Direction (voir config('courrier.circuit_transitions.complet'),
-        // condition 'protocole_requis' jamais satisfaite tant qu'aucune
-        // catégorie n'y est confirmée).
+        // La Réception remet directement le dossier au Secrétariat 01,
+        // sans ancien service Protocole.
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
         $this->actingAs($secretariat1)
@@ -105,6 +103,17 @@ class CircuitCourrierTest extends CourrierTestCase
             ->postJson("/api/v1/courriers/{$id}/valider-relecture")
             ->assertOk();
 
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'courrier.relecture_validee',
+            'auditable_id' => $id,
+            'user_id' => $relecteur->id,
+        ]);
+
+        $traceRelecture = AuditLog::query()->where('action', 'courrier.relecture_validee')->sole();
+        $this->assertNotNull($traceRelecture->created_at);
+        $this->assertFalse($traceRelecture->meta['commentaire_fourni']);
+        $this->assertArrayHasKey('relecture_validee_at', $traceRelecture->meta);
+
         // La décharge du bordereau en_relecture, donnée par le relecteur
         // ci-dessus, suffit aussi à débloquer la signature de la DG : ce
         // n'est pas un nouveau bordereau distinct (voir
@@ -127,24 +136,18 @@ class CircuitCourrierTest extends CourrierTestCase
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::ENREGISTRE->value);
 
-        $this->assertNotNull($response->json('data.numero_enregistrement'));
+        $this->assertSame($numeroEnregistrementReception, $response->json('data.numero_enregistrement'));
         $this->assertStringStartsWith((string) now()->year, $response->json('data.numero_enregistrement'));
     }
 
     public function test_impossible_de_sauter_une_etape_du_circuit(): void
     {
         $direction = Direction::factory()->create();
-        // Le Protocole figure dans l'union des postes candidats depuis
-        // "recu" (voir config('courrier.circuit_transitions.complet.recu'),
-        // condition 'protocole_requis' jamais satisfaite en pratique) — la
-        // policy laisse donc passer la requête, mais le service doit
-        // refuser : le courrier est encore à "recu", pas "en_attente_tri",
-        // la transition vers "en_attente_avis_dg" saute une étape.
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
 
-        $this->actingAs($protocole)
+        $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])
             ->assertStatus(422);
 
@@ -155,9 +158,7 @@ class CircuitCourrierTest extends CourrierTestCase
     public function test_un_poste_non_habilite_ne_peut_pas_faire_avancer_le_courrier(): void
     {
         $direction = Direction::factory()->create();
-        // Ni le Protocole ni le Secrétariat 01 : aucune des deux candidates
-        // depuis "recu" (transmettre-protocole, transmettre-tri) n'habilite
-        // la DG.
+        // Depuis "recu", seul le Secrétariat 01 est habilité à ouvrir le tri.
         $dg = $this->agent(Poste::DG, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
@@ -171,8 +172,8 @@ class CircuitCourrierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
-        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
-        $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $relecteur = $this->agent(Poste::ASSISTANT_2, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
         $this->marquerDecharge($courrier);
@@ -242,10 +243,48 @@ class CircuitCourrierTest extends CourrierTestCase
             ->assertStatus(403);
     }
 
+    public function test_les_trois_postes_assistants_actifs_peuvent_traiter_la_file_partagee_des_projets(): void
+    {
+        $direction = Direction::factory()->create();
+
+        foreach ([Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA] as $poste) {
+            $redacteur = $this->agent($poste, $direction);
+            $relecteur = $this->agent($poste === Poste::ASSISTANT_1 ? Poste::ASSISTANT_2 : Poste::ASSISTANT_1, $direction);
+            $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+            $this->marquerDecharge($courrier);
+
+            $this->actingAs($redacteur)
+                ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+                    'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
+                    'relecteur_id' => $relecteur->id,
+                ])
+                ->assertOk()
+                ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_VALIDER->value);
+        }
+    }
+
+    public function test_lancien_assistant_du_protocole_ne_peut_plus_prendre_un_projet_a_rediger(): void
+    {
+        $direction = Direction::factory()->create();
+        $ancienAssistant = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
+        $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+        $this->marquerDecharge($courrier);
+
+        $this->actingAs($ancienAssistant)
+            ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+                'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
+                'relecteur_id' => $relecteur->id,
+            ])
+            ->assertNotFound();
+
+        $this->assertSame(CourrierStatut::PROJET_A_REDIGER, $courrier->fresh()->statut);
+    }
+
     public function test_le_relecteur_peut_renvoyer_le_projet_pour_correction_avec_observation_obligatoire(): void
     {
         $direction = Direction::factory()->create();
-        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_DGA, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
         $autreAssistant = $this->agent(Poste::ASSISTANT_2, $direction);
 

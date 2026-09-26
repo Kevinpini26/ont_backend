@@ -18,6 +18,7 @@ class UpdateDirectionRequest extends FormRequest
             'code' => ['sometimes', 'required', 'string', 'max:20', Rule::unique('directions', 'code')->ignore($this->route('direction'))],
             'nom' => ['sometimes', 'required', 'string', 'max:255'],
             'actif' => ['sometimes', 'boolean'],
+            'est_operationnelle' => ['sometimes', 'boolean'],
             'capacite_max' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'site_id' => ['sometimes', 'nullable', 'integer', 'exists:sites,id'],
         ];

@@ -10,6 +10,13 @@ use Modules\Kernel\Support\PasswordPolicy;
 
 class StoreUserRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->input('role') === UserRole::RESPONSABLE_DIRECTION->value) {
+            $this->merge(['role' => UserRole::DIRECTEUR_DIRECTION->value]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -17,6 +24,9 @@ class StoreUserRequest extends FormRequest
 
     public function rules(): array
     {
+        $role = UserRole::tryFrom((string) $this->input('role'));
+        $fonctionDirectionnelle = $role?->estDirecteurDirection() || $role === UserRole::SECRETARIAT_DIRECTION;
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
@@ -26,6 +36,7 @@ class StoreUserRequest extends FormRequest
                 Rule::requiredIf(fn () => $this->input('role') === UserRole::AGENT_CIRCUIT_COURRIER->value),
                 Rule::excludeIf(fn () => $this->input('role') !== UserRole::AGENT_CIRCUIT_COURRIER->value),
                 Rule::enum(Poste::class),
+                Rule::notIn([Poste::PROTOCOLE->value, Poste::ASSISTANT_PROTOCOLE->value]),
             ],
             'direction_id' => [
                 Rule::requiredIf(fn () => in_array($this->input('role'), array_map(
@@ -37,7 +48,10 @@ class StoreUserRequest extends FormRequest
                     UserRole::rolesRequiringDirection(),
                 ), true)),
                 'integer',
-                Rule::exists('directions', 'id'),
+                Rule::exists('directions', 'id')->when(
+                    $fonctionDirectionnelle,
+                    fn ($rule) => $rule->where('est_operationnelle', true)->where('actif', true),
+                ),
             ],
         ];
     }

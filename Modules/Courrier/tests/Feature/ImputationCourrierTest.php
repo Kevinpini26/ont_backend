@@ -73,7 +73,7 @@ class ImputationCourrierTest extends CourrierTestCase
         $responsableEnCopie = User::factory()->responsableDirection($directionEnCopie)->create();
 
         $this->actingAs($responsableEnCopie)
-            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-protocole")
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")
             ->assertForbidden();
     }
 
@@ -82,9 +82,9 @@ class ImputationCourrierTest extends CourrierTestCase
         $courrier = Courrier::factory()->create();
         $principale = Direction::factory()->create();
         $copie = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, Direction::factory()->create());
+        $dg = $this->agent(Poste::DG, Direction::factory()->create());
 
-        $reponse = $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/imputer", [
+        $reponse = $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", [
             'imputations' => [
                 ['direction_id' => $principale->id, 'mention' => 'pour_attribution', 'est_principale' => true],
                 ['direction_id' => $copie->id, 'mention' => 'pour_information', 'est_principale' => false],
@@ -100,9 +100,9 @@ class ImputationCourrierTest extends CourrierTestCase
     {
         $courrier = Courrier::factory()->create();
         $direction = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, Direction::factory()->create());
+        $dg = $this->agent(Poste::DG, Direction::factory()->create());
 
-        $this->actingAs($protocole)
+        $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$courrier->id}/imputer", [
                 'imputations' => [
                     ['direction_id' => $direction->id, 'mention' => 'pour_information', 'est_principale' => false],
@@ -117,7 +117,7 @@ class ImputationCourrierTest extends CourrierTestCase
         $courrier = Courrier::factory()->create();
         $directionInitiale = Direction::factory()->create();
         $nouvelleDirection = Direction::factory()->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, Direction::factory()->create());
+        $dg = $this->agent(Poste::DG, Direction::factory()->create());
 
         $payload = fn ($directionId) => [
             'imputations' => [
@@ -125,8 +125,8 @@ class ImputationCourrierTest extends CourrierTestCase
             ],
         ];
 
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($directionInitiale->id))->assertOk();
-        $this->actingAs($protocole)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($nouvelleDirection->id))->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($directionInitiale->id))->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($nouvelleDirection->id))->assertOk();
 
         $imputations = $courrier->fresh()->imputations;
         $this->assertCount(1, $imputations);

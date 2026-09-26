@@ -35,9 +35,9 @@ class StagiaireDemoSeeder extends Seeder
 
     public function run(StagiaireCircuitService $circuit, TableauRepartitionCircuitService $tableaux): void
     {
-        $this->direction = Direction::query()->where('code', 'DRHL')->firstOrFail();
+        $this->direction = Direction::query()->where('code', 'DRH')->firstOrFail();
         $dfp = User::query()->where('email', 'dfp@ont.cd')->firstOrFail();
-        $responsable = User::query()->where('email', 'responsable.drhl@ont.cd')->firstOrFail();
+        $responsable = User::query()->where('email', 'responsable.drh@ont.cd')->firstOrFail();
         $this->tableaux = $tableaux;
         $this->reception = User::query()->where('email', 'reception@ont.cd')->firstOrFail();
         $this->dg = User::query()->where('email', 'dg@ont.cd')->firstOrFail();

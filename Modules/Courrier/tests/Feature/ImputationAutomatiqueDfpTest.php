@@ -23,7 +23,7 @@ class ImputationAutomatiqueDfpTest extends CourrierTestCase
 
     public function test_un_avis_favorable_sans_imputation_manuelle_impute_automatiquement_a_la_dfp(): void
     {
-        Direction::factory()->create(['code' => config('stagiaires.direction_dfp_code')]);
+        $this->assertDatabaseHas('directions', ['code' => config('stagiaires.direction_dfp_code')]);
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
 
@@ -73,7 +73,7 @@ class ImputationAutomatiqueDfpTest extends CourrierTestCase
     public function test_le_reglage_desactive_neffectue_aucune_imputation_automatique(): void
     {
         config(['stagiaires.imputation_automatique_dfp' => false]);
-        Direction::factory()->create(['code' => config('stagiaires.direction_dfp_code')]);
+        $this->assertDatabaseHas('directions', ['code' => config('stagiaires.direction_dfp_code')]);
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
 

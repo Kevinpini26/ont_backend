@@ -16,8 +16,16 @@ use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
 use Modules\Courrier\Contracts\SequenceGenerator;
 use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Models\MissionDocumentaire;
+use Modules\Courrier\Models\TraitementDirection;
 use Modules\Courrier\Policies\BordereauLotPolicy;
 use Modules\Courrier\Policies\CourrierPolicy;
+use Modules\Courrier\Policies\DispatchCourrierPolicy;
+use Modules\Courrier\Policies\DocumentProduitDirectionPolicy;
+use Modules\Courrier\Policies\MissionDocumentairePolicy;
+use Modules\Courrier\Policies\TraitementDirectionPolicy;
 use Modules\Courrier\Support\ConfigCircuitTransitionRules;
 use Modules\Courrier\Support\DatabaseSequenceGenerator;
 use Modules\Courrier\Support\DefaultNumeroGenerator;
@@ -78,6 +86,10 @@ class CourrierServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         Gate::policy(Courrier::class, CourrierPolicy::class);
+        Gate::policy(DispatchCourrier::class, DispatchCourrierPolicy::class);
+        Gate::policy(DocumentProduitDirection::class, DocumentProduitDirectionPolicy::class);
+        Gate::policy(MissionDocumentaire::class, MissionDocumentairePolicy::class);
+        Gate::policy(TraitementDirection::class, TraitementDirectionPolicy::class);
         Gate::policy(BordereauLot::class, BordereauLotPolicy::class);
     }
 

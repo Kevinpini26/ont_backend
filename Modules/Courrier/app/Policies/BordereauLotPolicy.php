@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Policies;
 
 use Modules\Courrier\Models\BordereauLot;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
@@ -26,7 +27,7 @@ class BordereauLotPolicy
     public function creer(User $user): bool
     {
         return $user->role === UserRole::ADMINISTRATEUR
-            || $user->role === UserRole::AGENT_CIRCUIT_COURRIER;
+            || ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && ! $user->poste?->estHistorique());
     }
 
     public function view(User $user, BordereauLot $bordereau): bool

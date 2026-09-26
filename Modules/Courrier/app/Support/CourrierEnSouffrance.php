@@ -21,7 +21,7 @@ class CourrierEnSouffrance
     public function __construct(private readonly CircuitTransitionRules $regles) {}
 
     /**
-     * @return Collection<int, array{courrier: Courrier, anciennete_heures: int, seuil_heures: int, niveau: int}>
+     * @return Collection<int, array{courrier: Courrier, anciennete_heures: int, seuil_heures: int, niveau: 1|2|3}>
      */
     public function pourUtilisateur(User $utilisateur): Collection
     {
@@ -36,19 +36,20 @@ class CourrierEnSouffrance
             ->map(function (Courrier $courrier) use ($delaisParStatut, $seuilDefaut) {
                 $bordereau = $courrier->bordereauCourant();
                 $depuis = $bordereau?->created_at ?? $courrier->created_at;
-                $heures = $depuis->diffInHours(now());
+                $heures = (int) $depuis->diffInHours(now());
                 $seuil = (int) ($delaisParStatut[$courrier->statut->value] ?? $seuilDefaut);
+                $niveau = (int) match (true) {
+                    $heures >= $seuil * 3 => 3,
+                    $heures >= $seuil * 2 => 2,
+                    $heures >= $seuil => 1,
+                    default => 0,
+                };
 
                 return [
                     'courrier' => $courrier,
                     'anciennete_heures' => $heures,
                     'seuil_heures' => $seuil,
-                    'niveau' => match (true) {
-                        $heures >= $seuil * 3 => 3,
-                        $heures >= $seuil * 2 => 2,
-                        $heures >= $seuil => 1,
-                        default => 0,
-                    },
+                    'niveau' => $niveau,
                 ];
             })
             ->filter(fn (array $ligne) => $ligne['niveau'] > 0)

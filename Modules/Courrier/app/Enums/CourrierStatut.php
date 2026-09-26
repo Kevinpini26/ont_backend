@@ -12,6 +12,13 @@ namespace Modules\Courrier\Enums;
 enum CourrierStatut: string
 {
     case RECU = 'recu';
+    case BROUILLON_DIRECTION = 'brouillon_direction';
+
+    /**
+     * Historique uniquement : le Protocole n'existe plus dans
+     * l'organisation actuelle. Conservé pour hydrater et afficher les
+     * anciens dossiers sans réécrire leurs transitions.
+     */
     case AU_PROTOCOLE = 'au_protocole';
 
     /**
@@ -63,7 +70,7 @@ enum CourrierStatut: string
 
     /**
      * Rédaction du projet de réponse — poste des assistants
-     * (ASSISTANT_PROTOCOLE/ASSISTANT_1/ASSISTANT_2/ASSISTANT_DGA), jamais le
+     * (ASSISTANT_1/ASSISTANT_2/ASSISTANT_DGA), jamais le
      * Secrétariat 01 (qui garde le tri et l'établissement des accusés de
      * réception, voir config('courrier.circuit_transitions.complet')).
      */
@@ -97,6 +104,7 @@ enum CourrierStatut: string
      * la suite (tableau de répartition, retour vers la DG) est le Lot 4.
      */
     case CHEZ_DIRECTION = 'chez_direction';
+    case DISPATCH_EXECUTE = 'dispatch_execute';
 
     /**
      * Lot 4 (tableau de répartition) : statuts d'un courrier "synthétique"
@@ -137,7 +145,8 @@ enum CourrierStatut: string
     {
         return match ($this) {
             self::RECU => 'Reçu',
-            self::AU_PROTOCOLE => 'Au protocole',
+            self::BROUILLON_DIRECTION => 'Brouillon produit par une direction',
+            self::AU_PROTOCOLE => 'Au protocole (historique)',
             self::EN_CIRCUIT_HIERARCHIQUE => 'En circuit hiérarchique',
             self::EN_ATTENTE_TRI => 'En attente de tri',
             self::EN_ATTENTE_CLASSEUR => 'Au classeur d\'attente',
@@ -147,6 +156,7 @@ enum CourrierStatut: string
             self::PROJET_A_VALIDER => 'Projet en attente de validation',
             self::EN_DISPATCH => 'En dispatch vers la direction',
             self::CHEZ_DIRECTION => 'Chez le secrétariat de la direction',
+            self::DISPATCH_EXECUTE => 'Dispatch exécuté',
             self::TABLEAU_CHEZ_RECEPTION => 'Chez la Réception (tableau)',
             self::TABLEAU_EN_ATTENTE_AVIS_DG => "En attente d'avis DG (tableau)",
             self::TABLEAU_APPROUVE => 'Tableau approuvé',

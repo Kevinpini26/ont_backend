@@ -16,179 +16,83 @@ class EnvoiParDirectionTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_une_direction_peut_envoyer_un_courrier_vers_une_autre_direction(): void
+    public function test_une_direction_ne_peut_plus_creer_un_courrier_entrant_ni_ouvrir_un_circuit_court(): void
     {
-        $directionEmettrice = Direction::factory()->create();
-        $directionDestinataire = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
+        $origine = Direction::factory()->create();
+        $destination = Direction::factory()->create();
+        $responsable = User::factory()->responsableDirection($origine)->create();
 
-        $response = $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Demande de collaboration',
+        $this->actingAs($responsable)->postJson('/api/v1/courriers', [
+            'objet' => 'Tentative de contournement',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_destination_id' => $directionDestinataire->id,
-        ])->assertCreated();
+            'direction_destination_id' => $destination->id,
+        ])->assertForbidden();
 
-        $response->assertJsonPath('data.statut', CourrierStatut::RECU->value);
-        $this->assertDatabaseHas('courriers', [
-            'direction_origine_id' => $directionEmettrice->id,
-            'direction_destination_id' => $directionDestinataire->id,
-        ]);
+        $this->assertDatabaseMissing('courriers', ['objet' => 'Tentative de contournement']);
     }
 
-    public function test_un_courrier_direction_a_direction_suit_le_circuit_court(): void
-    {
-        $directionEmettrice = Direction::factory()->create();
-        $directionDestinataire = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
-        $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $directionEmettrice);
-
-        $id = $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Demande de collaboration',
-            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_destination_id' => $directionDestinataire->id,
-        ])->assertCreated()
-            ->assertJsonPath('data.necessite_avis_dg', false)
-            ->json('data.id');
-
-        $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-
-        // Enregistrement centralisé directement depuis "recu", sans passer
-        // par le Protocole, la DGA, ni un avis DG.
-        $this->actingAs($secretariat2)
-            ->postJson("/api/v1/courriers/{$id}/enregistrer", [
-                'classification' => 'interne',
-                'note_technique' => 'RAS',
-            ])
-            ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::ENREGISTRE->value);
-
-        $this->assertNotNull(Courrier::withoutGlobalScopes()->find($id)->numero_enregistrement);
-    }
-
-    public function test_le_protocole_ne_peut_pas_agir_sur_un_courrier_en_circuit_court(): void
-    {
-        $directionEmettrice = Direction::factory()->create();
-        $directionDestinataire = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
-        $protocole = $this->agent(Poste::PROTOCOLE, $directionEmettrice);
-
-        $id = $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Demande de collaboration',
-            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_destination_id' => $directionDestinataire->id,
-        ])->assertCreated()->json('data.id');
-
-        $this->actingAs($protocole)
-            ->postJson("/api/v1/courriers/{$id}/transmettre-protocole")
-            ->assertStatus(403);
-    }
-
-    public function test_un_courrier_dune_direction_vers_la_dg_reste_en_circuit_complet(): void
+    public function test_une_direction_ne_peut_pas_contourner_la_regle_en_ciblant_la_dg_ou_un_stage(): void
     {
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Rapport trimestriel',
-            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-        ])->assertCreated()
-            ->assertJsonPath('data.necessite_avis_dg', true);
+        foreach ([CourrierType::CORRESPONDANCE_GENERALE, CourrierType::DEMANDE_STAGE] as $type) {
+            $this->actingAs($responsable)->postJson('/api/v1/courriers', [
+                'objet' => 'Entrée interdite '.$type->value,
+                'type' => $type->value,
+            ])->assertForbidden();
+        }
+
+        $this->assertDatabaseCount('courriers', 0);
     }
 
-    public function test_une_demande_de_stage_reste_en_circuit_complet_meme_vers_une_direction(): void
-    {
-        $direction = Direction::factory()->create();
-        $directionDestinataire = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($direction)->create();
-
-        $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Stagiaire recommandé',
-            'type' => CourrierType::DEMANDE_STAGE->value,
-            'candidat_nom' => 'Jean Test',
-            'candidat_contact' => 'jean@example.com',
-            'candidat_etablissement' => 'Université Test',
-            'periode_souhaitee_debut' => now()->addMonth()->toDateString(),
-            'periode_souhaitee_fin' => now()->addMonths(3)->toDateString(),
-            'direction_destination_id' => $directionDestinataire->id,
-        ])->assertCreated()
-            ->assertJsonPath('data.necessite_avis_dg', true);
-    }
-
-    public function test_un_courrier_cree_par_la_reception_reste_en_circuit_complet_meme_vers_une_direction(): void
+    public function test_un_courrier_recu_par_la_reception_suit_toujours_le_circuit_complet(): void
     {
         Storage::fake('local');
-
         $direction = Direction::factory()->create();
-        $directionDestinataire = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
         $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Courrier externe',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_destination_id' => $directionDestinataire->id,
+            'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()
-            ->assertJsonPath('data.necessite_avis_dg', true);
+            ->assertJsonPath('data.necessite_avis_dg', true)
+            ->assertJsonPath('data.statut', CourrierStatut::RECU->value);
     }
 
-    public function test_une_direction_ne_peut_pas_usurper_une_autre_direction_dorigine(): void
+    public function test_un_dossier_historique_du_circuit_court_reste_lisible_mais_ne_peut_plus_avancer(): void
     {
-        $directionEmettrice = Direction::factory()->create();
-        $autreDirection = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
-
-        $this->actingAs($responsable)->postJson('/api/v1/courriers', [
-            'objet' => 'Tentative usurpation',
-            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_origine_id' => $autreDirection->id,
-        ])->assertCreated();
-
-        $this->assertDatabaseHas('courriers', [
-            'objet' => 'Tentative usurpation',
-            'direction_origine_id' => $directionEmettrice->id,
+        $direction = Direction::factory()->create();
+        $responsable = User::factory()->responsableDirection($direction)->create();
+        $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::RECU,
+            'necessite_avis_dg' => false,
+            'direction_destination_id' => $direction->id,
         ]);
-        $this->assertDatabaseMissing('courriers', [
-            'objet' => 'Tentative usurpation',
-            'direction_origine_id' => $autreDirection->id,
-        ]);
-    }
 
-    public function test_un_courrier_envoye_conserve_son_contenu_et_sa_piece_jointe_jusqua_consultation(): void
-    {
-        Storage::fake('local');
-
-        $directionEmettrice = Direction::factory()->create();
-        $directionDestinataire = Direction::factory()->create();
-        $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
-        $destinataire = User::factory()->responsableDirection($directionDestinataire)->create();
-
-        // Envoyé exactement comme le fait le formulaire (multipart, contenu
-        // TipTap sérialisé en JSON, décodé par StoreCourrierRequest).
-        $contenu = ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Bonjour, veuillez trouver ci-joint.']]]]];
-
-        $id = $this->actingAs($responsable)->post('/api/v1/courriers', [
-            'objet' => 'Convention de partenariat',
-            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-            'direction_destination_id' => $directionDestinataire->id,
-            'contenu' => json_encode($contenu),
-            'piece_jointe' => UploadedFile::fake()->create('convention.pdf', 200, 'application/pdf'),
-        ])->assertCreated()->json('data.id');
-
-        $courrier = Courrier::withoutGlobalScopes()->findOrFail($id);
-        $this->assertNotNull($courrier->piece_jointe_chemin);
-        Storage::disk('local')->assertExists($courrier->piece_jointe_chemin);
-        $this->assertSame($contenu, $courrier->contenu);
-
-        // Consultation par le destinataire : contenu et pièce jointe
-        // toujours présents dans la ressource retournée.
-        $response = $this->actingAs($destinataire)->getJson("/api/v1/courriers/{$id}")->assertOk();
-        $response->assertJsonPath('data.contenu', $contenu);
-        $response->assertJsonPath('data.piece_jointe_disponible', true);
-
-        $this->actingAs($destinataire)
-            ->get("/api/v1/courriers/{$id}/piece-jointe")
+        $this->actingAs($responsable)->getJson("/api/v1/courriers/{$courrier->id}")
             ->assertOk()
-            ->assertHeader('content-type', 'application/pdf');
+            ->assertJsonPath('data.necessite_avis_dg', false);
+
+        $this->actingAs($secretariat2)
+            ->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", ['classification' => 'interne'])
+            ->assertForbidden();
+
+        $this->assertSame(CourrierStatut::RECU, $courrier->fresh()->statut);
+    }
+
+    public function test_lancienne_route_de_retour_direct_vers_la_dg_nest_plus_exposee(): void
+    {
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RETOUR_RECEPTION]);
+
+        $this->actingAs($reception)
+            ->postJson("/api/v1/courriers/{$courrier->id}/representer-dg")
+            ->assertNotFound();
     }
 
     public function test_un_agent_dfp_ne_peut_pas_creer_de_courrier(): void
@@ -198,6 +102,71 @@ class EnvoiParDirectionTest extends CourrierTestCase
         $this->actingAs($dfp)->postJson('/api/v1/courriers', [
             'objet' => 'Test',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
-        ])->assertStatus(403);
+        ])->assertForbidden();
+    }
+
+    public function test_un_administrateur_nest_pas_un_acteur_generique_du_circuit(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
+
+        $this->actingAs($admin)->postJson('/api/v1/courriers', [
+            'objet' => 'Création administrative interdite',
+            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+        ])->assertForbidden();
+
+        $this->actingAs($admin)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")
+            ->assertForbidden();
+
+        $this->assertSame(CourrierStatut::RECU, $courrier->fresh()->statut);
+    }
+
+    public function test_la_reception_ne_peut_pas_transmettre_directement_a_la_dg(): void
+    {
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::RECU,
+            'necessite_avis_dg' => true,
+        ]);
+
+        $this->actingAs($reception)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])
+            ->assertForbidden();
+
+        $this->assertSame(CourrierStatut::RECU, $courrier->fresh()->statut);
+    }
+
+    public function test_la_trace_documente_avant_apres_acteur_destinataire_date_et_instruction(): void
+    {
+        Storage::fake('local');
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+        $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
+
+        $id = $this->actingAs($reception)->post('/api/v1/courriers', [
+            'objet' => 'Traçabilité Phase 4',
+            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
+        ])->assertCreated()->json('data.id');
+
+        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
+        $reponse = $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-tri", [
+            'instruction' => 'Vérifier la priorité et les annexes.',
+        ])->assertOk();
+
+        $trace = collect($reponse->json('data.transitions'))->last();
+        $traceInitiale = collect($reponse->json('data.transitions'))->first();
+        $this->assertNull($traceInitiale['ancien_statut']);
+        $this->assertSame(CourrierStatut::RECU->value, $traceInitiale['nouveau_statut']);
+        $this->assertSame($reception->name, $traceInitiale['emetteur']);
+        $this->assertSame(CourrierStatut::RECU->value, $trace['ancien_statut']);
+        $this->assertSame(CourrierStatut::EN_ATTENTE_TRI->value, $trace['nouveau_statut']);
+        $this->assertSame($secretariat1->name, $trace['emetteur']);
+        $this->assertSame(Poste::SECRETARIAT_1->value, $trace['expediteur_poste']);
+        $this->assertSame(Poste::SECRETARIAT_1->label(), $trace['destinataire']);
+        $this->assertSame('Vérifier la priorité et les annexes.', $trace['instruction']);
+        $this->assertNotNull($trace['created_at']);
     }
 }

@@ -7,6 +7,7 @@ use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Models\JetonCaptureNumerisation;
+use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\GestionnaireDocumentNumerise;
 use Modules\Public\Http\Requests\SoumettreCaptureNumerisationRequest;
 use Modules\Stagiaires\Models\Stagiaire;
@@ -58,16 +59,28 @@ class CaptureNumerisationPublicController extends Controller
     {
         $jeton = $this->trouverJetonValide($token);
         $cible = $jeton->capturable;
+        $capturePar = $jeton->creePar;
+
+        abort_unless($cible instanceof Courrier || $cible instanceof Stagiaire, 404, 'Ce lien de capture est introuvable ou a expiré.');
+        abort_unless($capturePar instanceof User || $capturePar === null, 404, 'Ce lien de capture est introuvable ou a expiré.');
 
         $chemin = $request->file('fichier')->store('numerisations', 'local');
 
-        $document = $this->gestionnaire->enregistrerVersion(
-            $cible,
-            $chemin,
-            SourceDocumentNumerise::TELEPHONE,
-            $jeton->creePar,
-            $request->integer('nombre_pages_annonce') ?: null,
-        );
+        $document = $cible instanceof Courrier
+            ? $this->gestionnaire->enregistrerVersion(
+                $cible,
+                $chemin,
+                SourceDocumentNumerise::TELEPHONE,
+                $capturePar,
+                $request->integer('nombre_pages_annonce') ?: null,
+            )
+            : $this->gestionnaire->enregistrerVersion(
+                $cible,
+                $chemin,
+                SourceDocumentNumerise::TELEPHONE,
+                $capturePar,
+                $request->integer('nombre_pages_annonce') ?: null,
+            );
 
         if ($cible instanceof Courrier) {
             $cible->update(['numerisation_statut' => NumerisationStatut::NUMERISE]);

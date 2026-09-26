@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationCanal;
 use Modules\Kernel\Contracts\NotificationService;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\EmpreinteFichier;
@@ -173,7 +174,7 @@ class StagiaireCircuitService
     {
         $responsables = User::query()
             ->where('direction_id', $directionId)
-            ->where('role', 'responsable_direction')
+            ->whereIn('role', [UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION])
             ->get();
 
         foreach ($responsables as $responsable) {

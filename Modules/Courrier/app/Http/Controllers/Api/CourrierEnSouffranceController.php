@@ -5,6 +5,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Courrier\Http\Resources\CourrierResource;
+use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Support\CourrierEnSouffrance;
 
 class CourrierEnSouffranceController extends Controller
@@ -13,6 +14,8 @@ class CourrierEnSouffranceController extends Controller
 
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Courrier::class);
+
         $lignes = $this->enSouffrance->pourUtilisateur($request->user());
 
         return response()->json([

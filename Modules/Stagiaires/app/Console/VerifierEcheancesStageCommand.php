@@ -42,7 +42,7 @@ class VerifierEcheancesStageCommand extends Command
         foreach ($stagiaires as $stagiaire) {
             $destinataires = $dfp->merge(
                 User::query()
-                    ->where('role', UserRole::RESPONSABLE_DIRECTION)
+                    ->whereIn('role', [UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION])
                     ->where('direction_id', $stagiaire->direction_id)
                     ->get()
             );

@@ -37,9 +37,8 @@ class StoreCourrierRequest extends FormRequest
             'contenu' => ['nullable', 'array'],
             // Numérisation obligatoire à la Réception : un courrier
             // physique entrant n'existe, pour le reste du circuit, que par
-            // son scan — contrairement à une direction qui rédige
-            // elle-même son contenu (TipTap), sans document physique à
-            // numériser (voir posteDeCreation()/config('courrier.poste_creation')).
+            // son scan. La dérogation explicite couvre une indisponibilité
+            // matérielle de numérisation au guichet.
             'piece_jointe' => [
                 Rule::requiredIf(fn () => $this->user()->poste?->value === config('courrier.poste_creation') && ! $this->boolean('numerisation_impossible')),
                 'nullable',

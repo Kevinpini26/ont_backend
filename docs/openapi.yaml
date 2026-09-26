@@ -56,9 +56,12 @@ components:
       type: object
       properties:
         id: { type: integer }
-        code: { type: string, example: DRHL }
-        nom: { type: string, example: "Direction des Ressources Humaines et de la Logistique" }
+        code: { type: string, example: DRH }
+        nom: { type: string, example: "Direction des Ressources Humaines" }
         actif: { type: boolean }
+        est_operationnelle:
+          type: boolean
+          description: Faux pour la Direction Générale institutionnelle.
     Utilisateur:
       type: object
       properties:
@@ -67,7 +70,8 @@ components:
         email: { type: string, format: email }
         role:
           type: string
-          enum: [administrateur, agent_dfp, responsable_direction, agent_circuit_courrier]
+          enum: [administrateur, agent_dfp, directeur_direction, responsable_direction, secretariat_direction, agent_circuit_courrier]
+          description: responsable_direction est une valeur historique acceptée en lecture et normalisée vers directeur_direction à l'écriture.
         role_label: { type: string }
         poste: { type: string, nullable: true, example: reception }
         poste_label: { type: string, nullable: true }
@@ -80,6 +84,8 @@ components:
         id: { type: integer }
         numero_accuse_reception: { type: string, example: "AR-2026-000123" }
         numero_enregistrement: { type: string, nullable: true, example: "2026-0045" }
+        reference_documentaire: { type: string, nullable: true, example: "001/ONT/DMC/2026" }
+        numero_depart: { type: string, nullable: true, example: "2026-D0045" }
         objet: { type: string }
         type: { type: string, enum: [demande_stage, correspondance_generale] }
         statut:

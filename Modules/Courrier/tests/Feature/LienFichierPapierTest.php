@@ -7,6 +7,7 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 
@@ -39,7 +40,7 @@ class LienFichierPapierTest extends CourrierTestCase
     public function test_lemplacement_physique_est_filtrable_dans_la_liste(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::RECEPTION, $direction);
         Courrier::factory()->create(['emplacement_physique' => 'Armoire 3, chrono 2026', 'objet' => 'Cible']);
         Courrier::factory()->create(['emplacement_physique' => 'Armoire 1, chrono 2025', 'objet' => 'Autre']);
 
@@ -52,16 +53,37 @@ class LienFichierPapierTest extends CourrierTestCase
     public function test_sortir_puis_restituer_loriginal(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::RECEPTION, $direction);
         $courrier = Courrier::factory()->create();
 
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/sortir-original", [
             'motif' => 'Consultation par la DG',
         ])->assertCreated();
 
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'courrier.original_sorti',
+            'auditable_id' => $courrier->id,
+            'user_id' => $agent->id,
+        ]);
+
+        $traceSortie = AuditLog::query()->where('action', 'courrier.original_sorti')->sole();
+        $this->assertNotNull($traceSortie->created_at);
+        $this->assertArrayHasKey('emprunte_le', $traceSortie->meta);
+        $this->assertArrayNotHasKey('motif', $traceSortie->meta);
+
         $this->assertNotNull($courrier->fresh()->empruntEnCours());
 
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/restituer-original")->assertOk();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'courrier.original_restitue',
+            'auditable_id' => $courrier->id,
+            'user_id' => $agent->id,
+        ]);
+
+        $traceRestitution = AuditLog::query()->where('action', 'courrier.original_restitue')->sole();
+        $this->assertNotNull($traceRestitution->created_at);
+        $this->assertArrayHasKey('restitue_le', $traceRestitution->meta);
 
         $this->assertNull($courrier->fresh()->empruntEnCours());
     }
@@ -69,7 +91,7 @@ class LienFichierPapierTest extends CourrierTestCase
     public function test_une_sortie_deja_en_cours_ne_peut_pas_etre_dupliquee(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::RECEPTION, $direction);
         $courrier = Courrier::factory()->create();
 
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/sortir-original", ['motif' => 'Premier emprunt'])
@@ -82,7 +104,7 @@ class LienFichierPapierTest extends CourrierTestCase
     public function test_la_liste_des_originaux_empruntes_signale_lalerte_au_dela_de_7_jours(): void
     {
         $direction = Direction::factory()->create();
-        $agent = $this->agent(Poste::PROTOCOLE, $direction);
+        $agent = $this->agent(Poste::RECEPTION, $direction);
         $courrierRecent = Courrier::factory()->create(['objet' => 'Emprunt récent']);
         $courrierAncien = Courrier::factory()->create(['objet' => 'Emprunt ancien']);
 

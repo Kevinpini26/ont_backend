@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Database\Factories\CourrierFactory;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
@@ -22,11 +24,12 @@ use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Scopes\CourrierDirectionScope;
+use Modules\Kernel\Contracts\Numerisable;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
 
-class Courrier extends Model
+class Courrier extends Model implements Numerisable
 {
     /** @use HasFactory<CourrierFactory> */
     use HasFactory;
@@ -53,8 +56,10 @@ class Courrier extends Model
     ];
 
     protected $fillable = [
+        'dossier_id',
         'numero_accuse_reception',
         'numero_enregistrement',
+        'reference_documentaire',
         'objet',
         'contenu',
         'type',
@@ -133,6 +138,44 @@ class Courrier extends Model
     protected static function booted(): void
     {
         static::addGlobalScope(new CourrierDirectionScope);
+
+        static::creating(function (Courrier $courrier): void {
+            if ($courrier->dossier_id !== null && Dossier::query()->whereKey($courrier->dossier_id)->where('statut_archivage', 'archive')->exists()) {
+                throw ValidationException::withMessages([
+                    'dossier' => 'Un dossier archivé ne peut plus recevoir de nouveau document.',
+                ]);
+            }
+        });
+
+        static::updating(function (Courrier $courrier): void {
+            if ($courrier->exists && $courrier->estArchive()) {
+                throw ValidationException::withMessages([
+                    'courrier' => 'Un document archivé ne peut plus recevoir de mutation métier.',
+                ]);
+            }
+            foreach (['numero_enregistrement', 'reference_documentaire', 'numero_depart'] as $identite) {
+                $ancienneValeur = $courrier->getOriginal($identite);
+                if ($ancienneValeur !== null && $courrier->isDirty($identite)) {
+                    throw new \LogicException("L'identité documentaire {$identite} est immuable après attribution.");
+                }
+            }
+        });
+
+        // Tout nouveau document autonome ouvre un dossier. Les documents
+        // dérivés peuvent fournir dossier_id dès leur création afin de
+        // rejoindre l'affaire existante sans créer un dossier intermédiaire.
+        static::created(function (Courrier $courrier): void {
+            if ($courrier->dossier_id !== null) {
+                return;
+            }
+
+            $dossier = Dossier::query()->create([
+                'libelle' => $courrier->objet,
+                'created_by' => $courrier->created_by,
+            ]);
+            $courrier->dossier_id = $dossier->id;
+            $courrier->saveQuietly();
+        });
     }
 
     protected static function newFactory(): CourrierFactory
@@ -184,6 +227,21 @@ class Courrier extends Model
         return $this->belongsTo(Direction::class, 'direction_origine_id');
     }
 
+    public function dossier(): BelongsTo
+    {
+        return $this->belongsTo(Dossier::class);
+    }
+
+    public function relationsSortantes(): HasMany
+    {
+        return $this->hasMany(DocumentRelation::class, 'document_source_id');
+    }
+
+    public function relationsEntrantes(): HasMany
+    {
+        return $this->hasMany(DocumentRelation::class, 'document_cible_id');
+    }
+
     public function directionDestination(): BelongsTo
     {
         return $this->belongsTo(Direction::class, 'direction_destination_id');
@@ -233,11 +291,13 @@ class Courrier extends Model
         return $this->urgence_triee_at !== null;
     }
 
+    /** @return HasMany<CourrierAnnotation, $this> */
     public function annotations(): HasMany
     {
         return $this->hasMany(CourrierAnnotation::class)->latest();
     }
 
+    /** @return HasMany<CourrierImputation, $this> */
     public function imputations(): HasMany
     {
         return $this->hasMany(CourrierImputation::class);
@@ -271,6 +331,7 @@ class Courrier extends Model
      * Chaque version numérisée du document, dans l'ordre de capture —
      * jamais un remplacement de la précédente (voir DocumentNumerise).
      */
+    /** @return MorphMany<DocumentNumerise, $this> */
     public function numerisations(): MorphMany
     {
         return $this->morphMany(DocumentNumerise::class, 'numerisable')->oldest('version');
@@ -285,6 +346,7 @@ class Courrier extends Model
      * Historique des sorties/retours de l'original physique — voir
      * docs/numerisation-courrier.md (Lot 5).
      */
+    /** @return HasMany<EmpruntOriginal, $this> */
     public function empruntsOriginaux(): HasMany
     {
         return $this->hasMany(EmpruntOriginal::class)->latest('emprunte_le');
@@ -322,6 +384,36 @@ class Courrier extends Model
     public function transitions(): HasMany
     {
         return $this->hasMany(CourrierTransition::class)->oldest('id');
+    }
+
+    public function missionsDocumentaires(): HasMany
+    {
+        return $this->hasMany(MissionDocumentaire::class);
+    }
+
+    public function dispatchs(): HasMany
+    {
+        return $this->hasMany(DispatchCourrier::class);
+    }
+
+    public function traitementsDirection(): HasMany
+    {
+        return $this->hasMany(TraitementDirection::class);
+    }
+
+    public function documentProduitDirection(): HasOne
+    {
+        return $this->hasOne(DocumentProduitDirection::class, 'courrier_id');
+    }
+
+    public function classement(): HasOne
+    {
+        return $this->hasOne(ClassementDocument::class);
+    }
+
+    public function estArchive(): bool
+    {
+        return $this->classement()->where('statut', 'archive')->exists();
     }
 
     /**

@@ -28,11 +28,13 @@ use Modules\Courrier\Http\Requests\SortirOriginalRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseRequest;
 use Modules\Courrier\Http\Requests\StoreCourrierRequest;
 use Modules\Courrier\Http\Requests\TransmettreAvisDgRequest;
+use Modules\Courrier\Http\Requests\TransmettreCourrierRequest;
 use Modules\Courrier\Http\Requests\ValiderRelectureRequest;
 use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
+use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
@@ -48,6 +50,7 @@ class CourrierController extends Controller
 {
     public function __construct(
         private readonly CourrierCircuitService $circuit,
+        private readonly DispatchCourrierService $dispatchs,
         private readonly AuditLogger $audit,
         private readonly PdfGenerationService $pdf,
         private readonly QrCodeService $qrCode,
@@ -58,6 +61,8 @@ class CourrierController extends Controller
 
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Courrier::class);
+
         $query = Courrier::query()->with(['directionOrigine', 'directionDestination', 'transitions']);
 
         if ($request->filled('statut')) {
@@ -116,6 +121,8 @@ class CourrierController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', Courrier::class);
+
         $query = Courrier::query()->with(['directionOrigine', 'directionDestination']);
 
         if ($request->filled('statut')) {
@@ -287,25 +294,9 @@ class CourrierController extends Controller
         return $this->ressource($courrier->fresh());
     }
 
-    public function transmettreProtocole(Request $request, Courrier $courrier)
+    public function transmettreTri(TransmettreCourrierRequest $request, Courrier $courrier)
     {
-        $this->authorize('transmettre', $courrier);
-
-        return $this->ressource($this->circuit->transmettreAuProtocole($courrier, $request->user()));
-    }
-
-    public function transmettreTri(Request $request, Courrier $courrier)
-    {
-        $this->authorize('transmettre', $courrier);
-
-        return $this->ressource($this->circuit->transmettreTri($courrier, $request->user()));
-    }
-
-    public function transmettreAuTriDepuisProtocole(Request $request, Courrier $courrier)
-    {
-        $this->authorize('transmettre', $courrier);
-
-        return $this->ressource($this->circuit->transmettreAuTriDepuisProtocole($courrier, $request->user()));
+        return $this->ressource($this->circuit->transmettreTri($courrier, $request->user(), $request->validated('instruction')));
     }
 
     public function transmettreAvisDg(TransmettreAvisDgRequest $request, Courrier $courrier)
@@ -314,14 +305,13 @@ class CourrierController extends Controller
             $courrier,
             $request->user(),
             DegreUrgence::from($request->validated('degre_urgence')),
+            $request->validated('instruction'),
         ));
     }
 
-    public function transmettreDepuisClasseur(Request $request, Courrier $courrier)
+    public function transmettreDepuisClasseur(TransmettreCourrierRequest $request, Courrier $courrier)
     {
-        $this->authorize('transmettre', $courrier);
-
-        return $this->ressource($this->circuit->transmettreDepuisClasseur($courrier, $request->user()));
+        return $this->ressource($this->circuit->transmettreDepuisClasseur($courrier, $request->user(), $request->validated('instruction')));
     }
 
     public function requalifierUrgence(RequalifierUrgenceRequest $request, Courrier $courrier)
@@ -333,18 +323,14 @@ class CourrierController extends Controller
         ));
     }
 
-    public function representerDg(Request $request, Courrier $courrier)
+    public function transmettreSec1(TransmettreCourrierRequest $request, Courrier $courrier)
     {
-        $this->authorize('transmettre', $courrier);
-
-        return $this->ressource($this->circuit->representerDg($courrier, $request->user()));
+        return $this->ressource($this->circuit->transmettreRetourVersSec1($courrier, $request->user(), $request->validated('instruction')));
     }
 
-    public function dispatcherVersDirection(Request $request, Courrier $courrier)
+    public function dispatcherVersDirection(TransmettreCourrierRequest $request, Courrier $courrier)
     {
-        $this->authorize('transmettre', $courrier);
-
-        return $this->ressource($this->circuit->dispatcherVersDirection($courrier, $request->user()));
+        return $this->ressource($this->dispatchs->executerDepuisImputations($courrier, $request->user()));
     }
 
     public function rendreAvis(RendreAvisDgRequest $request, Courrier $courrier)
@@ -731,6 +717,11 @@ class CourrierController extends Controller
         return new CourrierResource($courrier->load([
             'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
+            'missionsDocumentaires.demandeur', 'missionsDocumentaires.assistant', 'missionsDocumentaires.annuleePar',
+            'dispatchs.direction', 'dispatchs.decisionnaire', 'dispatchs.executePar', 'dispatchs.accuseReceptionPar',
+            'dispatchs.traitementDirection.directeur',
+            'documentProduitDirection.documentSource', 'documentProduitDirection.traitement',
+            'classement.classePar', 'classement.archivePar',
             'imputations.direction', 'imputations.imputeePar',
             'piecesJointes', 'reponses', 'courrierOrigine', 'numerisations.capturePar',
         ]));

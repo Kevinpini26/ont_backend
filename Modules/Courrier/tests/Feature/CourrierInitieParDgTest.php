@@ -70,7 +70,10 @@ class CourrierInitieParDgTest extends CourrierTestCase
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::ENREGISTRE->value);
 
-        $this->assertNotNull($response->json('data.numero_enregistrement'));
+        // Une communication interne initiée par la DG n'est pas une entrée
+        // externe enregistrée par la Réception : SEC2 ne lui invente plus un
+        // numéro d'enregistrement lors du classement.
+        $this->assertNull($response->json('data.numero_enregistrement'));
 
         // Réception effective : la direction destinataire le voit dans sa
         // propre liste, comme n'importe quel autre courrier entrant, avec

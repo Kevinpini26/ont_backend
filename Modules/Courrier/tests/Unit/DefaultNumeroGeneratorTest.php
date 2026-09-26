@@ -5,6 +5,7 @@ namespace Modules\Courrier\Tests\Unit;
 use Illuminate\Support\Facades\Date;
 use Modules\Courrier\Contracts\SequenceGenerator;
 use Modules\Courrier\Support\DefaultNumeroGenerator;
+use Modules\Kernel\Models\Direction;
 use Tests\TestCase;
 
 /**
@@ -32,6 +33,13 @@ class DefaultNumeroGeneratorTest extends TestCase
             public function suivant(string $cle, int $annee): int
             {
                 $this->appels[] = [$cle, $annee];
+
+                return $this->valeur;
+            }
+
+            public function suivantPourDirection(string $cle, int $annee, int $directionId): int
+            {
+                $this->appels[] = [$cle, $annee, $directionId];
 
                 return $this->valeur;
             }
@@ -101,6 +109,11 @@ class DefaultNumeroGeneratorTest extends TestCase
 
                 return 1;
             }
+
+            public function suivantPourDirection(string $cle, int $annee, int $directionId): int
+            {
+                return 1;
+            }
         };
 
         (new DefaultNumeroGenerator($sequences))->genererNumeroDepart();
@@ -121,11 +134,43 @@ class DefaultNumeroGeneratorTest extends TestCase
 
                 return 1;
             }
+
+            public function suivantPourDirection(string $cle, int $annee, int $directionId): int
+            {
+                return 1;
+            }
         };
 
         (new DefaultNumeroGenerator($sequences))->genererAccuseReception();
         (new DefaultNumeroGenerator($sequences))->genererNumeroEnregistrement();
 
         $this->assertSame([['accuse_reception', 2026], ['enregistrement', 2026]], $sequences->appels);
+    }
+
+    public function test_la_reference_documentaire_utilise_la_direction_et_lannee_demandees(): void
+    {
+        $sequences = new class implements SequenceGenerator
+        {
+            public array $appels = [];
+
+            public function suivant(string $cle, int $annee): int
+            {
+                return 999;
+            }
+
+            public function suivantPourDirection(string $cle, int $annee, int $directionId): int
+            {
+                $this->appels[] = [$cle, $annee, $directionId];
+
+                return 2;
+            }
+        };
+        $direction = new Direction(['code' => 'dmc']);
+        $direction->id = 17;
+
+        $reference = (new DefaultNumeroGenerator($sequences))->genererReferenceDocumentaire($direction, 2026);
+
+        $this->assertSame('002/ONT/DMC/2026', $reference);
+        $this->assertSame([['reference_documentaire', 2026, 17]], $sequences->appels);
     }
 }

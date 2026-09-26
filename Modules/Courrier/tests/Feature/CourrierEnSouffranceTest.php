@@ -68,13 +68,12 @@ class CourrierEnSouffranceTest extends CourrierTestCase
             'accuse_reception_at' => now()->subHours(72),
             'created_at' => now()->subHours(72),
         ]);
-        // Le Protocole n'est pas habilité à agir sur en_attente_avis_dg
-        // (seuls DG/DGA le sont) : ne doit rien voir.
+        // Un compte rattaché à l'ancien poste Protocole n'a plus accès aux
+        // outils opérationnels du circuit, même pour une liste vide.
         $protocole = $this->agent(Poste::PROTOCOLE, $direction);
 
         $this->actingAs($protocole)->getJson('/api/v1/courriers/en-souffrance')
-            ->assertOk()
-            ->assertJsonCount(0, 'data');
+            ->assertForbidden();
     }
 
     /**

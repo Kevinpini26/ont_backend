@@ -8,13 +8,12 @@ use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Kernel\Enums\Poste;
-use Modules\Kernel\Enums\UserRole;
 
 class InitierCourrierSortantRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role === UserRole::RESPONSABLE_DIRECTION || $this->user()->poste === Poste::SECRETARIAT_1;
+        return $this->user()->role->estDirecteurDirection() || $this->user()->poste === Poste::SECRETARIAT_1;
     }
 
     protected function prepareForValidation(): void

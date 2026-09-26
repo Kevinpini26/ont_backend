@@ -27,7 +27,7 @@ class RendreAvisDgRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'avis_dg_commentaire.required' => "Un avis réservé doit préciser ce qui est attendu pour que le dossier puisse revenir complet.",
+            'avis_dg_commentaire.required' => 'Un avis réservé doit préciser ce qui est attendu pour que le dossier puisse revenir complet.',
         ];
     }
 }

@@ -16,6 +16,7 @@ class DirectionResource extends JsonResource
             'code' => $this->code,
             'nom' => $this->nom,
             'actif' => $this->actif,
+            'est_operationnelle' => $this->est_operationnelle,
             'capacite_max' => $this->capacite_max,
             'site_id' => $this->site_id,
             'site_nom' => $this->whenLoaded('site', fn () => $this->site?->nom),

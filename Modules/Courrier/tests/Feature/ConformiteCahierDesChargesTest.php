@@ -30,7 +30,7 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
-        $protocole = $this->agent(Poste::PROTOCOLE, $direction);
+        $reception = $this->agent(Poste::RECEPTION, $direction);
 
         $courrierRecu = Courrier::factory()->create(['statut' => CourrierStatut::RECU, 'necessite_avis_dg' => true]);
 
@@ -49,7 +49,7 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $courrierRecu->refresh();
         $this->assertSame(CourrierStatut::RECU, $courrierRecu->statut);
 
-        // Le Protocole ne peut pas rendre l'avis DG à la place de la DG :
+        // La Réception ne peut pas rendre l'avis DG à la place de la DG :
         // une fois le courrier réellement à l'étape "en_attente_avis_dg",
         // seuls DG/DGA figurent parmi les postes habilités pour cette étape
         // précise (voir config('courrier.circuit_transitions')).
@@ -58,7 +58,7 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
             'necessite_avis_dg' => true,
         ]);
 
-        $this->actingAs($protocole)
+        $this->actingAs($reception)
             ->postJson("/api/v1/courriers/{$courrierEnAttenteAvis->id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertStatus(403);
 
@@ -71,7 +71,7 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
     public function test_le_redacteur_ne_peut_pas_se_designer_lui_meme_comme_relecteur(): void
     {
         $direction = Direction::factory()->create();
-        $redacteur = $this->agent(Poste::ASSISTANT_PROTOCOLE, $direction);
+        $redacteur = $this->agent(Poste::ASSISTANT_1, $direction);
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
 
@@ -279,12 +279,10 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
             ->assertCreated();
     }
 
-    public function test_une_direction_peut_toujours_envoyer_un_courrier_sans_piece_jointe(): void
+    public function test_une_direction_ne_peut_plus_ouvrir_un_circuit_sans_passage_par_la_reception(): void
     {
-        // La numérisation obligatoire ne concerne que la Réception (mail
-        // physique entrant) — une direction qui rédige elle-même un
-        // courrier (circuit court ou vers la DG) n'a pas de document
-        // physique à scanner, son contenu TipTap fait foi.
+        // Une direction n'est plus un point d'entrée du courrier entrant,
+        // avec ou sans pièce jointe.
         $directionEmettrice = Direction::factory()->create();
         $directionDestinataire = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($directionEmettrice)->create();
@@ -293,7 +291,9 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
             'objet' => 'Demande de collaboration',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'direction_destination_id' => $directionDestinataire->id,
-        ])->assertCreated();
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('courriers', ['objet' => 'Demande de collaboration']);
     }
 
     // --- Scénario 8 : portée par direction, y compris en accès direct par id ---

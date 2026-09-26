@@ -17,7 +17,7 @@ class LocalisationCourrierTest extends CourrierTestCase
     {
         Date::setTestNow('2026-11-01');
 
-        $direction = Direction::factory()->create(['code' => 'DFP']);
+        $direction = Direction::query()->where('code', 'DFP')->firstOrFail();
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::SIGNE, 'direction_destination_id' => $direction->id]);
         $courrier->imputations()->create(['direction_id' => $direction->id, 'mention' => 'pour_attribution', 'est_principale' => true]);
         $this->marquerDecharge($courrier);
@@ -28,14 +28,12 @@ class LocalisationCourrierTest extends CourrierTestCase
             'note_technique' => 'RAS.',
         ])->assertOk();
 
-        $numeroEnregistrement = $response->json('data.numero_enregistrement');
         $cote = $response->json('data.cote_classement');
 
+        $this->assertNull($response->json('data.numero_enregistrement'));
         $this->assertNotNull($cote);
         $this->assertStringContainsString('DFP', $cote);
         $this->assertStringContainsString('2026', $cote);
-        [, $sequence] = explode('-', $numeroEnregistrement, 2);
-        $this->assertStringContainsString($sequence, $cote);
     }
 
     public function test_la_cote_de_classement_utilise_ont_a_defaut_de_direction_imputee(): void

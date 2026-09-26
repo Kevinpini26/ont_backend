@@ -79,19 +79,19 @@ class NumerisationCourrierTest extends CourrierTestCase
         ])->assertStatus(422);
     }
 
-    public function test_un_courrier_initie_par_une_direction_est_non_applicable(): void
+    public function test_un_courrier_ne_peut_plus_etre_initie_directement_par_une_direction(): void
     {
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
         $autreDirection = Direction::factory()->create();
 
-        $response = $this->actingAs($responsable)->postJson('/api/v1/courriers', [
+        $this->actingAs($responsable)->postJson('/api/v1/courriers', [
             'objet' => 'Note rédigée directement',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'direction_destination_id' => $autreDirection->id,
-        ])->assertCreated();
+        ])->assertForbidden();
 
-        $this->assertSame(NumerisationStatut::NON_APPLICABLE->value, $response->json('data.numerisation_statut'));
+        $this->assertDatabaseMissing('courriers', ['objet' => 'Note rédigée directement']);
     }
 
     public function test_la_liste_de_rattrapage_ne_contient_que_les_courriers_a_numeriser(): void

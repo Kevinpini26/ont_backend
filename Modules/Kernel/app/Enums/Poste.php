@@ -9,8 +9,10 @@ namespace Modules\Kernel\Enums;
 enum Poste: string
 {
     case RECEPTION = 'reception';
+    /** Historique uniquement : aucune nouvelle affectation opérationnelle. */
     case PROTOCOLE = 'protocole';
     case DGA = 'dga';
+    /** Historique uniquement : le service Protocole n'existe plus. */
     case ASSISTANT_PROTOCOLE = 'assistant_protocole';
     case ASSISTANT_1 = 'assistant_1';
     case ASSISTANT_2 = 'assistant_2';
@@ -23,9 +25,9 @@ enum Poste: string
     {
         return match ($this) {
             self::RECEPTION => 'Réception',
-            self::PROTOCOLE => 'Protocole',
+            self::PROTOCOLE => 'Protocole (historique)',
             self::DGA => 'Directeur Général Adjoint',
-            self::ASSISTANT_PROTOCOLE => 'Assistant du Protocole (Ass.P)',
+            self::ASSISTANT_PROTOCOLE => 'Assistant du Protocole (historique)',
             self::ASSISTANT_1 => 'Assistant 1 (Ass1)',
             self::ASSISTANT_2 => 'Assistant 2 (Ass2)',
             self::ASSISTANT_DGA => 'Assistant du DGA (Ass.Dga)',
@@ -33,5 +35,10 @@ enum Poste: string
             self::SECRETARIAT_1 => 'Secrétariat 01',
             self::SECRETARIAT_2 => 'Secrétariat 02',
         };
+    }
+
+    public function estHistorique(): bool
+    {
+        return $this === self::PROTOCOLE || $this === self::ASSISTANT_PROTOCOLE;
     }
 }
