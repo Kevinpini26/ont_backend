@@ -1,16 +1,23 @@
 <x-mail::message>
+# Office National du Tourisme
+
 Bonjour {{ $courrier->expediteur_externe_nom }},
 
-Nous avons bien reçu votre courrier adressé à l'Office National du Tourisme : « {{ $courrier->objet }} ».
+Nous vous confirmons la bonne réception de votre courrier adressé à l’Office National du Tourisme.
 
-Voici votre numéro d'accusé de réception : **{{ $courrier->numero_accuse_reception }}**
+**Objet de la demande :** {{ $courrier->objet }}<br>
+**Référence de suivi :** {{ $courrier->numero_accuse_reception }}<br>
+**Date de dépôt :** {{ $courrier->created_at?->format('d/m/Y') }}
 
-Conservez ce numéro, il vous permettra de suivre l'état de traitement de votre courrier.
+Votre demande sera prise en charge conformément au circuit administratif de l’Office National du Tourisme.
 
 <x-mail::button :url="config('app.frontend_url').'/suivi-dossier?numero='.$courrier->numero_accuse_reception">
-Suivre l'état de mon dossier
+Suivre ma demande
 </x-mail::button>
 
+Cet accusé confirme la réception technique de votre courrier. Il ne constitue ni son enregistrement administratif ni une réponse officielle de l’ONT.
+
 Cordialement,<br>
-{{ config('app.name') }}
+**Office National du Tourisme**<br>
+République Démocratique du Congo
 </x-mail::message>

@@ -717,7 +717,7 @@ class CourrierController extends Controller
         return new CourrierResource($courrier->load([
             'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
-            'missionsDocumentaires.demandeur', 'missionsDocumentaires.assistant', 'missionsDocumentaires.annuleePar',
+            'missionsDocumentaires.demandeur', 'missionsDocumentaires.assistant', 'missionsDocumentaires.annuleePar', 'missionsDocumentaires.projetCourrier',
             'dispatchs.direction', 'dispatchs.decisionnaire', 'dispatchs.executePar', 'dispatchs.accuseReceptionPar',
             'dispatchs.traitementDirection.directeur',
             'documentProduitDirection.documentSource', 'documentProduitDirection.traitement',

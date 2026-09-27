@@ -5,6 +5,7 @@ namespace Modules\Courrier\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
+use Modules\Courrier\Enums\MissionDocumentaireType;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 
@@ -14,7 +15,7 @@ class MissionDocumentaire extends Model
 
     protected $fillable = [
         'courrier_id', 'dossier_id', 'demandeur_id', 'demandeur_poste',
-        'autorite_poste', 'assistant_id', 'instruction', 'statut',
+        'autorite_poste', 'assistant_id', 'instruction', 'type', 'projet_courrier_id', 'statut',
         'envoyee_at', 'prise_en_charge_at', 'compte_rendu',
         'projet_reponse_contenu', 'retournee_at', 'annulee_par_id',
         'motif_annulation', 'annulee_at',
@@ -26,6 +27,7 @@ class MissionDocumentaire extends Model
             'demandeur_poste' => Poste::class,
             'autorite_poste' => Poste::class,
             'statut' => MissionDocumentaireStatut::class,
+            'type' => MissionDocumentaireType::class,
             'envoyee_at' => 'datetime',
             'prise_en_charge_at' => 'datetime',
             'projet_reponse_contenu' => 'array',
@@ -37,6 +39,11 @@ class MissionDocumentaire extends Model
     public function courrier(): BelongsTo
     {
         return $this->belongsTo(Courrier::class);
+    }
+
+    public function projetCourrier(): BelongsTo
+    {
+        return $this->belongsTo(Courrier::class, 'projet_courrier_id');
     }
 
     public function dossier(): BelongsTo

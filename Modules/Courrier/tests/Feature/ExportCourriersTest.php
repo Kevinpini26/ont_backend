@@ -16,7 +16,7 @@ class ExportCourriersTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        Courrier::factory()->create(['objet' => 'Objet visible dans l\'export']);
+        Courrier::factory()->create(['objet' => 'Objet visible dans l\'export', 'created_by' => $agent->id]);
 
         $reponse = $this->actingAs($agent)->get('/api/v1/courriers/export');
 
@@ -29,8 +29,8 @@ class ExportCourriersTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        Courrier::factory()->create(['objet' => 'Courrier recu', 'statut' => CourrierStatut::RECU]);
-        Courrier::factory()->create(['objet' => 'Courrier enregistre', 'statut' => CourrierStatut::ENREGISTRE]);
+        Courrier::factory()->create(['objet' => 'Courrier recu', 'statut' => CourrierStatut::RECU, 'created_by' => $agent->id]);
+        Courrier::factory()->create(['objet' => 'Courrier enregistre', 'statut' => CourrierStatut::ENREGISTRE, 'created_by' => $agent->id]);
 
         $contenu = $this->actingAs($agent)->get('/api/v1/courriers/export?statut=recu')->streamedContent();
 

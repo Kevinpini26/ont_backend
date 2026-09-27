@@ -33,6 +33,8 @@ class BordereauTransmissionTest extends CourrierTestCase
         $courrier = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data');
@@ -67,6 +69,8 @@ class BordereauTransmissionTest extends CourrierTestCase
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
@@ -98,6 +102,8 @@ class BordereauTransmissionTest extends CourrierTestCase
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
@@ -149,6 +155,8 @@ class BordereauTransmissionTest extends CourrierTestCase
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
@@ -190,7 +198,7 @@ class BordereauTransmissionTest extends CourrierTestCase
                 'classification' => 'interne',
                 'note_technique' => 'RAS',
             ])
-            ->assertForbidden();
+            ->assertNotFound();
 
         $this->assertSame(CourrierStatut::RECU, $courrier->fresh()->statut);
     }
@@ -202,7 +210,10 @@ class BordereauTransmissionTest extends CourrierTestCase
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
         $autreAssistant = $this->agent(Poste::ASSISTANT_2, $direction);
 
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::PROJET_A_REDIGER,
+            'created_by' => $redacteur->id,
+        ]);
         $this->marquerDecharge($courrier);
 
         $this->actingAs($redacteur)->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
@@ -224,7 +235,7 @@ class BordereauTransmissionTest extends CourrierTestCase
         // destinataire précis de ce bordereau.
         $this->actingAs($autreAssistant)
             ->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")
-            ->assertStatus(403);
+            ->assertNotFound();
 
         $this->actingAs($relecteur)
             ->postJson("/api/v1/courriers/{$courrier->id}/valider-relecture")

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
+use Modules\Courrier\Enums\MissionDocumentaireType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Notifications\MissionDocumentaireNotification;
@@ -59,6 +60,7 @@ class MissionDocumentaireService
                 'autorite_poste' => $autorite,
                 'assistant_id' => $assistant->id,
                 'instruction' => $instruction,
+                'type' => MissionDocumentaireType::GENERALE,
                 'statut' => MissionDocumentaireStatut::ASSIGNEE,
                 'envoyee_at' => now(),
             ]);
@@ -69,6 +71,64 @@ class MissionDocumentaireService
                 'assistant_id' => $assistant->id,
                 'autorite_poste' => $autorite->value,
                 'instruction' => $instruction,
+            ]);
+
+            return $mission;
+        });
+
+        DB::afterCommit(fn () => $this->notifications->notifier(
+            $assistant,
+            new MissionDocumentaireNotification($mission->load('courrier'), 'assignee'),
+        ));
+
+        return $mission;
+    }
+
+    public function creerPreparationReponse(Courrier $courrier, User $acteur, User $assistant, string $instruction): MissionDocumentaire
+    {
+        if ($this->autoriteDe($acteur) !== Poste::DG) {
+            throw ValidationException::withMessages(['mission' => 'Seule la DG peut demander la préparation de cette réponse.']);
+        }
+        if (! in_array($assistant->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true)) {
+            throw ValidationException::withMessages(['assistant_id' => 'La DG doit choisir Assistant DG1 ou Assistant DG2.']);
+        }
+
+        $mission = DB::transaction(function () use ($courrier, $acteur, $assistant, $instruction) {
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
+            $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
+
+            if (! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true) || $courrier->dossier_id === null) {
+                throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas sous contrôle de la DG."]);
+            }
+            if ($courrier->missionsDocumentaires()->where('autorite_poste', Poste::DG)->whereIn('statut', [
+                MissionDocumentaireStatut::ASSIGNEE,
+                MissionDocumentaireStatut::EN_COURS,
+            ])->exists()) {
+                throw ValidationException::withMessages(['courrier' => 'Une mission DG est déjà active pour ce courrier.']);
+            }
+
+            $mission = MissionDocumentaire::query()->create([
+                'courrier_id' => $courrier->id,
+                'dossier_id' => $courrier->dossier_id,
+                'demandeur_id' => $acteur->id,
+                'demandeur_poste' => $acteur->poste,
+                'autorite_poste' => Poste::DG,
+                'assistant_id' => $assistant->id,
+                'instruction' => $instruction,
+                'type' => MissionDocumentaireType::PREPARATION_REPONSE,
+                'statut' => MissionDocumentaireStatut::ASSIGNEE,
+                'envoyee_at' => now(),
+            ]);
+
+            $this->audit->enregistrer('courrier.preparation_reponse_demandee', $courrier, $acteur, [
+                'mission_id' => $mission->id,
+                'assistant_id' => $assistant->id,
+                'instruction' => $instruction,
+            ]);
+            $this->audit->enregistrer('mission_documentaire.creee', $mission, $acteur, [
+                'courrier_id' => $courrier->id,
+                'assistant_id' => $assistant->id,
+                'type' => MissionDocumentaireType::PREPARATION_REPONSE->value,
             ]);
 
             return $mission;
@@ -104,6 +164,9 @@ class MissionDocumentaireService
     {
         $mission = DB::transaction(function () use ($mission, $assistant, $compteRendu, $projet) {
             $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
+            if ($mission->type === MissionDocumentaireType::PREPARATION_REPONSE) {
+                throw ValidationException::withMessages(['mission' => 'Une mission de préparation de réponse se termine après validation de la relecture de son projet D.']);
+            }
             if ($mission->assistant_id !== $assistant->id || $mission->statut !== MissionDocumentaireStatut::EN_COURS) {
                 throw ValidationException::withMessages(['mission' => 'Cette mission ne peut pas être retournée.']);
             }
@@ -116,7 +179,12 @@ class MissionDocumentaireService
             ]);
 
             if ($projet !== null) {
-                $mission->courrier()->update(['projet_reponse_contenu' => $projet]);
+                // La mission cesse d'accorder sa visibilité dès qu'elle
+                // passe à RETOURNEE. L'écriture métier doit néanmoins être
+                // finalisée dans la même transaction, sans dépendre du
+                // scope HTTP de l'assistant devenu immédiatement caduc.
+                Courrier::withoutGlobalScopes()->whereKey($mission->courrier_id)
+                    ->update(['projet_reponse_contenu' => $projet]);
             }
 
             $this->audit->enregistrer('mission_documentaire.retournee', $mission, $assistant, [
@@ -141,6 +209,9 @@ class MissionDocumentaireService
     {
         return DB::transaction(function () use ($mission, $acteur, $motif) {
             $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
+            if ($mission->projet_courrier_id !== null) {
+                throw ValidationException::withMessages(['mission' => 'Une mission ayant déjà produit un projet D ne peut plus être annulée.']);
+            }
             if (! $mission->statut->estActive()) {
                 throw ValidationException::withMessages(['mission' => 'Une mission terminée ne peut pas être annulée.']);
             }

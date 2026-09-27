@@ -24,6 +24,7 @@ class PiecesJointesCourrierTest extends CourrierTestCase
             'objet' => 'Correspondance avec annexes',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'expediteur_externe_nom' => 'Partenaire',
+            'mode_reception' => 'porteur',
             'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
             'pieces_jointes' => [
                 UploadedFile::fake()->create('annexe1.pdf', 50, 'application/pdf'),
@@ -51,6 +52,7 @@ class PiecesJointesCourrierTest extends CourrierTestCase
             'objet' => 'Correspondance simple',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'expediteur_externe_nom' => 'Partenaire',
+            'mode_reception' => 'porteur',
             'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
         ])->assertCreated();
 
@@ -70,6 +72,7 @@ class PiecesJointesCourrierTest extends CourrierTestCase
             'objet' => 'Correspondance',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'expediteur_externe_nom' => 'Partenaire',
+            'mode_reception' => 'porteur',
             'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
             'pieces_jointes' => [UploadedFile::fake()->create('annexe1.pdf', 50, 'application/pdf')],
         ])->assertCreated();

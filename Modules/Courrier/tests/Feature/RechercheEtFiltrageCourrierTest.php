@@ -19,11 +19,10 @@ class RechercheEtFiltrageCourrierTest extends CourrierTestCase
 
     public function test_le_filtre_statut_est_applique(): void
     {
-        Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
-        Courrier::factory()->create(['statut' => CourrierStatut::ENREGISTRE]);
-
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
+        Courrier::factory()->create(['statut' => CourrierStatut::RECU, 'created_by' => $reception->id]);
+        Courrier::factory()->create(['statut' => CourrierStatut::ENREGISTRE, 'created_by' => $reception->id]);
 
         $this->actingAs($reception)
             ->getJson('/api/v1/courriers?statut=recu')
@@ -34,11 +33,10 @@ class RechercheEtFiltrageCourrierTest extends CourrierTestCase
 
     public function test_la_recherche_libre_porte_sur_objet_et_numero(): void
     {
-        Courrier::factory()->create(['objet' => 'Demande de partenariat touristique']);
-        Courrier::factory()->create(['objet' => 'Autre chose']);
-
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
+        Courrier::factory()->create(['objet' => 'Demande de partenariat touristique', 'created_by' => $reception->id]);
+        Courrier::factory()->create(['objet' => 'Autre chose', 'created_by' => $reception->id]);
 
         $this->actingAs($reception)
             ->getJson('/api/v1/courriers?recherche=partenariat')
@@ -51,10 +49,9 @@ class RechercheEtFiltrageCourrierTest extends CourrierTestCase
         $directionA = Direction::factory()->create();
         $directionB = Direction::factory()->create();
 
-        Courrier::factory()->create(['direction_destination_id' => $directionA->id]);
-        Courrier::factory()->create(['direction_destination_id' => $directionB->id]);
-
         $reception = $this->agent(Poste::RECEPTION, $directionA);
+        Courrier::factory()->create(['direction_destination_id' => $directionA->id, 'created_by' => $reception->id]);
+        Courrier::factory()->create(['direction_destination_id' => $directionB->id, 'created_by' => $reception->id]);
 
         $this->actingAs($reception)
             ->getJson("/api/v1/courriers?direction_destination_id={$directionA->id}")

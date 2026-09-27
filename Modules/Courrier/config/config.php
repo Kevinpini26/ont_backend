@@ -242,6 +242,15 @@ return [
          * n'est jamais "enregistré" au sens du registre arrivée.
          */
         'sortant' => [
+            'projet_a_rediger' => [],
+            'projet_a_valider' => [
+                [
+                    'action' => 'signer',
+                    'statut_arrivee' => 'signe',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
+            ],
             'en_relecture' => [
                 [
                     'action' => 'signer',
@@ -270,6 +279,12 @@ return [
          * indéfiniment sans que personne ne le voie.
          */
         'tours_avant_alerte' => 5,
+    ],
+
+    'reponse_externe' => [
+        // Durée de validité du lien signé envoyé au demandeur externe.
+        // Le PDF reste privé et n'est jamais exposé par son chemin de stockage.
+        'lien_ttl_minutes' => config('ont.courrier_reponse_externe.lien_ttl_minutes', 10080),
     ],
 
     /**

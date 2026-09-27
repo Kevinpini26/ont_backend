@@ -11,8 +11,9 @@ use Illuminate\Queue\SerializesModels;
 use Modules\Courrier\Models\Courrier;
 
 /**
- * Envoyée au partenaire externe dès l'enregistrement de son courrier déposé
- * en ligne (module Public) — même gabarit fixe que
+ * Envoyée au partenaire externe dès le dépôt technique de son courrier en
+ * ligne (module Public), avant son enregistrement administratif par la
+ * Réception — même gabarit fixe que
  * AccuseReceptionCandidatMail, vocabulaire adapté. Toujours dispatchée via
  * Mail::queue() (jamais ->send()) : voir
  * CourrierCircuitService::creerCourrierExterneDepuisPublic().

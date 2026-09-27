@@ -30,9 +30,11 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
-        $reception = $this->agent(Poste::RECEPTION, $direction);
-
-        $courrierRecu = Courrier::factory()->create(['statut' => CourrierStatut::RECU, 'necessite_avis_dg' => true]);
+        $courrierRecu = Courrier::factory()->create([
+            'statut' => CourrierStatut::RECU,
+            'necessite_avis_dg' => true,
+            'created_by' => $reception->id,
+        ]);
 
         // Réception (créateur) ne peut pas enregistrer directement un
         // courrier tout juste reçu — poste non habilité à cette étape.
@@ -44,7 +46,7 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         // habilité à cette étape (encore "recu", pas "en_relecture").
         $this->actingAs($secretariat2)
             ->postJson("/api/v1/courriers/{$courrierRecu->id}/signer")
-            ->assertStatus(403);
+            ->assertNotFound();
 
         $courrierRecu->refresh();
         $this->assertSame(CourrierStatut::RECU, $courrierRecu->statut);
@@ -56,6 +58,7 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $courrierEnAttenteAvis = Courrier::factory()->create([
             'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
             'necessite_avis_dg' => true,
+            'created_by' => $reception->id,
         ]);
 
         $this->actingAs($reception)
@@ -73,7 +76,10 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $redacteur = $this->agent(Poste::ASSISTANT_1, $direction);
 
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::PROJET_A_REDIGER,
+            'created_by' => $redacteur->id,
+        ]);
 
         $this->actingAs($redacteur)
             ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
@@ -227,8 +233,14 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
         ])->assertCreated()->json('numero_accuse_reception');
 
         $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $courrier = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numero)->firstOrFail();
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", [
+            'classification' => CourrierClassification::EXTERNE->value,
+            'accuse_reception_partenaire' => 'Dépôt public reçu',
+        ])->assertOk();
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-sec1")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertOk();
 
@@ -256,6 +268,8 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
             ->postJson('/api/v1/courriers', [
                 'objet' => 'Courrier physique reçu au guichet',
                 'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+                'expediteur_externe_nom' => 'Partenaire externe',
+                'mode_reception' => 'porteur',
                 'direction_destination_id' => $direction->id,
             ])
             ->assertStatus(422)
@@ -273,6 +287,8 @@ class ConformiteCahierDesChargesTest extends CourrierTestCase
             ->post('/api/v1/courriers', [
                 'objet' => 'Courrier physique reçu au guichet',
                 'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+                'expediteur_externe_nom' => 'Partenaire externe',
+                'mode_reception' => 'porteur',
                 'direction_destination_id' => $direction->id,
                 'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
             ])

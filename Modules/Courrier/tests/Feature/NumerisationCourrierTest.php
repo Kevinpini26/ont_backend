@@ -33,6 +33,7 @@ class NumerisationCourrierTest extends CourrierTestCase
             'objet' => 'Correspondance numérisée',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'expediteur_externe_nom' => 'Partenaire',
+            'mode_reception' => 'porteur',
             'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
         ])->assertCreated();
 
@@ -57,6 +58,7 @@ class NumerisationCourrierTest extends CourrierTestCase
             'objet' => 'Correspondance sans scan disponible',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'expediteur_externe_nom' => 'Partenaire',
+            'mode_reception' => 'porteur',
             'numerisation_impossible' => true,
         ])->assertCreated();
 
@@ -99,8 +101,8 @@ class NumerisationCourrierTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
-        Courrier::factory()->create(['numerisation_statut' => NumerisationStatut::A_NUMERISER, 'objet' => 'À rattraper']);
-        Courrier::factory()->create(['numerisation_statut' => NumerisationStatut::NUMERISE, 'objet' => 'Déjà numérisé']);
+        Courrier::factory()->create(['numerisation_statut' => NumerisationStatut::A_NUMERISER, 'objet' => 'À rattraper', 'created_by' => $reception->id]);
+        Courrier::factory()->create(['numerisation_statut' => NumerisationStatut::NUMERISE, 'objet' => 'Déjà numérisé', 'created_by' => $reception->id]);
 
         $reponse = $this->actingAs($reception)->getJson('/api/v1/courriers/a-numeriser')->assertOk();
 
@@ -121,7 +123,7 @@ class NumerisationCourrierTest extends CourrierTestCase
         Storage::fake('local');
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $reception->id]);
         $chemin = UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf')->store('numerisations', 'local');
         $document = $courrier->numerisations()->create([
             'version' => 1,

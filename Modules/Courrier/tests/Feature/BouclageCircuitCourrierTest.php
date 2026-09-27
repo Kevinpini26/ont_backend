@@ -35,6 +35,8 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         $initial = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data');
@@ -99,7 +101,7 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         $final = $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$id}/rendre-avis", ['avis_dg' => 'favorable'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_REDIGER->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
 
         $this->assertSame(2, $final->json('data.tour'));
     }

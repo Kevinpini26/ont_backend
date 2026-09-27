@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
 use Modules\Courrier\Contracts\NumeroGenerator;
+use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\ReferenceDocumentaireService;
 use Modules\Kernel\Models\User;
 
@@ -20,13 +22,21 @@ while (! file_exists($barriere.'/start') && microtime(true) < $limite) {
 }
 
 try {
-    $valeur = $mode === 'numero'
-        ? app(NumeroGenerator::class)->genererNumeroEnregistrement()
-        : app(ReferenceDocumentaireService::class)->attribuer(
+    $valeur = match ($mode) {
+        'numero' => app(NumeroGenerator::class)->genererNumeroEnregistrement(),
+        'depot' => app(CourrierCircuitService::class)->enregistrer(
+            Courrier::withoutGlobalScopes()->findOrFail((int) $identifiant),
+            User::query()->findOrFail((int) $acteurId),
+            CourrierClassification::EXTERNE,
+            null,
+            'Dépôt public reçu',
+        )->numero_enregistrement,
+        default => app(ReferenceDocumentaireService::class)->attribuer(
             Courrier::withoutGlobalScopes()->findOrFail((int) $identifiant),
             User::query()->findOrFail((int) $acteurId),
             2026,
-        )->reference_documentaire;
+        )->reference_documentaire,
+    };
     file_put_contents($barriere.'/result-'.$worker.'.json', json_encode(['status' => 'ok', 'value' => $valeur], JSON_THROW_ON_ERROR));
 } catch (Throwable $exception) {
     file_put_contents($barriere.'/result-'.$worker.'.json', json_encode(['status' => 'error', 'class' => $exception::class, 'message' => $exception->getMessage()], JSON_THROW_ON_ERROR));

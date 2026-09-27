@@ -25,13 +25,14 @@ class BordereauLotTest extends CourrierTestCase
      * TriUrgenceCourrierTest) : une transition RECU en attente, destinée
      * au Secrétariat 01, pas encore acquittée.
      */
-    private function creerCourriersEnAttenteDeSecretariat1(int $nombre): array
+    private function creerCourriersEnAttenteDeSecretariat1(int $nombre, int $receptionId): array
     {
         $courriers = [];
         for ($i = 0; $i < $nombre; $i++) {
             $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
             $courrier->transitions()->create([
                 'statut' => CourrierStatut::RECU,
+                'changed_by_id' => $receptionId,
                 'destinataire_poste' => Poste::SECRETARIAT_1->value,
                 'created_at' => now(),
             ]);
@@ -47,7 +48,7 @@ class BordereauLotTest extends CourrierTestCase
         $reception = $this->agent(Poste::RECEPTION, $direction);
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
 
-        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(20);
+        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(20, $reception->id);
         $ids = array_map(fn ($c) => $c->id, $courriers);
 
         foreach ($courriers as $courrier) {
@@ -94,10 +95,11 @@ class BordereauLotTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
-        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(2);
+        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(2, $reception->id);
         $autre = Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
         $autre->transitions()->create([
             'statut' => CourrierStatut::RECU,
+            'changed_by_id' => $reception->id,
             'destinataire_poste' => Poste::PROTOCOLE->value,
             'created_at' => now(),
         ]);
@@ -114,7 +116,7 @@ class BordereauLotTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
-        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(2);
+        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(2, $reception->id);
         $courriers[0]->transitions()->update(['accuse_reception_at' => now()]);
 
         $this->actingAs($reception)
@@ -126,7 +128,7 @@ class BordereauLotTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(3);
+        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(3, $reception->id);
 
         $idBordereau = $this->actingAs($reception)
             ->postJson('/api/v1/bordereaux-lot', ['courrier_ids' => array_map(fn ($c) => $c->id, $courriers)])
@@ -143,7 +145,7 @@ class BordereauLotTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
-        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(2);
+        $courriers = $this->creerCourriersEnAttenteDeSecretariat1(2, $reception->id);
 
         $idBordereau = $this->actingAs($reception)
             ->postJson('/api/v1/bordereaux-lot', ['courrier_ids' => array_map(fn ($c) => $c->id, $courriers)])

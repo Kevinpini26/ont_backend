@@ -27,6 +27,8 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Test statistiques',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->json('data.id');

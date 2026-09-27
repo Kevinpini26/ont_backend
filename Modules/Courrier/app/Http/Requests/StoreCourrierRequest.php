@@ -59,7 +59,18 @@ class StoreCourrierRequest extends FormRequest
             'type' => ['required', Rule::enum(CourrierType::class)->only([CourrierType::DEMANDE_STAGE, CourrierType::CORRESPONDANCE_GENERALE])],
             'direction_origine_id' => ['nullable', 'integer', 'exists:directions,id'],
             'direction_destination_id' => ['nullable', 'integer', 'exists:directions,id'],
-            'expediteur_externe_nom' => ['nullable', 'string', 'max:255'],
+            // Une correspondance générale saisie à ce point d'entrée est
+            // un courrier externe reçu physiquement par la Réception : son
+            // expéditeur ne peut pas rester uniquement lisible dans le scan.
+            // Les demandes de stage conservent leurs règles propres.
+            'expediteur_externe_nom' => [
+                Rule::requiredIf(fn () => $this->input('type') === CourrierType::CORRESPONDANCE_GENERALE->value),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'expediteur_externe_email' => ['nullable', 'email', 'max:255'],
+            'expediteur_externe_telephone' => ['nullable', 'string', 'max:255'],
             'candidat_nom' => [Rule::requiredIf(fn () => $this->input('type') === CourrierType::DEMANDE_STAGE->value), 'nullable', 'string', 'max:255'],
             // Facultatif même pour une demande de stage : un dépôt au
             // guichet n'a pas toujours d'e-mail, contrairement au dépôt en
@@ -80,7 +91,15 @@ class StoreCourrierRequest extends FormRequest
             'date_courrier' => ['nullable', 'date'],
             'reference_expediteur' => ['nullable', 'string', 'max:255'],
             'qualite_expediteur' => ['nullable', 'string', 'max:255'],
-            'mode_reception' => ['nullable', Rule::enum(ModeReception::class)],
+            'mode_reception' => [
+                Rule::requiredIf(fn () => $this->input('type') === CourrierType::CORRESPONDANCE_GENERALE->value),
+                'nullable',
+                Rule::enum(ModeReception::class)->only([
+                    ModeReception::PORTEUR,
+                    ModeReception::POSTE,
+                    ModeReception::COURRIEL,
+                ]),
+            ],
             'nombre_annexes' => ['nullable', 'integer', 'min:0'],
 
             // Annexes au-delà de la pièce jointe principale — voir

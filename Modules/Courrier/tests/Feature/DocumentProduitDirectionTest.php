@@ -62,7 +62,10 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->actingAs($generique)->getJson('/api/v1/documents-produits-direction')->assertForbidden();
         $this->actingAs($reception)->getJson('/api/v1/documents-produits-direction')->assertOk()->assertJsonCount(0, 'data');
 
-        $this->assertSame($source->dossier_id, DocumentProduitDirection::findOrFail($id)->courrier->dossier_id);
+        $this->assertSame(
+            $source->dossier_id,
+            Courrier::withoutGlobalScopes()->findOrFail(DocumentProduitDirection::findOrFail($id)->courrier_id)->dossier_id,
+        );
     }
 
     public function test_soumission_correction_validation_reference_et_retour_reception_vers_sec1(): void

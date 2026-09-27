@@ -11,4 +11,8 @@ return [
     'ocr' => [
         'active' => env('OCR_ACTIVE', false),
     ],
+
+    'courrier_reponse_externe' => [
+        'lien_ttl_minutes' => (int) env('COURRIER_REPONSE_LIEN_TTL_MINUTES', 10080),
+    ],
 ];

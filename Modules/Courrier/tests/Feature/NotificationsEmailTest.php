@@ -32,6 +32,8 @@ class NotificationsEmailTest extends CourrierTestCase
         $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Test notification',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated();

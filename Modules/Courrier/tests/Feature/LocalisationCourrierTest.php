@@ -57,8 +57,8 @@ class LocalisationCourrierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create(['cote_classement' => 'ONT-2026-0099']);
-        Courrier::factory()->create(['cote_classement' => 'ONT-2026-0001']);
+        $courrier = Courrier::factory()->create(['cote_classement' => 'ONT-2026-0099', 'created_by' => $reception->id]);
+        Courrier::factory()->create(['cote_classement' => 'ONT-2026-0001', 'created_by' => $reception->id]);
 
         $this->actingAs($reception)
             ->getJson('/api/v1/courriers?cote_classement=ONT-2026-0099')

@@ -102,7 +102,11 @@ class CourrierPdfSignatureTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::ENREGISTRE, 'pdf_chemin' => null]);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::ENREGISTRE,
+            'pdf_chemin' => null,
+            'created_by' => $secretariat2->id,
+        ]);
 
         $reponse = $this->actingAs($secretariat2)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
 

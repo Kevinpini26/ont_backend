@@ -6,17 +6,26 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Courrier\Http\Requests\AnnulerMissionDocumentaireRequest;
 use Modules\Courrier\Http\Requests\CreerMissionDocumentaireRequest;
+use Modules\Courrier\Http\Requests\CreerProjetReponseMissionRequest;
+use Modules\Courrier\Http\Requests\DemanderPreparationReponseRequest;
 use Modules\Courrier\Http\Requests\RetournerMissionDocumentaireRequest;
+use Modules\Courrier\Http\Requests\SauvegarderProjetReponseRequest;
+use Modules\Courrier\Http\Requests\SoumettreProjetReponseMissionRequest;
+use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Http\Resources\MissionDocumentaireResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\MissionDocumentaire;
+use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\MissionDocumentaireService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 
 class MissionDocumentaireController extends Controller
 {
-    public function __construct(private readonly MissionDocumentaireService $missions) {}
+    public function __construct(
+        private readonly MissionDocumentaireService $missions,
+        private readonly CourrierCircuitService $circuit,
+    ) {}
 
     public function index(Request $request, Courrier $courrier)
     {
@@ -28,7 +37,7 @@ class MissionDocumentaireController extends Controller
         }
 
         return MissionDocumentaireResource::collection($query
-            ->with(['courrier', 'demandeur', 'assistant', 'annuleePar'])
+            ->with(['courrier', 'projetCourrier', 'demandeur', 'assistant', 'annuleePar'])
             ->oldest()
             ->get());
     }
@@ -37,7 +46,7 @@ class MissionDocumentaireController extends Controller
     {
         return MissionDocumentaireResource::collection(MissionDocumentaire::query()
             ->where('assistant_id', $request->user()->id)
-            ->with(['courrier', 'demandeur', 'assistant', 'annuleePar'])
+            ->with(['courrier', 'projetCourrier', 'demandeur', 'assistant', 'annuleePar'])
             ->latest('envoyee_at')
             ->get());
     }
@@ -52,6 +61,44 @@ class MissionDocumentaireController extends Controller
         );
 
         return $this->ressource($mission)->response()->setStatusCode(201);
+    }
+
+    public function demanderPreparationReponse(DemanderPreparationReponseRequest $request, Courrier $courrier)
+    {
+        $mission = $this->missions->creerPreparationReponse(
+            $courrier,
+            $request->user(),
+            User::query()->findOrFail($request->integer('assistant_id')),
+            $request->string('instruction')->toString(),
+        );
+
+        return $this->ressource($mission)->response()->setStatusCode(201);
+    }
+
+    public function creerProjet(CreerProjetReponseMissionRequest $request, MissionDocumentaire $mission)
+    {
+        $courrier = $this->circuit->creerProjetReponseMission($mission, $request->user(), $request->validated());
+
+        return $this->ressource($mission->fresh())->additional(['projet' => new CourrierResource($courrier)])
+            ->response()->setStatusCode(201);
+    }
+
+    public function sauvegarderProjet(SauvegarderProjetReponseRequest $request, MissionDocumentaire $mission)
+    {
+        $courrier = $this->circuit->sauvegarderProjetReponseMission($mission, $request->user(), $request->validated());
+
+        return new CourrierResource($courrier->load(['relecteur', 'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar']));
+    }
+
+    public function soumettreProjet(SoumettreProjetReponseMissionRequest $request, MissionDocumentaire $mission)
+    {
+        $courrier = $this->circuit->soumettreProjetReponseMission(
+            $mission,
+            $request->user(),
+            $request->validated('projet_reponse_contenu'),
+        );
+
+        return new CourrierResource($courrier->load(['relecteur', 'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar']));
     }
 
     public function prendreEnCharge(Request $request, MissionDocumentaire $mission)
@@ -82,6 +129,6 @@ class MissionDocumentaireController extends Controller
 
     private function ressource(MissionDocumentaire $mission): MissionDocumentaireResource
     {
-        return new MissionDocumentaireResource($mission->load(['courrier', 'demandeur', 'assistant', 'annuleePar']));
+        return new MissionDocumentaireResource($mission->load(['courrier', 'projetCourrier', 'demandeur', 'assistant', 'annuleePar']));
     }
 }

@@ -391,6 +391,11 @@ class Courrier extends Model implements Numerisable
         return $this->hasMany(MissionDocumentaire::class);
     }
 
+    public function missionProjetReponse(): HasOne
+    {
+        return $this->hasOne(MissionDocumentaire::class, 'projet_courrier_id');
+    }
+
     public function dispatchs(): HasMany
     {
         return $this->hasMany(DispatchCourrier::class);

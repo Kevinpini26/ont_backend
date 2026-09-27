@@ -41,8 +41,8 @@ class LienFichierPapierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        Courrier::factory()->create(['emplacement_physique' => 'Armoire 3, chrono 2026', 'objet' => 'Cible']);
-        Courrier::factory()->create(['emplacement_physique' => 'Armoire 1, chrono 2025', 'objet' => 'Autre']);
+        Courrier::factory()->create(['emplacement_physique' => 'Armoire 3, chrono 2026', 'objet' => 'Cible', 'created_by' => $agent->id]);
+        Courrier::factory()->create(['emplacement_physique' => 'Armoire 1, chrono 2025', 'objet' => 'Autre', 'created_by' => $agent->id]);
 
         $reponse = $this->actingAs($agent)->getJson('/api/v1/courriers?emplacement_physique=Armoire 3')->assertOk();
 
@@ -54,7 +54,7 @@ class LienFichierPapierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/sortir-original", [
             'motif' => 'Consultation par la DG',
@@ -92,7 +92,7 @@ class LienFichierPapierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/sortir-original", ['motif' => 'Premier emprunt'])
             ->assertCreated();
@@ -105,8 +105,8 @@ class LienFichierPapierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrierRecent = Courrier::factory()->create(['objet' => 'Emprunt récent']);
-        $courrierAncien = Courrier::factory()->create(['objet' => 'Emprunt ancien']);
+        $courrierRecent = Courrier::factory()->create(['objet' => 'Emprunt récent', 'created_by' => $agent->id]);
+        $courrierAncien = Courrier::factory()->create(['objet' => 'Emprunt ancien', 'created_by' => $agent->id]);
 
         $courrierRecent->empruntsOriginaux()->create([
             'emprunte_par_id' => $agent->id, 'emprunte_le' => now()->subDays(2), 'motif' => 'Test',

@@ -40,7 +40,7 @@ class CourrierSortantTest extends CourrierTestCase
             ->assertJsonPath('data.statut', CourrierStatut::EN_RELECTURE->value);
     }
 
-    public function test_secretariat_1_peut_aussi_initier_une_reponse_sortante(): void
+    public function test_secretariat_1_ne_peut_plus_contourner_la_mission_dg_pour_initier_une_reponse(): void
     {
         $direction = Direction::factory()->create();
         $original = Courrier::factory()->create(['direction_origine_id' => $direction->id]);
@@ -51,7 +51,7 @@ class CourrierSortantTest extends CourrierTestCase
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$original->id}/initier-reponse", [
             'projet_reponse_contenu' => $this->projetVide,
             'relecteur_id' => $relecteur->id,
-        ])->assertCreated();
+        ])->assertUnprocessable()->assertJsonValidationErrors('courrier');
     }
 
     /**
@@ -153,7 +153,7 @@ class CourrierSortantTest extends CourrierTestCase
         $this->actingAs($autrePoste)->postJson("/api/v1/courriers/{$reponse->id}/envoyer", [
             'destinataire_externe_nom' => 'Partenaire',
             'mode_expedition' => 'courriel',
-        ])->assertForbidden();
+        ])->assertNotFound();
     }
 
     public function test_la_remise_ne_peut_etre_enregistree_quapres_lenvoi(): void
@@ -163,6 +163,7 @@ class CourrierSortantTest extends CourrierTestCase
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
 
         $reponse = $this->creerReponseEnRelecture($direction, $relecteur);
+        $reponse->forceFill(['created_by' => $secretariat2->id])->save();
 
         $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$reponse->id}/enregistrer-remise", [
             'remis_a' => 'Jean Kabila',

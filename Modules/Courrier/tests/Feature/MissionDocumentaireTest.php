@@ -184,12 +184,12 @@ class MissionDocumentaireTest extends CourrierTestCase
         ])->assertCreated()->json('data.id');
 
         $this->actingAs($assistantAutorise)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
-        $this->actingAs($autreAssistant)->getJson("/api/v1/courriers/{$courrier->id}")->assertForbidden();
+        $this->actingAs($autreAssistant)->getJson("/api/v1/courriers/{$courrier->id}")->assertNotFound();
         $this->actingAs($autreAssistant)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertForbidden();
 
         $this->actingAs($assistantAutorise)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertOk();
         $this->actingAs($assistantAutorise)->postJson("/api/v1/missions-documentaires/{$missionId}/retourner", ['compte_rendu' => 'Terminé.'])->assertOk();
-        $this->actingAs($assistantAutorise)->getJson("/api/v1/courriers/{$courrier->id}")->assertForbidden();
+        $this->actingAs($assistantAutorise)->getJson("/api/v1/courriers/{$courrier->id}")->assertNotFound();
     }
 
     public function test_retour_peut_conserver_projet_existant_et_dg_reprendre_decision_vers_sec2(): void

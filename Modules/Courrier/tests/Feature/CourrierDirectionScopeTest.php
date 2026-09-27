@@ -29,19 +29,25 @@ class CourrierDirectionScopeTest extends CourrierTestCase
             ->assertJsonCount(2, 'data');
     }
 
-    public function test_les_postes_du_circuit_central_voient_tous_les_courriers(): void
+    public function test_reception_ne_voit_que_sa_file_et_son_historique_legitime(): void
     {
         $directionA = Direction::factory()->create();
         $directionB = Direction::factory()->create();
 
-        Courrier::factory()->count(3)->create(['direction_origine_id' => $directionA->id, 'direction_destination_id' => $directionB->id]);
+        Courrier::factory()->count(2)->create(['direction_origine_id' => $directionA->id, 'direction_destination_id' => $directionB->id]);
+        Courrier::factory()->create([
+            'direction_origine_id' => $directionA->id,
+            'direction_destination_id' => $directionB->id,
+            'mode_reception' => 'depot_en_ligne',
+            'statut' => 'recu',
+        ]);
 
         $reception = $this->agent(Poste::RECEPTION, $directionB);
 
         $this->actingAs($reception)
             ->getJson('/api/v1/courriers')
             ->assertOk()
-            ->assertJsonCount(3, 'data');
+            ->assertJsonCount(1, 'data');
     }
 
     /**

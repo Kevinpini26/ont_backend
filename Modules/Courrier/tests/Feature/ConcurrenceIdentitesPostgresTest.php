@@ -3,7 +3,10 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Models\Courrier;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Symfony\Component\Process\Process;
@@ -33,14 +36,46 @@ class ConcurrenceIdentitesPostgresTest extends TestCase
         $this->assertSame(20, $resultats->pluck('value')->unique()->count());
     }
 
-    /** @param array<int, int> $identifiants */
-    private function executerConcurremment(string $mode, array $identifiants, int $acteurId)
+    public function test_enregistrement_concurrent_des_depots_publics_reste_unique(): void
+    {
+        $direction = Direction::factory()->create();
+        $receptions = User::factory()->count(20)->agentCircuitCourrier(Poste::RECEPTION, $direction)->create();
+        $courriers = Courrier::factory()->count(20)->create([
+            'statut' => CourrierStatut::RECU,
+            'mode_reception' => ModeReception::DEPOT_EN_LIGNE,
+            'numero_enregistrement' => null,
+        ]);
+
+        $resultats = $this->executerConcurremment('depot', $courriers->pluck('id')->all(), $receptions->pluck('id')->all());
+
+        $this->assertSame(20, $resultats->where('status', 'ok')->count());
+        $this->assertSame(20, $resultats->pluck('value')->unique()->count());
+        $this->assertSame(20, Courrier::withoutGlobalScopes()->whereIn('id', $courriers->pluck('id'))->whereNotNull('numero_enregistrement')->distinct()->count('numero_enregistrement'));
+
+        $memeCourrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::RECU,
+            'mode_reception' => ModeReception::DEPOT_EN_LIGNE,
+            'numero_enregistrement' => null,
+        ]);
+        $double = $this->executerConcurremment('depot', [$memeCourrier->id, $memeCourrier->id], $receptions->take(2)->pluck('id')->all());
+
+        $this->assertSame(1, $double->where('status', 'ok')->count());
+        $this->assertSame(1, $double->where('status', 'error')->count());
+        $this->assertNotNull($memeCourrier->fresh()->numero_enregistrement);
+        $this->assertSame(1, Courrier::withoutGlobalScopes()->whereKey($memeCourrier->id)->whereNotNull('numero_enregistrement')->count());
+    }
+
+    /**
+     * @param  array<int, int>  $identifiants
+     * @param  int|array<int, int>  $acteurIds
+     */
+    private function executerConcurremment(string $mode, array $identifiants, int|array $acteurIds)
     {
         $barriere = sys_get_temp_dir().'/ont-identites-'.bin2hex(random_bytes(6));
         mkdir($barriere, 0700, true);
         $worker = base_path('Modules/Courrier/tests/Support/identite_worker.php');
         $processus = collect($identifiants)->values()->map(fn (int $identifiant, int $index) => new Process([
-            PHP_BINARY, $worker, $mode, (string) $identifiant, (string) $acteurId, $barriere, (string) $index,
+            PHP_BINARY, $worker, $mode, (string) $identifiant, (string) (is_array($acteurIds) ? $acteurIds[$index] : $acteurIds), $barriere, (string) $index,
         ], base_path(), ['APP_ENV' => 'testing']));
         $processus->each(function (Process $process): void {
             $process->setTimeout(45)->start();

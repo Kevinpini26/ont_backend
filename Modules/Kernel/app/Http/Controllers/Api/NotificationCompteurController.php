@@ -26,7 +26,7 @@ class NotificationCompteurController extends Controller
         if ($user->direction_id) {
             $depuis = Consultation::derniere($user, 'courriers_recus');
 
-            $recusQuery = Courrier::query()->withoutGlobalScopes()
+            $recusQuery = Courrier::query()
                 ->where('direction_destination_id', $user->direction_id);
             $nonConsultes = (clone $recusQuery)->when($depuis, fn ($q) => $q->where('created_at', '>', $depuis))->count();
 

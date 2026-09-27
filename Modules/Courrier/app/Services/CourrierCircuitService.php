@@ -3,6 +3,9 @@
 namespace Modules\Courrier\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Contracts\CourrierPdfGenerator;
 use Modules\Courrier\Contracts\NumeroGenerator;
@@ -13,6 +16,8 @@ use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Enums\MentionImputation;
+use Modules\Courrier\Enums\MissionDocumentaireStatut;
+use Modules\Courrier\Enums\MissionDocumentaireType;
 use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
@@ -23,11 +28,13 @@ use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
 use Modules\Courrier\Mail\AccuseReceptionCandidatMail;
 use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Mail\CourrierRecuMail;
+use Modules\Courrier\Mail\ReponseFinaleCourrierExterneMail;
 use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\EmpruntOriginal;
+use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\ReorientationTri;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
@@ -38,6 +45,7 @@ use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgDisponibilite;
 use Modules\Kernel\Support\EmpreinteFichier;
+use Throwable;
 
 /**
  * Orchestre les transitions du circuit courrier : c'est l'unique point
@@ -85,6 +93,9 @@ class CourrierCircuitService
                 'initie_par_dg' => false,
                 'created_by' => $auteur->id,
                 'numerisation_statut' => $numerisationStatut,
+                // Le courrier physique est administrativement enregistré
+                // dans la même transaction que l'attribution de son numéro.
+                'enregistre_at' => now(),
             ]);
 
             $this->tracerTransition($courrier, $auteur);
@@ -163,7 +174,7 @@ class CourrierCircuitService
                 ...$donnees,
                 'type' => CourrierType::CORRESPONDANCE_GENERALE,
                 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
+                'numero_enregistrement' => null,
                 'statut' => CourrierStatut::RECU,
                 'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
@@ -171,14 +182,34 @@ class CourrierCircuitService
                 'mode_reception' => ModeReception::DEPOT_EN_LIGNE,
             ]);
 
-            $this->tracerTransition($courrier, null);
-            $this->auditerIdentite($courrier, null, 'numero_enregistrement', $courrier->numero_enregistrement);
+            $this->audit->enregistrer('courrier.depot_public', $courrier, null, [
+                'numero_accuse_reception' => $courrier->numero_accuse_reception,
+                'depose_at' => now()->toISOString(),
+            ]);
 
             return $courrier;
         });
 
         if ($courrier->expediteur_externe_email) {
-            $this->notifications->envoyerMail($courrier->expediteur_externe_email, new AccuseReceptionCourrierExterneMail($courrier));
+            try {
+                $this->notifications->envoyerMail($courrier->expediteur_externe_email, new AccuseReceptionCourrierExterneMail($courrier));
+                $this->audit->enregistrer('courrier.accuse_reception_envoye', $courrier, null, [
+                    'dossier_id' => $courrier->dossier_id,
+                    'destinataire' => $courrier->expediteur_externe_email,
+                    'type_notification' => 'accuse_reception',
+                    'envoye_at' => now()->toISOString(),
+                ]);
+            } catch (Throwable $exception) {
+                Log::error("Échec de mise en file de l'accusé de réception externe.", [
+                    'courrier_id' => $courrier->id,
+                    'dossier_id' => $courrier->dossier_id,
+                    'exception' => $exception,
+                ]);
+                $this->audit->enregistrer('courrier.accuse_reception_echec', $courrier, null, [
+                    'dossier_id' => $courrier->dossier_id,
+                    'type_notification' => 'accuse_reception',
+                ]);
+            }
         }
 
         return $courrier;
@@ -290,14 +321,17 @@ class CourrierCircuitService
         $destinatairePoste = null;
         $destinataireUserId = null;
 
-        if ($courrier->enAttenteValidationRelecteur()) {
+        if ($courrier->sens === SensCourrier::SORTANT && $courrier->statut === CourrierStatut::PROJET_A_REDIGER) {
+            // Brouillon personnel de l'assistant assigné : aucune remise à
+            // décharger avant la soumission nominative au relecteur.
+        } elseif ($courrier->enAttenteValidationRelecteur()) {
             $destinataireUserId = $courrier->relecteur_id;
         } else {
             $postesAutorises = $this->regles->postesPourTransitionResolue(
                 $courrier->statut,
                 $courrier->necessite_avis_dg,
                 $courrier->initie_par_dg,
-                false,
+                $courrier->sens === SensCourrier::SORTANT,
                 ['type' => $courrier->type?->value],
             );
             $destinatairePoste = ($postesAutorises[0] ?? null)?->value;
@@ -768,6 +802,28 @@ class CourrierCircuitService
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $instruction) {
             $courrier = $this->lockCourrierFrais($courrier);
+
+            if ($courrier->statut === CourrierStatut::RECU && $courrier->mode_reception === ModeReception::DEPOT_EN_LIGNE) {
+                if ($utilisateur->poste !== Poste::RECEPTION) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
+                if ($courrier->numero_enregistrement === null) {
+                    throw ValidationException::withMessages([
+                        'courrier' => 'Le dépôt doit être enregistré par la Réception avant sa transmission à SEC1.',
+                    ]);
+                }
+                if ($courrier->transitions()->exists()) {
+                    throw TransitionNonAutoriseeException::sautDetape();
+                }
+
+                $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
+                $this->audit->enregistrer('courrier.transmis_sec1', $courrier, $utilisateur, [
+                    'numero_enregistrement' => $courrier->numero_enregistrement,
+                ]);
+
+                return $courrier;
+            }
+
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI);
 
             $courrier->tour += 1;
@@ -870,13 +926,23 @@ class CourrierCircuitService
             $courrier->avis_dg_rendu_at = now();
             $courrier->avis_dg_rendu_par_id = $utilisateur->id;
             $courrier->avis_dg_rendu_en_interim = $enInterim;
-            $courrier->statut = $statutCible;
+            // Les décisions tranchées sans imputation ouvraient auparavant
+            // le projet directement sur A. Pour les nouveaux dossiers, A
+            // reste désormais sous contrôle DG jusqu'à la création de la
+            // mission nominative qui produira D. Les deux statuts legacy
+            // restent lisibles et actionnables pour les dossiers qui y sont
+            // déjà engagés, mais ne sont plus alimentés ici.
+            $ouvrePreparationD = $statutCible === CourrierStatut::PROJET_A_REDIGER;
+            $courrier->statut = $ouvrePreparationD ? CourrierStatut::EN_ATTENTE_AVIS_DG : $statutCible;
             $courrier->save();
-            $this->tracerTransition($courrier, $utilisateur);
+            if (! $ouvrePreparationD) {
+                $this->tracerTransition($courrier, $utilisateur);
+            }
 
             $this->audit->enregistrer('courrier.avis_dg_rendu', $courrier, $utilisateur, [
                 'avis' => $avis->value,
                 'interim' => $enInterim,
+                'preparation_reponse_d_attendue' => $ouvrePreparationD,
             ]);
 
             // Après commit uniquement : la fiche stagiaire créée en
@@ -918,6 +984,108 @@ class CourrierCircuitService
         });
     }
 
+    /** Crée le brouillon sortant D rattaché à une mission DG nominative. */
+    public function creerProjetReponseMission(MissionDocumentaire $mission, User $assistant, array $donnees): Courrier
+    {
+        return DB::transaction(function () use ($mission, $assistant, $donnees) {
+            $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
+            $this->assertMissionPreparationActive($mission, $assistant);
+            if ($mission->projet_courrier_id !== null) {
+                throw ValidationException::withMessages(['mission' => 'Cette mission possède déjà son projet de réponse.']);
+            }
+
+            $original = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($mission->courrier_id);
+            $courrier = Courrier::withoutGlobalScopes()->create([
+                'objet' => $donnees['objet'],
+                'projet_reponse_contenu' => $donnees['projet_reponse_contenu'] ?? ['type' => 'doc', 'content' => []],
+                'type' => CourrierType::CORRESPONDANCE_GENERALE,
+                'sens' => SensCourrier::SORTANT,
+                'en_reponse_a_courrier_id' => $original->id,
+                'dossier_id' => $original->dossier_id,
+                'direction_origine_id' => null,
+                'destinataire_externe_nom' => $donnees['destinataire_externe_nom'] ?? $original->expediteur_externe_nom,
+                'destinataire_externe_email' => $donnees['destinataire_externe_email'] ?? $original->expediteur_externe_email,
+                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'statut' => CourrierStatut::PROJET_A_REDIGER,
+                'necessite_avis_dg' => false,
+                'initie_par_dg' => false,
+                'created_by' => $assistant->id,
+            ]);
+
+            $this->relationsDocumentaires->relier($courrier, $original, DocumentRelationType::REPONSE_A, $assistant);
+            $mission->update(['projet_courrier_id' => $courrier->id]);
+            $this->tracerTransition($courrier, $assistant);
+            $this->audit->enregistrer('courrier.projet_reponse_cree', $courrier, $assistant, [
+                'mission_id' => $mission->id,
+                'courrier_origine_id' => $original->id,
+            ]);
+
+            return $courrier;
+        });
+    }
+
+    public function sauvegarderProjetReponseMission(MissionDocumentaire $mission, User $assistant, array $donnees): Courrier
+    {
+        return DB::transaction(function () use ($mission, $assistant, $donnees) {
+            $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
+            $this->assertMissionPreparationActive($mission, $assistant);
+            if ($mission->projet_courrier_id === null) {
+                throw ValidationException::withMessages(['mission' => "Le projet de réponse n'a pas encore été créé."]);
+            }
+
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($mission->projet_courrier_id);
+            if ($courrier->statut !== CourrierStatut::PROJET_A_REDIGER || $courrier->created_by !== $assistant->id) {
+                throw ValidationException::withMessages(['projet' => "Ce projet n'est pas modifiable."]);
+            }
+            $courrier->fill($donnees)->save();
+            $this->audit->enregistrer('courrier.projet_reponse_sauvegarde', $courrier, $assistant, ['mission_id' => $mission->id]);
+
+            return $courrier;
+        });
+    }
+
+    public function soumettreProjetReponseMission(MissionDocumentaire $mission, User $assistant, array $projetReponseContenu): Courrier
+    {
+        return DB::transaction(function () use ($mission, $assistant, $projetReponseContenu) {
+            $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
+            $this->assertMissionPreparationActive($mission, $assistant);
+            if ($mission->projet_courrier_id === null) {
+                throw ValidationException::withMessages(['mission' => "Le projet de réponse n'a pas encore été créé."]);
+            }
+
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($mission->projet_courrier_id);
+            if ($courrier->statut !== CourrierStatut::PROJET_A_REDIGER) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+
+            $posteRelecteur = $assistant->poste === Poste::ASSISTANT_1 ? Poste::ASSISTANT_2 : Poste::ASSISTANT_1;
+            if (! in_array($assistant->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true)) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
+            $relecteurs = User::query()->where('poste', $posteRelecteur)->get();
+            if ($relecteurs->count() !== 1) {
+                throw ValidationException::withMessages(['relecteur' => 'Le compte du relecteur institutionnel doit être unique et configuré.']);
+            }
+            $relecteur = $relecteurs->first();
+
+            $courrier->projet_reponse_contenu = $projetReponseContenu;
+            $courrier->relecteur_id = $relecteur->id;
+            $courrier->relecture_validee_at = null;
+            $courrier->relecture_commentaire = null;
+            $courrier->statut = CourrierStatut::PROJET_A_VALIDER;
+            $courrier->save();
+            $this->tracerTransition($courrier, $assistant);
+            $this->audit->enregistrer(
+                $courrier->projet_renvoye_at ? 'courrier.projet_reponse_resoumis' : 'courrier.projet_reponse_soumis',
+                $courrier,
+                $assistant,
+                ['mission_id' => $mission->id, 'relecteur_id' => $relecteur->id],
+            );
+
+            return $courrier;
+        });
+    }
+
     public function validerRelecture(Courrier $courrier, User $utilisateur, ?string $commentaire): Courrier
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $commentaire) {
@@ -941,6 +1109,25 @@ class CourrierCircuitService
                 'commentaire_fourni' => $commentaire !== null && $commentaire !== '',
                 'relecture_validee_at' => $courrier->relecture_validee_at->toIso8601String(),
             ]);
+
+            if ($courrier->sens === SensCourrier::SORTANT) {
+                $mission = MissionDocumentaire::query()
+                    ->where('projet_courrier_id', $courrier->id)
+                    ->where('type', MissionDocumentaireType::PREPARATION_REPONSE)
+                    ->whereIn('statut', [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS])
+                    ->lockForUpdate()
+                    ->first();
+                if ($mission !== null) {
+                    $mission->update([
+                        'statut' => MissionDocumentaireStatut::RETOURNEE,
+                        'compte_rendu' => 'Projet de réponse relu et transmis à la DG pour signature.',
+                        'retournee_at' => now(),
+                    ]);
+                    $this->audit->enregistrer('mission_documentaire.terminee_apres_relecture', $mission, $utilisateur, [
+                        'projet_courrier_id' => $courrier->id,
+                    ]);
+                }
+            }
 
             return $courrier;
         });
@@ -1030,6 +1217,18 @@ class CourrierCircuitService
         });
     }
 
+    private function assertMissionPreparationActive(MissionDocumentaire $mission, User $assistant): void
+    {
+        if (
+            $mission->type !== MissionDocumentaireType::PREPARATION_REPONSE
+            || $mission->autorite_poste !== Poste::DG
+            || $mission->assistant_id !== $assistant->id
+            || ! in_array($mission->statut, [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS], true)
+        ) {
+            throw TransitionNonAutoriseeException::posteNonHabilite();
+        }
+    }
+
     public function enregistrer(
         Courrier $courrier,
         User $utilisateur,
@@ -1040,6 +1239,32 @@ class CourrierCircuitService
     ): Courrier {
         return DB::transaction(function () use ($courrier, $utilisateur, $classification, $noteTechnique, $accuseReceptionPartenaire, $emplacementPhysique) {
             $courrier = $this->lockCourrierFrais($courrier);
+
+            if ($courrier->statut === CourrierStatut::RECU && $courrier->mode_reception === ModeReception::DEPOT_EN_LIGNE) {
+                if ($utilisateur->poste !== Poste::RECEPTION) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
+                if ($courrier->numero_enregistrement !== null) {
+                    throw ValidationException::withMessages([
+                        'courrier' => 'Ce dépôt public est déjà enregistré.',
+                    ]);
+                }
+
+                $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
+                $courrier->classification = $classification;
+                $courrier->note_technique = $noteTechnique;
+                $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
+                $courrier->cote_classement = $this->genererCoteClassement($courrier);
+                if ($emplacementPhysique !== null) {
+                    $courrier->emplacement_physique = $emplacementPhysique;
+                }
+                $courrier->enregistre_at = now();
+                $courrier->save();
+                $this->auditerIdentite($courrier, $utilisateur, 'numero_enregistrement', $courrier->numero_enregistrement);
+
+                return $courrier;
+            }
+
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENREGISTRE);
 
             $courrier->classification = $classification;
@@ -1069,6 +1294,12 @@ class CourrierCircuitService
      */
     public function initierReponseSortante(User $auteur, Courrier $original, array $donnees): Courrier
     {
+        if ($original->necessite_avis_dg && $auteur->poste === Poste::SECRETARIAT_1) {
+            throw ValidationException::withMessages([
+                'courrier' => 'Une réponse décidée par la DG doit être préparée dans le cadre d’une mission nominative.',
+            ]);
+        }
+
         $estResponsableConcerne = $auteur->role->estDirecteurDirection()
             && in_array($auteur->direction_id, [$original->direction_origine_id, $original->direction_destination_id], true);
         $estSecretariat1 = $auteur->poste === Poste::SECRETARIAT_1;
@@ -1135,9 +1366,32 @@ class CourrierCircuitService
      */
     public function envoyer(Courrier $courrier, User $utilisateur, array $donnees): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur, $donnees) {
+        $courrier = DB::transaction(function () use ($courrier, $utilisateur, $donnees) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENVOYE);
+
+            $origine = $this->origineExternePubliqueDeLaReponse($courrier);
+            if ($origine !== null) {
+                $emailSaisi = mb_strtolower(trim((string) ($donnees['destinataire_externe_email'] ?? '')));
+                if ($emailSaisi !== mb_strtolower((string) $origine->expediteur_externe_email)) {
+                    throw ValidationException::withMessages([
+                        'destinataire_externe_email' => "L'adresse doit correspondre à celle du demandeur externe à l'origine de cette réponse.",
+                    ]);
+                }
+                $donnees['destinataire_externe_nom'] = $origine->expediteur_externe_nom;
+                $donnees['destinataire_externe_email'] = $origine->expediteur_externe_email;
+            } elseif ($courrier->missionProjetReponse()->exists()) {
+                $nomSaisi = trim((string) ($donnees['destinataire_externe_nom'] ?? ''));
+                $emailSaisi = mb_strtolower(trim((string) ($donnees['destinataire_externe_email'] ?? '')));
+                $emailProjet = mb_strtolower(trim((string) ($courrier->destinataire_externe_email ?? '')));
+                if ($nomSaisi !== (string) $courrier->destinataire_externe_nom || $emailSaisi !== $emailProjet) {
+                    throw ValidationException::withMessages([
+                        'destinataire_externe_nom' => 'Le destinataire final doit correspondre au projet validé et signé.',
+                    ]);
+                }
+                $donnees['destinataire_externe_nom'] = $courrier->destinataire_externe_nom;
+                $donnees['destinataire_externe_email'] = $courrier->destinataire_externe_email;
+            }
 
             $courrier->destinataire_externe_nom = $donnees['destinataire_externe_nom'] ?? null;
             $courrier->destinataire_externe_email = $donnees['destinataire_externe_email'] ?? null;
@@ -1149,6 +1403,66 @@ class CourrierCircuitService
 
             return $courrier;
         });
+
+        $this->notifierReponseExterneEnvoyee($courrier, $utilisateur);
+
+        return $courrier;
+    }
+
+    private function notifierReponseExterneEnvoyee(Courrier $reponse, User $acteur): void
+    {
+        $origine = $this->origineExternePubliqueDeLaReponse($reponse);
+        if ($origine === null || blank($reponse->pdf_chemin) || blank($reponse->pdf_sha256)) {
+            return;
+        }
+
+        $ttl = max(1, (int) config('courrier.reponse_externe.lien_ttl_minutes', 10080));
+        $url = URL::temporarySignedRoute(
+            'api.public.reponses.telecharger',
+            now()->addMinutes($ttl),
+            ['courrier' => $reponse->id],
+        );
+
+        try {
+            $this->notifications->envoyerMail(
+                $origine->expediteur_externe_email,
+                new ReponseFinaleCourrierExterneMail($origine, $reponse, $url),
+            );
+            $this->audit->enregistrer('courrier.reponse_finale_notifiee', $reponse, $acteur, [
+                'dossier_id' => $reponse->dossier_id,
+                'courrier_origine_id' => $origine->id,
+                'destinataire' => $origine->expediteur_externe_email,
+                'type_notification' => 'reponse_finale',
+                'numero_depart' => $reponse->numero_depart,
+                'notifiee_at' => now()->toISOString(),
+            ]);
+        } catch (Throwable $exception) {
+            Log::error('Échec de mise en file de la réponse finale externe.', [
+                'courrier_id' => $reponse->id,
+                'dossier_id' => $reponse->dossier_id,
+                'exception' => $exception,
+            ]);
+            $this->audit->enregistrer('courrier.reponse_finale_notification_echec', $reponse, $acteur, [
+                'dossier_id' => $reponse->dossier_id,
+                'courrier_origine_id' => $origine->id,
+                'type_notification' => 'reponse_finale',
+            ]);
+        }
+    }
+
+    private function origineExternePubliqueDeLaReponse(Courrier $reponse): ?Courrier
+    {
+        if ($reponse->sens !== SensCourrier::SORTANT || $reponse->en_reponse_a_courrier_id === null) {
+            return null;
+        }
+
+        return Courrier::withoutGlobalScopes()
+            ->whereKey($reponse->en_reponse_a_courrier_id)
+            ->where('dossier_id', $reponse->dossier_id)
+            ->where('sens', SensCourrier::ENTRANT)
+            ->where('mode_reception', ModeReception::DEPOT_EN_LIGNE)
+            ->whereNotNull('expediteur_externe_email')
+            ->first();
     }
 
     /**

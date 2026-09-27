@@ -26,7 +26,7 @@ class CaptureNumerisationMobileTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $reponse = $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/jeton-capture")->assertOk();
 
@@ -44,7 +44,7 @@ class CaptureNumerisationMobileTest extends CourrierTestCase
         Notification::fake();
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/jeton-capture", [
             'numero_sms' => '+243812345678',

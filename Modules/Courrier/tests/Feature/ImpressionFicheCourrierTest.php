@@ -15,7 +15,7 @@ class ImpressionFicheCourrierTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $reponse = $this->actingAs($agent)->get("/api/v1/courriers/{$courrier->id}/imprimer");
 

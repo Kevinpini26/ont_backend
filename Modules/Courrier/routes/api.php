@@ -69,9 +69,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/{courrier}/relations', [DossierController::class, 'relations']);
     Route::get('/courriers/{courrier}/missions', [MissionDocumentaireController::class, 'index']);
     Route::post('/courriers/{courrier}/missions', [MissionDocumentaireController::class, 'store']);
+    Route::post('/courriers/{courrier}/demander-preparation-reponse', [MissionDocumentaireController::class, 'demanderPreparationReponse']);
     Route::get('/missions-documentaires/mes-missions', [MissionDocumentaireController::class, 'mesMissions']);
     Route::post('/missions-documentaires/{mission}/prendre-en-charge', [MissionDocumentaireController::class, 'prendreEnCharge']);
     Route::post('/missions-documentaires/{mission}/retourner', [MissionDocumentaireController::class, 'retourner']);
+    Route::post('/missions-documentaires/{mission}/projet-reponse', [MissionDocumentaireController::class, 'creerProjet']);
+    Route::patch('/missions-documentaires/{mission}/projet-reponse', [MissionDocumentaireController::class, 'sauvegarderProjet']);
+    Route::post('/missions-documentaires/{mission}/projet-reponse/soumettre', [MissionDocumentaireController::class, 'soumettreProjet']);
     Route::post('/missions-documentaires/{mission}/annuler', [MissionDocumentaireController::class, 'annuler']);
     Route::get('/dossiers/{dossier}', [DossierController::class, 'show']);
 

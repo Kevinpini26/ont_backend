@@ -43,8 +43,15 @@ class DispatchCourrierService
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
             $ancienStatut = $courrier->statut;
 
-            if (! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true) || $courrier->dossier_id === null) {
+            if (! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true) || $courrier->dossier_id === null) {
                 throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas disponible pour une décision de dispatch."]);
+            }
+
+            if ($courrier->statut === CourrierStatut::ENVOYE
+                && collect($destinations)->contains(fn (array $destination) => ($destination['type'] ?? null) !== DispatchTypeDestination::CLASSEMENT->value)) {
+                throw ValidationException::withMessages([
+                    'destinations' => 'Un courrier sortant déjà envoyé ne peut être orienté que vers le classement.',
+                ]);
             }
             $this->cycles->assertPeutOuvrir($courrier);
             $cycle = $this->cycles->prochainNumero($courrier);

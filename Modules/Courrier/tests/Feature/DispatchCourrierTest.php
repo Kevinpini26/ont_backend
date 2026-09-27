@@ -4,11 +4,13 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\NiveauConfidentialite;
+use Modules\Courrier\Mail\ReponseFinaleCourrierExterneMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
@@ -99,6 +101,28 @@ class DispatchCourrierTest extends CourrierTestCase
         $this->assertDatabaseHas('courrier_pieces_jointes', ['courrier_id' => $courrier->id, 'libelle' => 'Preuve de dispatch #'.$dispatch->id]);
     }
 
+    public function test_un_dispatch_exterieur_reste_operationnel_sans_declencher_de_reponse_finale_publique(): void
+    {
+        Mail::fake();
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $documentInterne = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$documentInterne->id}/dispatchs", ['destinations' => [[
+            'type' => 'exterieur',
+            'destinataire_externe_nom' => 'Partenaire institutionnel',
+            'destinataire_externe_email' => 'partenaire@example.test',
+            'instruction' => 'Transmettre selon le workflow historique.',
+        ]]])->assertOk();
+        $dispatch = $documentInterne->dispatchs()->firstOrFail();
+        $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer", [
+            'reference_transmission' => 'BORD-EXT-001',
+        ])->assertOk();
+
+        Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
+    }
+
     public function test_secretariat_direction_ne_voit_que_son_dispatch_execute_et_confirme_reception(): void
     {
         $centrale = Direction::factory()->create();
@@ -155,7 +179,7 @@ class DispatchCourrierTest extends CourrierTestCase
 
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
             'type' => 'classement', 'instruction' => 'Décision interdite à SEC2.',
-        ]]])->assertForbidden();
+        ]]])->assertNotFound();
         $this->actingAs($dga)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
             'type' => 'direction', 'direction_id' => $destination->id, 'instruction' => 'Pour traitement.',
         ]]])->assertOk()->assertJsonPath('data.dispatchs.0.decisionnaire.id', $dga->id)

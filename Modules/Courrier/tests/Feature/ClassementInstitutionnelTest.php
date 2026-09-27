@@ -42,15 +42,16 @@ class ClassementInstitutionnelTest extends CourrierTestCase
         $this->assertDatabaseHas('courriers', ['id' => $courrier->id]);
     }
 
-    public function test_dossier_actif_ne_peut_pas_etre_archive_et_document_archive_ne_peut_plus_etre_missionne(): void
+    public function test_decision_archivage_est_refusee_tant_quun_document_nest_pas_archive(): void
     {
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
         $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
-        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/decision-archivage")->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/decision-archivage")->assertUnprocessable();
         $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/archiver")->assertUnprocessable();
-        $this->assertDatabaseHas('dossiers', ['id' => $courrier->dossier_id, 'statut_archivage' => 'a_archiver']);
+        $this->assertDatabaseHas('dossiers', ['id' => $courrier->dossier_id, 'statut_archivage' => 'actif']);
+        $this->assertDatabaseMissing('audit_logs', ['action' => 'dossier.archivage_decide', 'auditable_id' => $courrier->dossier_id]);
     }
 
     public function test_liste_classements_accepte_la_delegation_sec2_active_et_est_paginee(): void
@@ -74,11 +75,50 @@ class ClassementInstitutionnelTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
-        $courrier = Courrier::factory()->create();
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        $this->archiverDocument($courrier, $dg, $sec2, 'DOUBLE-CLIC');
 
         $this->actingAs($dg)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/decision-archivage")->assertOk();
         $date = $courrier->dossier->fresh()->archivage_decide_at;
         $this->actingAs($dg)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/decision-archivage")->assertUnprocessable();
         $this->assertTrue($date->equalTo($courrier->dossier->fresh()->archivage_decide_at));
+    }
+
+    public function test_decision_archivage_exige_tous_les_documents_archives_avant_execution_sec2(): void
+    {
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $a = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        $b = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        $c = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$a->dossier_id}/decision-archivage")->assertUnprocessable();
+        $this->assertDatabaseHas('dossiers', ['id' => $a->dossier_id, 'statut_archivage' => 'actif']);
+
+        $this->archiverDocument($a, $dg, $sec2, 'A');
+        $this->archiverDocument($b, $dg, $sec2, 'B');
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$a->dossier_id}/decision-archivage")->assertUnprocessable();
+        $this->assertDatabaseHas('dossiers', ['id' => $a->dossier_id, 'statut_archivage' => 'actif']);
+
+        $this->archiverDocument($c, $dg, $sec2, 'C');
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$a->dossier_id}/decision-archivage")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'a_archiver');
+        $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$a->dossier_id}/archiver")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'archive');
+    }
+
+    private function archiverDocument(Courrier $courrier, User $dg, User $sec2, string $suffixe): void
+    {
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
+            'type' => 'classement', 'instruction' => 'Classer.',
+        ]]])->assertOk();
+        $dispatch = $courrier->dispatchs()->latest('id')->firstOrFail();
+        $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", [
+            'cote' => "COTE-{$suffixe}", 'emplacement' => 'Archives',
+        ])->assertOk();
+        $classement = ClassementDocument::query()->where('courrier_id', $courrier->id)->firstOrFail();
+        $this->actingAs($sec2)->postJson("/api/v1/classements-documents/{$classement->id}/archiver")->assertOk();
     }
 }

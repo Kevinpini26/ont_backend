@@ -37,7 +37,7 @@ class MetadonneesLettreTest extends CourrierTestCase
             ->assertJsonPath('data.nombre_annexes', 3);
     }
 
-    public function test_les_metadonnees_de_la_lettre_sont_facultatives(): void
+    public function test_les_metadonnees_complementaires_restent_facultatives(): void
     {
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
@@ -45,10 +45,12 @@ class MetadonneesLettreTest extends CourrierTestCase
         $this->actingAs($reception)->postJson('/api/v1/courriers', [
             'objet' => 'Lettre sans métadonnées',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'numerisation_impossible' => true,
         ])->assertCreated()
             ->assertJsonPath('data.nombre_annexes', 0)
-            ->assertJsonPath('data.mode_reception', null);
+            ->assertJsonPath('data.mode_reception', 'porteur');
     }
 
     public function test_un_mode_de_reception_invalide_est_rejete(): void

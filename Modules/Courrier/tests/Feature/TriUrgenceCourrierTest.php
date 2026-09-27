@@ -75,6 +75,8 @@ class TriUrgenceCourrierTest extends CourrierTestCase
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Demande de partenariat',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
@@ -150,6 +152,7 @@ class TriUrgenceCourrierTest extends CourrierTestCase
             'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
             'degre_urgence' => 'normal',
             'urgence_triee_at' => now()->subHour(),
+            'created_by' => $secretariat1->id,
         ]);
 
         $this->actingAs($dga)

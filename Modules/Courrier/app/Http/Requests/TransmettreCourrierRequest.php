@@ -8,6 +8,10 @@ class TransmettreCourrierRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        if ($this->route()?->getActionMethod() === 'transmettreSec1') {
+            return $this->user()->can('transmettreSec1', $this->route('courrier'));
+        }
+
         return $this->user()->can('transmettre', $this->route('courrier'));
     }
 

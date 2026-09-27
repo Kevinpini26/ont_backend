@@ -3,8 +3,8 @@
 namespace Modules\Courrier\Support;
 
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Models\Courrier;
 
 /**
  * "Non traité depuis plus de X" : signal d'alerte réutilisé à trois
@@ -17,27 +17,16 @@ class CourriersNonTraites
 {
     public static function compter(Carbon $seuil, ?int $directionId = null): int
     {
-        $conditionDirection = $directionId !== null ? 'and c.direction_destination_id = ?' : '';
-
-        $bindings = [CourrierStatut::ENREGISTRE->value];
-        if ($directionId !== null) {
-            $bindings[] = $directionId;
-        }
-        $bindings[] = $seuil;
-
-        $resultat = DB::selectOne(<<<SQL
-            select count(*) as total
-            from courriers c
-            join (
-                select courrier_id, max(created_at) as derniere
-                from courrier_transitions
-                group by courrier_id
-            ) t on t.courrier_id = c.id
-            where c.statut != ?
-            {$conditionDirection}
-            and t.derniere < ?
-        SQL, $bindings);
-
-        return (int) $resultat->total;
+        return Courrier::query()
+            ->when($directionId !== null, fn ($query) => $query->where('direction_destination_id', $directionId))
+            ->where('statut', '!=', CourrierStatut::ENREGISTRE)
+            ->whereHas('transitions', fn ($transition) => $transition
+                ->where('created_at', '<', $seuil)
+                ->whereNotExists(fn ($plusRecente) => $plusRecente
+                    ->selectRaw('1')
+                    ->from('courrier_transitions as ct2')
+                    ->whereColumn('ct2.courrier_id', 'courrier_transitions.courrier_id')
+                    ->whereColumn('ct2.id', '>', 'courrier_transitions.id')))
+            ->count();
     }
 }

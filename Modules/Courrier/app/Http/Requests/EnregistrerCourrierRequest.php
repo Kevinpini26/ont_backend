@@ -11,7 +11,7 @@ class EnregistrerCourrierRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('transmettre', $this->route('courrier'));
+        return $this->user()->can('enregistrer', $this->route('courrier'));
     }
 
     public function rules(): array

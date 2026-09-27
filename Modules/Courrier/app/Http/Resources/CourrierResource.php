@@ -148,6 +148,10 @@ class CourrierResource extends JsonResource
                         $transition->destinataire_poste !== null => Poste::from($transition->destinataire_poste)->label(),
                         default => null,
                     },
+                    // Données structurées nécessaires pour que l'UI ne
+                    // propose la décharge qu'au destinataire réel.
+                    'destinataire_poste' => $transition->destinataire_poste,
+                    'destinataire_user_id' => $transition->destinataire_user_id,
                     'created_at' => $transition->created_at,
                     'accuse_reception_par' => $transition->accuseReceptionPar?->name,
                     'accuse_reception_at' => $transition->accuse_reception_at,

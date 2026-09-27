@@ -24,7 +24,7 @@ class FeuilleCouvertureEtImportLotTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create();
+        $courrier = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $reponse = $this->actingAs($agent)->get("/api/v1/courriers/{$courrier->id}/feuille-couverture");
 
@@ -36,8 +36,8 @@ class FeuilleCouvertureEtImportLotTest extends CourrierTestCase
     {
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $c1 = Courrier::factory()->create();
-        $c2 = Courrier::factory()->create();
+        $c1 = Courrier::factory()->create(['created_by' => $agent->id]);
+        $c2 = Courrier::factory()->create(['created_by' => $agent->id]);
 
         $reponse = $this->actingAs($agent)->get("/api/v1/courriers/feuilles-couverture-lot?ids[]={$c1->id}&ids[]={$c2->id}");
 
@@ -50,7 +50,10 @@ class FeuilleCouvertureEtImportLotTest extends CourrierTestCase
         Storage::fake('local');
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
-        $courrier = Courrier::factory()->create(['numerisation_statut' => NumerisationStatut::A_NUMERISER]);
+        $courrier = Courrier::factory()->create([
+            'numerisation_statut' => NumerisationStatut::A_NUMERISER,
+            'created_by' => $agent->id,
+        ]);
 
         $reponse = $this->actingAs($agent)->postJson('/api/v1/courriers/import-lot', [
             'numero_accuse_reception' => $courrier->numero_accuse_reception,

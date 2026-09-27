@@ -20,6 +20,7 @@ class CourrierAnnotationTest extends CourrierTestCase
         $courrier = Courrier::factory()->create([
             'direction_origine_id' => $direction->id,
             'direction_destination_id' => null,
+            'created_by' => $agent->id,
         ]);
 
         $this->actingAs($agent)

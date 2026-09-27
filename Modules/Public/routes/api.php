@@ -9,6 +9,7 @@ use Modules\Public\Http\Controllers\Api\DisponibiliteDemandesStagePublicControll
 use Modules\Public\Http\Controllers\Api\DossierPublicController;
 use Modules\Public\Http\Controllers\Api\LienPublicController;
 use Modules\Public\Http\Controllers\Api\MentionInformationController;
+use Modules\Public\Http\Controllers\Api\ReponseCourrierPublicController;
 use Modules\Public\Http\Controllers\Api\StatistiquesPubliquesController;
 
 // Aucune authentification : accessible à tout candidat externe muni de son
@@ -19,6 +20,9 @@ Route::prefix('v1/public')->middleware('throttle:sensitive')->group(function () 
     Route::get('/statistiques', [StatistiquesPubliquesController::class, 'show']);
     Route::get('/mention-information', [MentionInformationController::class, 'show']);
     Route::post('/courriers-externes', [CourrierExternePublicController::class, 'store']);
+    Route::get('/reponses/{courrier}/pdf', [ReponseCourrierPublicController::class, 'telecharger'])
+        ->whereNumber('courrier')
+        ->name('public.reponses.telecharger');
 
     // Vérifications à identifiant devinable (numéro séquentiel) : limiteur
     // dédié par IP en plus de 'sensitive', et verrouillage par identifiant

@@ -23,10 +23,11 @@ abstract class CourrierTestCase extends TestCase
      * pour ces raccourcis ; le circuit réel crée déjà des bordereaux
      * acquittés au fil des accusés de réception.
      */
-    protected function marquerDecharge(Courrier $courrier): void
+    protected function marquerDecharge(Courrier $courrier, ?Poste $destinataire = null): void
     {
         $courrier->transitions()->create([
             'statut' => $courrier->statut,
+            'destinataire_poste' => $destinataire?->value,
             'accuse_reception_at' => now(),
             'created_at' => now(),
         ]);

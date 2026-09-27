@@ -27,6 +27,7 @@ class ArchivageDossierService
             if ($dossier->statut_archivage !== 'actif') {
                 throw ValidationException::withMessages(['dossier' => "Le dossier n'est plus disponible pour une décision d'archivage."]);
             }
+            $this->assertEligiblePourArchivage($dossier);
             $dossier->update(['statut_archivage' => 'a_archiver', 'archivage_decide_par_id' => $acteur->id, 'archivage_decide_at' => now()]);
             $this->audit->enregistrer('dossier.archivage_decide', $dossier, $acteur);
 
@@ -40,12 +41,37 @@ class ArchivageDossierService
             $dossier = Dossier::query()->lockForUpdate()->findOrFail($dossier->id);
             if ($dossier->statut_archivage !== 'a_archiver' || ! $this->delegations->utilisateurHabilite($sec2, [Poste::SECRETARIAT_2])) {
                 throw ValidationException::withMessages(['dossier' => 'Archivage non décidé ou acteur non habilité.']);
-            } if ($dossier->documents()->whereDoesntHave('classement', fn ($q) => $q->where('statut', 'archive'))->exists() || $dossier->documents()->whereHas('dispatchs', fn ($q) => $q->where('statut', 'en_attente'))->exists() || $dossier->documents()->whereHas('missionsDocumentaires', fn ($q) => $q->whereIn('statut', [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS]))->exists() || $dossier->documents()->whereHas('traitementsDirection', fn ($q) => $q->where('statut', '!=', TraitementDirectionStatut::TERMINE_DIRECTEUR))->exists() || $dossier->documents()->whereHas('documentProduitDirection', fn ($q) => $q->whereNotIn('statut', ['entre_circuit']))->exists()) {
-                throw ValidationException::withMessages(['dossier' => 'Le dossier contient encore un document ou une opération active.']);
-            } $dossier->update(['statut_archivage' => 'archive', 'archive_par_id' => $sec2->id, 'archive_at' => now()]);
+            }
+            $this->assertEligiblePourArchivage($dossier);
+            $dossier->update(['statut_archivage' => 'archive', 'archive_par_id' => $sec2->id, 'archive_at' => now()]);
             $this->audit->enregistrer('dossier.archive', $dossier, $sec2);
 
             return $dossier;
         });
+    }
+
+    private function assertEligiblePourArchivage(Dossier $dossier): void
+    {
+        $documentNonArchive = $dossier->documents()
+            ->whereDoesntHave('classement', fn ($q) => $q->where('statut', 'archive'))
+            ->exists();
+        $dispatchEnAttente = $dossier->documents()
+            ->whereHas('dispatchs', fn ($q) => $q->where('statut', 'en_attente'))
+            ->exists();
+        $missionActive = $dossier->documents()
+            ->whereHas('missionsDocumentaires', fn ($q) => $q->whereIn('statut', [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS]))
+            ->exists();
+        $traitementActif = $dossier->documents()
+            ->whereHas('traitementsDirection', fn ($q) => $q->where('statut', '!=', TraitementDirectionStatut::TERMINE_DIRECTEUR))
+            ->exists();
+        $documentProduitActif = $dossier->documents()
+            ->whereHas('documentProduitDirection', fn ($q) => $q->whereNotIn('statut', ['entre_circuit']))
+            ->exists();
+
+        if ($documentNonArchive || $dispatchEnAttente || $missionActive || $traitementActif || $documentProduitActif) {
+            throw ValidationException::withMessages([
+                'dossier' => 'Le dossier ne peut pas encore être proposé à l’archivage : il contient un document non archivé ou une opération active.',
+            ]);
+        }
     }
 }

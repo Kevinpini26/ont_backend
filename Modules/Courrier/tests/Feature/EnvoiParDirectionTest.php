@@ -55,6 +55,8 @@ class EnvoiParDirectionTest extends CourrierTestCase
         $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Courrier externe',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'direction_destination_id' => $direction->id,
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()
@@ -79,7 +81,7 @@ class EnvoiParDirectionTest extends CourrierTestCase
 
         $this->actingAs($secretariat2)
             ->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", ['classification' => 'interne'])
-            ->assertForbidden();
+            ->assertNotFound();
 
         $this->assertSame(CourrierStatut::RECU, $courrier->fresh()->statut);
     }
@@ -129,6 +131,7 @@ class EnvoiParDirectionTest extends CourrierTestCase
         $courrier = Courrier::factory()->create([
             'statut' => CourrierStatut::RECU,
             'necessite_avis_dg' => true,
+            'created_by' => $reception->id,
         ]);
 
         $this->actingAs($reception)
@@ -148,6 +151,8 @@ class EnvoiParDirectionTest extends CourrierTestCase
         $id = $this->actingAs($reception)->post('/api/v1/courriers', [
             'objet' => 'Traçabilité Phase 4',
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire externe',
+            'mode_reception' => 'porteur',
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated()->json('data.id');
 

@@ -4,9 +4,9 @@ namespace Modules\Courrier\Policies;
 
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Enums\CourrierStatut;
-use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\CourrierVisibilityService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
@@ -17,6 +17,7 @@ class CourrierPolicy
     public function __construct(
         private readonly CircuitTransitionRules $regles,
         private readonly DelegationResolver $delegations,
+        private readonly CourrierVisibilityService $visibility,
     ) {}
 
     private function estAgentCircuitActif(User $user): bool
@@ -46,27 +47,7 @@ class CourrierPolicy
             return false;
         }
 
-        if (in_array($user->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA], true)) {
-            return $courrier->relecteur_id === $user->id
-                || $courrier->missionsDocumentaires()
-                    ->where('assistant_id', $user->id)
-                    ->whereIn('statut', ['assignee', 'en_cours'])
-                    ->exists();
-        }
-
-        if ($courrier->niveau_confidentialite === NiveauConfidentialite::ORDINAIRE) {
-            return true;
-        }
-
-        if ($user->role === UserRole::ADMINISTRATEUR || $this->estAgentCircuitActif($user)) {
-            return true;
-        }
-
-        return $user->direction_id !== null && (
-            $courrier->imputations->contains('direction_id', $user->direction_id)
-            || $courrier->dispatchs()->where('type_destination', 'direction')->where('statut', 'execute')
-                ->where('direction_id', $user->direction_id)->exists()
-        );
+        return $this->visibility->peutVoir($user, $courrier);
     }
 
     /** La Réception est l'unique point d'entrée du courrier entrant. */
@@ -89,15 +70,33 @@ class CourrierPolicy
         return $this->delegations->utilisateurHabilite($user, $postesAutorises);
     }
 
+    public function enregistrer(User $user, Courrier $courrier): bool
+    {
+        if ($courrier->statut === CourrierStatut::RECU && $courrier->mode_reception?->value === 'depot_en_ligne') {
+            return $user->poste === Poste::RECEPTION;
+        }
+
+        return $this->transmettre($user, $courrier);
+    }
+
+    public function transmettreSec1(User $user, Courrier $courrier): bool
+    {
+        if ($courrier->statut === CourrierStatut::RECU && $courrier->mode_reception?->value === 'depot_en_ligne') {
+            return $user->poste === Poste::RECEPTION;
+        }
+
+        return $this->transmettre($user, $courrier);
+    }
+
     public function creerMission(User $user, Courrier $courrier): bool
     {
-        return $courrier->statut === CourrierStatut::EN_ATTENTE_AVIS_DG
+        return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
             && $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
     }
 
     public function deciderDispatch(User $user, Courrier $courrier): bool
     {
-        return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
+        return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true)
             && $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
     }
 

@@ -22,6 +22,10 @@ class EmpruntOriginalController extends Controller
 
         $emprunts = EmpruntOriginal::query()
             ->whereNull('restitue_le')
+            // La relation Courrier porte le scope de visibilité : ne pas
+            // charger puis déréférencer un courrier masqué (null), mais
+            // exclure l'emprunt de la collection dès la requête.
+            ->whereHas('courrier')
             ->with(['courrier', 'empruntePar'])
             ->oldest('emprunte_le')
             ->get();
