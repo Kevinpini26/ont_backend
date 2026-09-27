@@ -69,6 +69,10 @@ class CourrierController extends Controller
             $query->where('statut', $request->string('statut'));
         }
 
+        if ($request->has('necessite_avis_dg')) {
+            $query->where('necessite_avis_dg', $request->boolean('necessite_avis_dg'));
+        }
+
         if ($request->filled('direction_origine_id')) {
             $query->where('direction_origine_id', $request->integer('direction_origine_id'));
         }

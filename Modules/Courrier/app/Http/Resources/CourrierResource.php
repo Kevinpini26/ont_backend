@@ -4,18 +4,23 @@ namespace Modules\Courrier\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CycleDecisionnelService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Kernel\Http\Resources\UserResource;
+use Modules\Kernel\Support\DelegationResolver;
 
 /** @mixin Courrier */
 class CourrierResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $masquerProjetSec1 = $request->user()?->poste === Poste::SECRETARIAT_1
+            && ! app(DelegationResolver::class)->utilisateurHabilite($request->user(), [Poste::DG]);
+
         return [
             'id' => $this->id,
             'dossier_id' => $this->dossier_id,
@@ -47,16 +52,19 @@ class CourrierResource extends JsonResource
             'mode_remise_label' => $this->mode_remise?->label(),
             'correspondance' => $this->when(
                 $this->relationLoaded('reponses'),
-                fn () => $this->reponses->map(fn ($reponse) => [
-                    'id' => $reponse->id,
-                    'numero_depart' => $reponse->numero_depart,
-                    'reference_documentaire' => $reponse->reference_documentaire,
-                    'numero_accuse_reception' => $reponse->numero_accuse_reception,
-                    'objet' => $reponse->objet,
-                    'statut' => $reponse->statut?->value,
-                    'statut_label' => $reponse->statut?->label(),
-                    'date_envoi' => $reponse->date_envoi?->toDateString(),
-                ]),
+                fn () => $this->reponses
+                    ->filter(fn ($reponse) => $request->user() !== null
+                        && Gate::forUser($request->user())->allows('view', $reponse))
+                    ->values()->map(fn ($reponse) => [
+                        'id' => $reponse->id,
+                        'numero_depart' => $reponse->numero_depart,
+                        'reference_documentaire' => $reponse->reference_documentaire,
+                        'numero_accuse_reception' => $reponse->numero_accuse_reception,
+                        'objet' => $reponse->objet,
+                        'statut' => $reponse->statut?->value,
+                        'statut_label' => $reponse->statut?->label(),
+                        'date_envoi' => $reponse->date_envoi?->toDateString(),
+                    ]),
             ),
             'objet' => $this->objet,
             'contenu' => $this->contenu,
@@ -98,18 +106,18 @@ class CourrierResource extends JsonResource
                 'lettre_demande_disponible' => filled($this->lettre_demande_chemin),
             ]),
             'avis_dg' => $this->avis_dg?->value,
-            'avis_dg_commentaire' => $this->avis_dg_commentaire,
+            'avis_dg_commentaire' => $masquerProjetSec1 ? null : $this->avis_dg_commentaire,
             'avis_dg_rendu_par' => $this->whenLoaded('avisDgRenduPar', fn () => $this->avisDgRenduPar?->name),
             // Trace claire de qui a réellement pris la décision quand la DGA
             // intervient en intérim de la DG — visible sur le courrier une
             // fois traité, voir CourrierCircuitService::rendreAvisDg().
             'avis_dg_rendu_en_interim' => $this->avis_dg_rendu_en_interim,
             'anonymise_at' => $this->anonymise_at,
-            'projet_reponse_contenu' => $this->projet_reponse_contenu,
+            'projet_reponse_contenu' => $masquerProjetSec1 ? null : $this->projet_reponse_contenu,
             'relecteur' => new UserResource($this->whenLoaded('relecteur')),
             'relecture_validee_at' => $this->relecture_validee_at,
             'relecture_commentaire' => $this->relecture_commentaire,
-            'projet_renvoi_observation' => $this->projet_renvoi_observation,
+            'projet_renvoi_observation' => $masquerProjetSec1 ? null : $this->projet_renvoi_observation,
             'projet_renvoye_at' => $this->projet_renvoye_at,
             'projet_renvoye_par' => $this->whenLoaded('projetRenvoyePar', fn () => $this->projetRenvoyePar?->name),
             'signataire' => new UserResource($this->whenLoaded('signataire')),
@@ -159,9 +167,10 @@ class CourrierResource extends JsonResource
             ),
             'missions_documentaires' => MissionDocumentaireResource::collection($this->whenLoaded(
                 'missionsDocumentaires',
-                fn () => in_array($request->user()?->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA], true)
-                    ? $this->missionsDocumentaires->where('assistant_id', $request->user()->id)->values()
-                    : $this->missionsDocumentaires,
+                fn () => $this->missionsDocumentaires
+                    ->filter(fn ($mission) => $request->user() !== null
+                        && Gate::forUser($request->user())->allows('view', $mission))
+                    ->values(),
             )),
             'dispatchs' => DispatchCourrierResource::collection($this->whenLoaded('dispatchs')),
             'peut_ouvrir_nouveau_cycle' => in_array($this->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)

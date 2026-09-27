@@ -27,6 +27,10 @@ class InitierCourrierDgRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'instruction_courrier_dg_id' => ['required', 'integer'],
+            'en_reponse_a_courrier_id' => ['prohibited'],
+            'mission_documentaire_id' => ['prohibited'],
+            'dossier_id' => ['prohibited'],
             'direction_destination_id' => ['required', 'integer', 'exists:directions,id'],
             'objet' => ['required', 'string', 'max:255'],
             'projet_reponse_contenu' => ['required', 'array'],

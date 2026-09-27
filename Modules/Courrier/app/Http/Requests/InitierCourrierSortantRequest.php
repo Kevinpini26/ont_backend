@@ -7,13 +7,12 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\NiveauConfidentialite;
-use Modules\Kernel\Enums\Poste;
 
 class InitierCourrierSortantRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role->estDirecteurDirection() || $this->user()->poste === Poste::SECRETARIAT_1;
+        return $this->user()->role->estDirecteurDirection();
     }
 
     protected function prepareForValidation(): void

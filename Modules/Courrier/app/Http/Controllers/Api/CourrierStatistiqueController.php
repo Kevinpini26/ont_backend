@@ -12,6 +12,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\ReorientationTri;
 use Modules\Courrier\Support\CourriersNonTraites;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\PeriodeStatistique;
@@ -33,8 +34,12 @@ class CourrierStatistiqueController extends Controller
         $this->authorize('voirStatistiques', Courrier::class);
 
         $periode = new PeriodeStatistique($request->string('periode', '30j')->toString());
+        $sec1 = $request->user()->poste === Poste::SECRETARIAT_1;
+        $visibles = fn () => Courrier::query()->select('courriers.id');
+        $courriers = fn () => DB::table('courriers')
+            ->when($sec1, fn ($query) => $query->whereIn('courriers.id', $visibles()));
 
-        $parStatut = DB::table('courriers')
+        $parStatut = $courriers()
             ->select('statut', DB::raw('count(*) as total'))
             ->groupBy('statut')
             ->pluck('total', 'statut');
@@ -46,23 +51,18 @@ class CourrierStatistiqueController extends Controller
         // Temps moyen (en heures) entre deux transitions consécutives d'un
         // même courrier, regroupé par statut d'arrivée : mesure combien de
         // temps un courrier passe en moyenne *avant d'atteindre* chaque étape.
-        $tempsParEtape = DB::select(<<<'SQL'
-            select statut, avg(extract(epoch from (created_at - precedent))) / 3600.0 as moyenne_heures
-            from (
-                select
-                    statut,
-                    created_at,
-                    lag(created_at) over (partition by courrier_id order by created_at) as precedent
-                from courrier_transitions
-            ) transitions
-            where precedent is not null
-            group by statut
-        SQL);
+        $transitions = DB::table('courrier_transitions')
+            ->selectRaw('statut, created_at, lag(created_at) over (partition by courrier_id order by created_at) as precedent')
+            ->when($sec1, fn ($query) => $query->whereIn('courrier_id', $visibles()));
+        $tempsParEtape = DB::query()->fromSub($transitions, 'transitions')
+            ->whereNotNull('precedent')
+            ->selectRaw('statut, avg(extract(epoch from (created_at - precedent))) / 3600.0 as moyenne_heures')
+            ->groupBy('statut')->get();
 
-        $recus = DB::table('courriers')->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
-        $recusPrecedent = DB::table('courriers')->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
+        $recus = $courriers()->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
+        $recusPrecedent = $courriers()->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
-        $evolution = DB::table('courriers')
+        $evolution = $courriers()
             ->selectRaw('date_trunc(?, created_at) as periode, count(*) as total', [$periode->granulariteSql()])
             ->whereBetween('created_at', [$periode->debut, $periode->fin])
             ->groupBy('periode')
@@ -77,7 +77,7 @@ class CourrierStatistiqueController extends Controller
         // CourrierCircuitService::transmettreEnAttenteAvisDg()).
         $delaiAlerteTri = (int) config('courrier.tri.delai_alerte_heures', 4);
         $courriersNonTries = Courrier::query()
-            ->withoutGlobalScopes()
+            ->when(! $sec1, fn ($query) => $query->withoutGlobalScopes())
             ->where('statut', CourrierStatut::EN_ATTENTE_TRI->value)
             ->whereNull('urgence_triee_at')
             ->with('transitions')
@@ -306,8 +306,12 @@ class CourrierStatistiqueController extends Controller
     {
         $this->authorize('voirJustesseTri', Courrier::class);
 
+        $sec1 = $request->user()->poste === Poste::SECRETARIAT_1;
+        $visibles = fn () => Courrier::query()->select('courriers.id');
+
         $tries = CourrierTransition::query()
             ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
+            ->when($sec1, fn ($query) => $query->whereIn('courrier_id', $visibles()))
             ->whereNotNull('changed_by_id')
             ->selectRaw('changed_by_id, count(distinct courrier_id) as nombre')
             ->groupBy('changed_by_id')
@@ -315,6 +319,7 @@ class CourrierStatistiqueController extends Controller
 
         $reorientes = ReorientationTri::query()
             ->whereNotNull('trie_par_id')
+            ->when($sec1, fn ($query) => $query->whereIn('courrier_id', $visibles()))
             ->selectRaw('trie_par_id, count(*) as nombre')
             ->groupBy('trie_par_id')
             ->pluck('nombre', 'trie_par_id');
@@ -334,7 +339,9 @@ class CourrierStatistiqueController extends Controller
         })->values();
 
         $totalTries = (int) $tries->sum();
-        $totalReorientes = ReorientationTri::query()->count();
+        $totalReorientes = ReorientationTri::query()
+            ->when($sec1, fn ($query) => $query->whereIn('courrier_id', $visibles()))
+            ->count();
 
         return response()->json([
             'global' => [

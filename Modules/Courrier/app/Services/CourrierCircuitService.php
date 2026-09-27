@@ -34,6 +34,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\EmpruntOriginal;
+use Modules\Courrier\Models\InstructionCourrierDg;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\ReorientationTri;
 use Modules\Kernel\Contracts\AuditLogger;
@@ -226,13 +227,21 @@ class CourrierCircuitService
      */
     public function initierParDg(User $secretariat1, array $donnees): Courrier
     {
-        if ($secretariat1->poste !== Poste::SECRETARIAT_1) {
+        if (! $this->delegations->utilisateurHabilite($secretariat1, [Poste::SECRETARIAT_1])) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
 
         $validationRequise = (bool) ($donnees['validation_dg_requise'] ?? false);
 
         $courrier = DB::transaction(function () use ($secretariat1, $donnees, $validationRequise) {
+            $instruction = InstructionCourrierDg::query()->lockForUpdate()->find($donnees['instruction_courrier_dg_id']);
+            if ($instruction === null || ($instruction->destinataire_user_id !== null && $instruction->destinataire_user_id !== $secretariat1->id)) {
+                abort(404);
+            }
+            if (! $instruction->active()) {
+                throw ValidationException::withMessages(['instruction_courrier_dg_id' => 'Cette instruction DG n’est plus active.']);
+            }
+
             $courrier = Courrier::query()->create([
                 'objet' => $donnees['objet'],
                 'type' => CourrierType::CORRESPONDANCE_GENERALE,
@@ -249,6 +258,16 @@ class CourrierCircuitService
 
             $this->tracerTransition($courrier, $secretariat1);
 
+            $instruction->update([
+                'courrier_id' => $courrier->id,
+                'consomme_at' => now(),
+                'consomme_par_id' => $secretariat1->id,
+            ]);
+            $this->audit->enregistrer('instruction_courrier_dg.consommee', $instruction, $secretariat1, [
+                'courrier_id' => $courrier->id,
+                'donneur_id' => $instruction->donneur_id,
+            ]);
+
             $courrier->projet_reponse_contenu = $donnees['projet_reponse_contenu'];
             $courrier->relecteur_id = $donnees['relecteur_id'];
             $courrier->statut = $validationRequise ? CourrierStatut::EN_ATTENTE_VALIDATION_DG : CourrierStatut::EN_RELECTURE;
@@ -257,6 +276,7 @@ class CourrierCircuitService
 
             $this->audit->enregistrer('courrier.initie_par_dg', $courrier, $secretariat1, [
                 'validation_dg_requise' => $validationRequise,
+                'instruction_courrier_dg_id' => $instruction->id,
             ]);
 
             return $courrier;
@@ -552,6 +572,8 @@ class CourrierCircuitService
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
+            $this->audit->enregistrer('courrier.transmis_tri', $courrier, $utilisateur, ['tour' => $courrier->tour]);
+
             return $courrier;
         });
     }
@@ -598,6 +620,14 @@ class CourrierCircuitService
 
             if ($postesDestinataires->count() > 1) {
                 throw TransitionNonAutoriseeException::lotHeterogene();
+            }
+
+            foreach ($transitions as $transition) {
+                $estEmetteur = $transition->changed_by_id === $emetteur->id;
+                $estDestinataire = $this->delegations->utilisateurHabilite($emetteur, [Poste::from($transition->destinataire_poste)]);
+                if (! $estEmetteur && ! $estDestinataire) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
             }
 
             $bordereau = BordereauLot::query()->create([
@@ -682,6 +712,14 @@ class CourrierCircuitService
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
+            $this->audit->enregistrer('courrier.tri_sec1', $courrier, $utilisateur, [
+                'degre_urgence' => $degreUrgence->value,
+                'statut_arrivee' => $statutCible->value,
+            ]);
+            if ($statutCible === CourrierStatut::EN_ATTENTE_AVIS_DG) {
+                $this->audit->enregistrer('courrier.transmis_dg', $courrier, $utilisateur, ['depuis' => CourrierStatut::EN_ATTENTE_TRI->value]);
+            }
+
             return $courrier;
         });
     }
@@ -701,6 +739,8 @@ class CourrierCircuitService
             $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
+
+            $this->audit->enregistrer('courrier.transmis_dg', $courrier, $utilisateur, ['depuis' => CourrierStatut::EN_ATTENTE_CLASSEUR->value]);
 
             return $courrier;
         });
@@ -1294,7 +1334,7 @@ class CourrierCircuitService
      */
     public function initierReponseSortante(User $auteur, Courrier $original, array $donnees): Courrier
     {
-        if ($original->necessite_avis_dg && $auteur->poste === Poste::SECRETARIAT_1) {
+        if ($auteur->poste === Poste::SECRETARIAT_1) {
             throw ValidationException::withMessages([
                 'courrier' => 'Une réponse décidée par la DG doit être préparée dans le cadre d’une mission nominative.',
             ]);
@@ -1302,9 +1342,7 @@ class CourrierCircuitService
 
         $estResponsableConcerne = $auteur->role->estDirecteurDirection()
             && in_array($auteur->direction_id, [$original->direction_origine_id, $original->direction_destination_id], true);
-        $estSecretariat1 = $auteur->poste === Poste::SECRETARIAT_1;
-
-        if (! $estResponsableConcerne && ! $estSecretariat1) {
+        if (! $estResponsableConcerne) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
 
@@ -1319,7 +1357,7 @@ class CourrierCircuitService
      */
     public function initierCourrierSortant(User $auteur, array $donnees): Courrier
     {
-        if (! $auteur->role->estDirecteurDirection() && $auteur->poste !== Poste::SECRETARIAT_1) {
+        if (! $auteur->role->estDirecteurDirection()) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
 

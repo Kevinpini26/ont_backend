@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Http\Requests\AnnulerMissionDocumentaireRequest;
 use Modules\Courrier\Http\Requests\CreerMissionDocumentaireRequest;
 use Modules\Courrier\Http\Requests\CreerProjetReponseMissionRequest;
@@ -17,7 +18,6 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\MissionDocumentaireService;
-use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 
 class MissionDocumentaireController extends Controller
@@ -31,15 +31,12 @@ class MissionDocumentaireController extends Controller
     {
         $this->authorize('view', $courrier);
 
-        $query = $courrier->missionsDocumentaires();
-        if (in_array($request->user()->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA], true)) {
-            $query->where('assistant_id', $request->user()->id);
-        }
-
-        return MissionDocumentaireResource::collection($query
+        return MissionDocumentaireResource::collection($courrier->missionsDocumentaires()
             ->with(['courrier', 'projetCourrier', 'demandeur', 'assistant', 'annuleePar'])
             ->oldest()
-            ->get());
+            ->get()
+            ->filter(fn ($mission) => Gate::forUser($request->user())->allows('view', $mission))
+            ->values());
     }
 
     public function mesMissions(Request $request)

@@ -173,7 +173,7 @@ class CourrierPolicy
      */
     public function initierParDg(User $user): bool
     {
-        return $user->poste === Poste::SECRETARIAT_1;
+        return $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_1]);
     }
 
     /**
@@ -200,7 +200,26 @@ class CourrierPolicy
 
     public function annoter(User $user, Courrier $courrier): bool
     {
-        return $this->view($user, $courrier);
+        if (! $this->view($user, $courrier)) {
+            return false;
+        }
+
+        if ($user->poste !== Poste::SECRETARIAT_1) {
+            return true;
+        }
+
+        if ($this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA])) {
+            return true;
+        }
+
+        if ($courrier->relecteur_id === $user->id) {
+            return true;
+        }
+
+        return $courrier->missionsDocumentaires()
+            ->where('assistant_id', $user->id)
+            ->whereIn('statut', ['assignee', 'en_cours'])
+            ->exists();
     }
 
     /**
@@ -223,7 +242,7 @@ class CourrierPolicy
      */
     public function initierReponse(User $user, Courrier $courrier): bool
     {
-        return $user->role->estDirecteurDirection() || $user->poste === Poste::SECRETARIAT_1;
+        return $user->role->estDirecteurDirection();
     }
 
     public function envoyer(User $user, Courrier $courrier): bool

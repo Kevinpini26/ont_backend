@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Kernel\Http\Resources\UserResource;
 
@@ -12,6 +13,9 @@ class MissionDocumentaireResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $peutVoirContenuInterne = $request->user() !== null
+            && Gate::forUser($request->user())->allows('view', $this->resource);
+
         return [
             'id' => $this->id,
             'courrier_id' => $this->courrier_id,
@@ -28,11 +32,11 @@ class MissionDocumentaireResource extends JsonResource
             'demandeur_poste' => $this->demandeur_poste?->value,
             'autorite_poste' => $this->autorite_poste?->value,
             'assistant' => new UserResource($this->whenLoaded('assistant')),
-            'instruction' => $this->instruction,
+            'instruction' => $this->when($peutVoirContenuInterne, $this->instruction),
             'type' => $this->type?->value,
             'type_label' => $this->type?->label(),
-            'projet_courrier_id' => $this->projet_courrier_id,
-            'projet_courrier' => $this->whenLoaded('projetCourrier', fn () => $this->projetCourrier ? [
+            'projet_courrier_id' => $this->when($peutVoirContenuInterne, $this->projet_courrier_id),
+            'projet_courrier' => $this->when($peutVoirContenuInterne && $this->relationLoaded('projetCourrier'), fn () => $this->projetCourrier ? [
                 'id' => $this->projetCourrier->id,
                 'objet' => $this->projetCourrier->objet,
                 'statut' => $this->projetCourrier->statut?->value,
@@ -46,11 +50,11 @@ class MissionDocumentaireResource extends JsonResource
             'statut_label' => $this->statut?->label(),
             'envoyee_at' => $this->envoyee_at,
             'prise_en_charge_at' => $this->prise_en_charge_at,
-            'compte_rendu' => $this->compte_rendu,
-            'projet_reponse_contenu' => $this->projet_reponse_contenu,
+            'compte_rendu' => $this->when($peutVoirContenuInterne, $this->compte_rendu),
+            'projet_reponse_contenu' => $this->when($peutVoirContenuInterne, $this->projet_reponse_contenu),
             'retournee_at' => $this->retournee_at,
             'annulee_par' => new UserResource($this->whenLoaded('annuleePar')),
-            'motif_annulation' => $this->motif_annulation,
+            'motif_annulation' => $this->when($peutVoirContenuInterne, $this->motif_annulation),
             'annulee_at' => $this->annulee_at,
         ];
     }

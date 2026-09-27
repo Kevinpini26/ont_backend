@@ -28,6 +28,16 @@ class CourrierInitieParDgTest extends CourrierTestCase
         return ['type' => 'doc', 'content' => [['type' => 'paragraph']]];
     }
 
+    private function instruction(User $dg, User $sec1): int
+    {
+        $id = $this->actingAs($dg)->postJson('/api/v1/instructions-courrier-dg', [
+            'instruction' => 'Préparer un nouveau courrier institutionnel.',
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($sec1);
+
+        return $id;
+    }
+
     public function test_le_secretariat_1_peut_initier_un_courrier_sans_validation_requise_jusqua_reception(): void
     {
         $directionSecretariat = Direction::factory()->create();
@@ -40,6 +50,7 @@ class CourrierInitieParDgTest extends CourrierTestCase
         $responsableDestinataire = User::factory()->responsableDirection($directionDestinataire)->create();
 
         $courrier = $this->actingAs($secretariat1)->postJson('/api/v1/courriers/initier-dg', [
+            'instruction_courrier_dg_id' => $this->instruction($dg, $secretariat1),
             'direction_destination_id' => $directionDestinataire->id,
             'objet' => 'Note de service — nouvelle procédure',
             'projet_reponse_contenu' => $this->contenu(),
@@ -98,6 +109,7 @@ class CourrierInitieParDgTest extends CourrierTestCase
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
 
         $courrier = $this->actingAs($secretariat1)->postJson('/api/v1/courriers/initier-dg', [
+            'instruction_courrier_dg_id' => $this->instruction($dg, $secretariat1),
             'direction_destination_id' => $directionDestinataire->id,
             'objet' => 'Instruction — validation préalable requise',
             'projet_reponse_contenu' => $this->contenu(),
@@ -162,7 +174,10 @@ class CourrierInitieParDgTest extends CourrierTestCase
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $directionDestinataire = Direction::factory()->create();
 
+        $dg = $this->agent(Poste::DG, $direction);
+
         $this->actingAs($secretariat1)->postJson('/api/v1/courriers/initier-dg', [
+            'instruction_courrier_dg_id' => $this->instruction($dg, $secretariat1),
             'direction_destination_id' => $directionDestinataire->id,
             'objet' => 'Auto-désignation refusée',
             'projet_reponse_contenu' => $this->contenu(),
@@ -177,9 +192,11 @@ class CourrierInitieParDgTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $dg = $this->agent(Poste::DG, $direction);
         $directionDestinataire = Direction::factory()->create();
 
         $courrier = $this->actingAs($secretariat1)->post('/api/v1/courriers/initier-dg', [
+            'instruction_courrier_dg_id' => $this->instruction($dg, $secretariat1),
             'direction_destination_id' => $directionDestinataire->id,
             'objet' => 'Avec pièce jointe',
             'projet_reponse_contenu' => json_encode($this->contenu()),

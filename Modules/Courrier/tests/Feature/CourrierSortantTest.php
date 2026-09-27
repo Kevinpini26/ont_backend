@@ -51,7 +51,7 @@ class CourrierSortantTest extends CourrierTestCase
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$original->id}/initier-reponse", [
             'projet_reponse_contenu' => $this->projetVide,
             'relecteur_id' => $relecteur->id,
-        ])->assertUnprocessable()->assertJsonValidationErrors('courrier');
+        ])->assertForbidden();
     }
 
     /**

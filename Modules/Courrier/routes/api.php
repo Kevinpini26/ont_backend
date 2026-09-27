@@ -14,6 +14,7 @@ use Modules\Courrier\Http\Controllers\Api\DispatchCourrierController;
 use Modules\Courrier\Http\Controllers\Api\DocumentProduitDirectionController;
 use Modules\Courrier\Http\Controllers\Api\DossierController;
 use Modules\Courrier\Http\Controllers\Api\EmpruntOriginalController;
+use Modules\Courrier\Http\Controllers\Api\InstructionCourrierDgController;
 use Modules\Courrier\Http\Controllers\Api\MissionDocumentaireController;
 use Modules\Courrier\Http\Controllers\Api\RegistreCourrierController;
 use Modules\Courrier\Http\Controllers\Api\TraitementDirectionController;
@@ -34,6 +35,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/a-numeriser', [CourrierRattrapageNumerisationController::class, 'index']);
     Route::get('/delegations-poste', [DelegationPosteController::class, 'index']);
     Route::post('/delegations-poste', [DelegationPosteController::class, 'store']);
+    Route::get('/instructions-courrier-dg', [InstructionCourrierDgController::class, 'index']);
+    Route::post('/instructions-courrier-dg', [InstructionCourrierDgController::class, 'store']);
+    Route::get('/instructions-courrier-dg/{instruction}', [InstructionCourrierDgController::class, 'show']);
+    Route::post('/instructions-courrier-dg/{instruction}/annuler', [InstructionCourrierDgController::class, 'annuler']);
     Route::get('/courriers/export', [CourrierController::class, 'export']);
     Route::get('/courriers/feuilles-couverture-lot', [CourrierController::class, 'feuilleCouvertureLot']);
     Route::post('/courriers/import-lot', [CourrierController::class, 'importerLot']);
