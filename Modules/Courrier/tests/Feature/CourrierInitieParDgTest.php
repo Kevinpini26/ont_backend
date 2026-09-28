@@ -61,6 +61,7 @@ class CourrierInitieParDgTest extends CourrierTestCase
         $this->assertSame(CourrierStatut::EN_RELECTURE->value, $courrier['statut']);
         $this->assertTrue($courrier['initie_par_dg']);
         $this->assertFalse($courrier['validation_dg_requise']);
+        $this->assertNull($courrier['numero_accuse_reception']);
         $id = $courrier['id'];
 
         $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();

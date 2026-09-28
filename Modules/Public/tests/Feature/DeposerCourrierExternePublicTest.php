@@ -156,6 +156,7 @@ class DeposerCourrierExternePublicTest extends TestCase
         ])->assertOk();
         $numeroEnregistrement = $premiereReponse->json('data.numero_enregistrement');
         $this->assertNotNull($numeroEnregistrement);
+        $this->assertSame($numero, $courrier->fresh()->numero_accuse_reception);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.numero_enregistrement_attribue',
             'auditable_id' => $courrier->id,

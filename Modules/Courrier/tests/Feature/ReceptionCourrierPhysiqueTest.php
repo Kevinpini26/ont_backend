@@ -4,8 +4,10 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
@@ -17,6 +19,7 @@ class ReceptionCourrierPhysiqueTest extends CourrierTestCase
     public function test_la_reception_enregistre_un_courrier_physique_complet_une_seule_fois(): void
     {
         Storage::fake('local');
+        Mail::fake();
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
@@ -39,6 +42,7 @@ class ReceptionCourrierPhysiqueTest extends CourrierTestCase
         $this->assertNotNull($courrier->dossier);
         $this->assertSame('Entreprise Test ONT', $courrier->expediteur_externe_nom);
         $this->assertSame('porteur', $courrier->mode_reception->value);
+        $this->assertNull($courrier->numero_accuse_reception);
         $this->assertNotNull($courrier->numero_enregistrement);
         $this->assertNotNull($courrier->enregistre_at);
         $this->assertSame($reception->id, $courrier->created_by);
@@ -49,6 +53,7 @@ class ReceptionCourrierPhysiqueTest extends CourrierTestCase
         $this->assertCount(1, $courrier->transitions);
         $this->assertSame(Poste::RECEPTION->value, $courrier->transitions->first()->expediteur_poste);
         $this->assertSame(Poste::SECRETARIAT_1->value, $courrier->transitions->first()->destinataire_poste);
+        Mail::assertNotQueued(AccuseReceptionCourrierExterneMail::class);
     }
 
     public function test_une_correspondance_physique_exige_un_expediteur_et_un_mode_non_public(): void

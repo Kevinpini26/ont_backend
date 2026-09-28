@@ -76,7 +76,9 @@ class Secretariat1PerimetreTest extends CourrierTestCase
         $this->actingAs($sec1)->getJson("/api/v1/courriers/{$a->id}")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/annotations", ['contenu' => 'Décision DG usurpée'])->assertForbidden();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/annotations", ['contenu' => 'Instruction DG'])->assertCreated();
-        $this->actingAs($sec1)->getJson("/api/v1/courriers/{$a->id}/annotations")->assertOk()->assertJsonCount(0, 'data');
+        // Les annotations DG sont confidentielles : SEC1 ne peut ni les
+        // créer ni les consulter sans une habilitation DG explicite.
+        $this->actingAs($sec1)->getJson("/api/v1/courriers/{$a->id}/annotations")->assertForbidden();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/initier-reponse", [
             'relecteur_id' => $dg1->id,
             'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],

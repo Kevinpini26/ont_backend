@@ -73,6 +73,15 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->actingAs($reception)->postJson("/api/v1/courriers/{$a->id}/transmettre-sec1")->assertOk();
         $this->assertAuditActeur('courrier.transmis_sec1', $a->id, $reception->id);
         $this->presenterADg($a, $sec1, $dg);
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/annotations", [
+            'contenu' => 'Instruction DG : instruire le dossier de partenariat avant décision.',
+        ])->assertCreated();
+        $this->assertDatabaseHas('courrier_annotations', [
+            'courrier_id' => $a->id,
+            'auteur_id' => $dg->id,
+            'contenu' => 'Instruction DG : instruire le dossier de partenariat avant décision.',
+        ]);
+        $this->assertAuditActeur('courrier.annotation_creee', $a->id, $dg->id);
 
         $missionId = $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/missions", [
             'assistant_id' => $assistant->id,
@@ -245,6 +254,142 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
 
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/dispatchs", ['destinations' => [['type' => 'classement', 'instruction' => 'Interdit après archive.']]])->assertUnprocessable();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/missions", ['assistant_id' => $assistant->id, 'instruction' => 'Interdit après archive.'])->assertUnprocessable();
+    }
+
+    public function test_parcours_physique_complet_de_la_reception_a_lenvoi_officiel(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        Notification::fake();
+        $centrale = Direction::query()->where('code', 'DG')->firstOrFail();
+        $reception = $this->agent(Poste::RECEPTION, $centrale);
+        $sec1 = $this->agent(Poste::SECRETARIAT_1, $centrale);
+        $dg = $this->agent(Poste::DG, $centrale);
+        $dg1 = $this->agent(Poste::ASSISTANT_1, $centrale);
+        $dg2 = $this->agent(Poste::ASSISTANT_2, $centrale);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
+
+        $idA = $this->actingAs($reception)->post('/api/v1/courriers', [
+            'objet' => 'TEST E2E physique — demande de partenariat institutionnel',
+            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire physique TEST',
+            'expediteur_externe_email' => 'physique-e2e@example.test',
+            'mode_reception' => 'porteur',
+            'date_courrier' => '2026-09-28',
+            'reference_expediteur' => 'TEST-PHYSIQUE-E2E-001',
+            'piece_jointe' => UploadedFile::fake()->create('test-physique.pdf', 20, 'application/pdf'),
+        ])->assertCreated()->json('data.id');
+        $a = Courrier::withoutGlobalScopes()->with(['numerisations', 'transitions'])->findOrFail($idA);
+        $identiteA = [$a->id, $a->dossier_id, $a->numero_enregistrement];
+        $this->assertSame('entrant', $a->sens->value);
+        $this->assertSame('porteur', $a->mode_reception->value);
+        $this->assertSame($reception->id, $a->created_by);
+        $this->assertNotNull($a->enregistre_at);
+        $this->assertNotNull($a->numero_enregistrement);
+        $this->assertNull($a->numero_accuse_reception);
+        $this->assertCount(1, $a->numerisations);
+        $this->assertNotNull($a->numerisations->sole()->sha256);
+        Storage::disk('local')->assertExists($a->numerisations->sole()->chemin);
+        $this->assertSame(Poste::SECRETARIAT_1->value, $a->transitions->sole()->destinataire_poste);
+        Mail::assertNotQueued(AccuseReceptionCourrierExterneMail::class);
+
+        $this->presenterADg($a, $sec1, $dg);
+        $this->assertAuditActeur('courrier.accuse_reception', $a->id, $sec1->id);
+        $this->assertAuditActeur('courrier.transmis_tri', $a->id, $sec1->id);
+        $this->assertAuditActeur('courrier.tri_sec1', $a->id, $sec1->id);
+        $this->assertAuditActeur('courrier.transmis_dg', $a->id, $sec1->id);
+        $this->assertAuditActeur('courrier.accuse_reception', $a->id, $dg->id);
+
+        $annotation = 'Instruction DG TEST : préparer une réponse officielle après analyse du courrier physique.';
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/annotations", ['contenu' => $annotation])->assertCreated();
+        $this->assertDatabaseHas('courrier_annotations', ['courrier_id' => $a->id, 'auteur_id' => $dg->id, 'contenu' => $annotation]);
+        $this->assertAuditActeur('courrier.annotation_creee', $a->id, $dg->id);
+        $this->assertSame($identiteA, [$a->fresh()->id, $a->fresh()->dossier_id, $a->fresh()->numero_enregistrement]);
+
+        $missionId = $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/demander-preparation-reponse", [
+            'assistant_id' => $dg1->id,
+            'instruction' => 'Préparer la réponse officielle au courrier physique TEST.',
+        ])->assertCreated()->assertJsonPath('data.type', 'preparation_reponse')->json('data.id');
+        $this->assertDatabaseHas('missions_documentaires', [
+            'id' => $missionId,
+            'courrier_id' => $a->id,
+            'assistant_id' => $dg1->id,
+            'demandeur_id' => $dg->id,
+            'type' => 'preparation_reponse',
+        ]);
+        $this->actingAs($dg1)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertOk();
+        $contenu = ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Réponse officielle au courrier physique TEST.']]]]];
+        $this->actingAs($dg1)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse", [
+            'objet' => 'Réponse ONT au courrier physique TEST',
+            'destinataire_externe_nom' => 'Partenaire physique TEST',
+            'destinataire_externe_email' => 'physique-e2e@example.test',
+            'projet_reponse_contenu' => $contenu,
+        ])->assertCreated();
+        $mission = MissionDocumentaire::query()->findOrFail($missionId);
+        $d = Courrier::withoutGlobalScopes()->findOrFail($mission->projet_courrier_id);
+        $idD = $d->id;
+        $this->assertNotSame($a->id, $idD);
+        $this->assertSame('sortant', $d->sens->value);
+        $this->assertSame($a->dossier_id, $d->dossier_id);
+        $this->assertSame($a->id, $d->en_reponse_a_courrier_id);
+        $this->assertNull($d->numero_depart);
+        $this->assertNull($d->pdf_chemin);
+        $this->assertNull($d->pdf_sha256);
+        $this->assertDatabaseHas('document_relations', ['document_source_id' => $idD, 'document_cible_id' => $a->id, 'type_relation' => 'reponse_a']);
+
+        $this->actingAs($dg1)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse/soumettre", ['projet_reponse_contenu' => $contenu])
+            ->assertOk()->assertJsonPath('data.relecteur.id', $dg2->id);
+        $this->actingAs($dg2)->postJson("/api/v1/courriers/{$idD}/accuser-reception")->assertOk();
+        $this->actingAs($dg2)->postJson("/api/v1/courriers/{$idD}/renvoyer-pour-correction", ['observation' => 'Ajouter la référence au courrier physique.'])
+            ->assertOk();
+        $corrige = [...$contenu, 'version_test' => 2];
+        $this->actingAs($dg1)->patchJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse", ['projet_reponse_contenu' => $corrige])->assertOk();
+        $this->actingAs($dg1)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse/soumettre", ['projet_reponse_contenu' => $corrige])
+            ->assertOk()->assertJsonPath('data.id', $idD);
+        $this->assertSame($idD, MissionDocumentaire::query()->findOrFail($missionId)->projet_courrier_id);
+        $this->assertSame(1, Courrier::withoutGlobalScopes()->where('en_reponse_a_courrier_id', $a->id)->count());
+        $this->actingAs($dg2)->postJson("/api/v1/courriers/{$idD}/accuser-reception")->assertOk();
+        $this->actingAs($dg2)->postJson("/api/v1/courriers/{$idD}/valider-relecture")->assertOk();
+        $this->assertSame('retournee', $mission->fresh()->statut->value);
+
+        Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$idD}/signer")->assertOk()->assertJsonPath('data.statut', 'signe');
+        $d->refresh();
+        $this->assertSame($idD, $d->id);
+        $this->assertSame($dg->id, $d->signataire_id);
+        $this->assertNotNull($d->signe_at);
+        $this->assertNotNull($d->numero_depart);
+        $this->assertNotNull($d->pdf_chemin);
+        $this->assertNotNull($d->pdf_sha256);
+        Storage::disk('local')->assertExists($d->pdf_chemin);
+        $hashSigne = $d->pdf_sha256;
+        $this->assertAuditActeur('courrier.signature', $idD, $dg->id);
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$idD}/accuser-reception")->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$idD}/envoyer", [
+            'destinataire_externe_nom' => 'Partenaire physique TEST',
+            'destinataire_externe_email' => 'physique-e2e@example.test',
+            'mode_expedition' => 'courriel',
+        ])->assertOk()->assertJsonPath('data.statut', 'envoye');
+        $urlFinale = null;
+        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use ($a, $d, &$urlFinale): bool {
+            $urlFinale = $mail->urlTelechargement;
+
+            return $mail->hasTo('physique-e2e@example.test') && $mail->courrierOrigine->is($a) && $mail->reponse->is($d);
+        });
+        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertAuditActeur('courrier.envoye', $idD, $sec2->id);
+        $this->assertAuditActeur('courrier.reponse_finale_notifiee', $idD, $sec2->id);
+        $this->assertSame($hashSigne, $d->fresh()->pdf_sha256);
+        $telechargement = $this->get($urlFinale)->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertSame($hashSigne, hash('sha256', $telechargement->streamedContent()));
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$idD}/envoyer", [
+            'destinataire_externe_nom' => 'Partenaire physique TEST',
+            'destinataire_externe_email' => 'physique-e2e@example.test',
+            'mode_expedition' => 'courriel',
+        ])->assertForbidden();
+        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertSame($identiteA, [$a->fresh()->id, $a->fresh()->dossier_id, $a->fresh()->numero_enregistrement]);
     }
 
     private function presenterADg(Courrier $courrier, User $sec1, User $dg): void

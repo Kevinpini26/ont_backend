@@ -38,7 +38,7 @@ class DocumentProduitDirectionService
             }
             $source = Courrier::withoutGlobalScopes()->findOrFail($traitement->courrier_id);
             $courrier = Courrier::withoutGlobalScopes()->create([
-                'dossier_id' => $traitement->dossier_id, 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                'dossier_id' => $traitement->dossier_id, 'numero_accuse_reception' => null,
                 'objet' => $donnees['objet'], 'contenu' => $donnees['contenu'], 'type' => CourrierType::CORRESPONDANCE_GENERALE,
                 'statut' => CourrierStatut::BROUILLON_DIRECTION, 'sens' => SensCourrier::ENTRANT,
                 'direction_origine_id' => $traitement->direction_id, 'necessite_avis_dg' => true, 'initie_par_dg' => false, 'created_by' => $secretariat->id,

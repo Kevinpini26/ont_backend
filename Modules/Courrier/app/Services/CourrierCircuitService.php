@@ -94,7 +94,9 @@ class CourrierCircuitService
         $courrier = DB::transaction(function () use ($auteur, $donnees, $numerisationStatut) {
             $courrier = Courrier::query()->create([
                 ...$donnees,
-                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                // Un enregistrement physique est identifié immédiatement
+                // par son numéro institutionnel, jamais par un AR public.
+                'numero_accuse_reception' => null,
                 'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
                 'statut' => CourrierStatut::RECU,
                 'necessite_avis_dg' => true,
@@ -255,7 +257,8 @@ class CourrierCircuitService
                 'type' => CourrierType::CORRESPONDANCE_GENERALE,
                 'direction_destination_id' => $donnees['direction_destination_id'],
                 'direction_origine_id' => null,
-                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                // Instruction interne DG : aucun accusé technique public.
+                'numero_accuse_reception' => null,
                 'statut' => CourrierStatut::RECU,
                 'necessite_avis_dg' => false,
                 'initie_par_dg' => true,
@@ -1087,7 +1090,9 @@ class CourrierCircuitService
                 'direction_origine_id' => null,
                 'destinataire_externe_nom' => $donnees['destinataire_externe_nom'] ?? $original->expediteur_externe_nom,
                 'destinataire_externe_email' => $donnees['destinataire_externe_email'] ?? $original->expediteur_externe_email,
-                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                // Projet sortant interne au cycle : le numéro de départ
+                // sera attribué à la signature, pas d'AR public.
+                'numero_accuse_reception' => null,
                 'statut' => CourrierStatut::PROJET_A_REDIGER,
                 'necessite_avis_dg' => false,
                 'initie_par_dg' => false,
@@ -1444,7 +1449,8 @@ class CourrierCircuitService
                 // direction_destination_id : le destinataire est externe,
                 // suivi via destinataire_externe_nom, pas une direction.
                 'direction_origine_id' => $original?->direction_origine_id ?? $auteur->direction_id,
-                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
+                // Courrier sortant institutionnel : aucun AR public.
+                'numero_accuse_reception' => null,
                 'statut' => CourrierStatut::EN_RELECTURE,
                 'necessite_avis_dg' => false,
                 'initie_par_dg' => false,
