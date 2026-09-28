@@ -252,11 +252,11 @@ class CircuitCourrierTest extends CourrierTestCase
             ->assertNotFound();
     }
 
-    public function test_les_trois_postes_assistants_actifs_peuvent_traiter_la_file_partagee_des_projets(): void
+    public function test_seuls_les_assistants_dg_peuvent_traiter_la_file_legacy_des_projets(): void
     {
         $direction = Direction::factory()->create();
 
-        foreach ([Poste::ASSISTANT_1, Poste::ASSISTANT_2, Poste::ASSISTANT_DGA] as $poste) {
+        foreach ([Poste::ASSISTANT_1, Poste::ASSISTANT_2] as $poste) {
             $redacteur = $this->agent($poste, $direction);
             $relecteur = $this->agent($poste === Poste::ASSISTANT_1 ? Poste::ASSISTANT_2 : Poste::ASSISTANT_1, $direction);
             $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
@@ -270,6 +270,20 @@ class CircuitCourrierTest extends CourrierTestCase
                 ->assertOk()
                 ->assertJsonPath('data.statut', CourrierStatut::PROJET_A_VALIDER->value);
         }
+
+        $assistantDga = $this->agent(Poste::ASSISTANT_DGA, $direction);
+        $relecteur = $this->agent(Poste::ASSISTANT_1, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+        $this->marquerDecharge($courrier, Poste::ASSISTANT_DGA);
+
+        $this->actingAs($assistantDga)
+            ->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
+                'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
+                'relecteur_id' => $relecteur->id,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(CourrierStatut::PROJET_A_REDIGER, $courrier->fresh()->statut);
     }
 
     public function test_lancien_assistant_du_protocole_ne_peut_plus_prendre_un_projet_a_rediger(): void

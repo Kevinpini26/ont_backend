@@ -111,7 +111,6 @@ class MissionDocumentaireController extends Controller
             $mission,
             $request->user(),
             $request->string('compte_rendu')->toString(),
-            $request->validated('projet_reponse_contenu'),
         ));
     }
 

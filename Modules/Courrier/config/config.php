@@ -64,8 +64,8 @@ return [
      *       courrier imputé au secrétariat de la direction imputée à titre
      *       principal (Lot 3). Étape terminale pour ce lot — la suite
      *       (tableau de répartition, retour vers la DG) est le Lot 4.
-     *     - projet_a_rediger -> projet_a_valider : un assistant actif
-     *       (Ass1, Ass2 ou assistant du DGA) soumet son projet
+     *     - projet_a_rediger -> projet_a_valider : un assistant DG actif
+     *       (Ass1 ou Ass2) soumet son projet
      *       de réponse à un relecteur désigné. Le Secrétariat 01 ne rédige
      *       plus : il garde le tri et l'établissement des accusés de
      *       réception (voir docs/questions-ont.md).
@@ -176,7 +176,6 @@ return [
                     'postes' => [
                         Poste::ASSISTANT_1->value,
                         Poste::ASSISTANT_2->value,
-                        Poste::ASSISTANT_DGA->value,
                     ],
                     'condition' => null,
                 ],

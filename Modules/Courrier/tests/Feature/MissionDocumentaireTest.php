@@ -204,7 +204,7 @@ class MissionDocumentaireTest extends CourrierTestCase
         $this->actingAs($assistantAutorise)->getJson("/api/v1/courriers/{$courrier->id}")->assertNotFound();
     }
 
-    public function test_retour_peut_conserver_projet_existant_et_dg_reprendre_decision_vers_sec2(): void
+    public function test_retour_de_mission_ne_peut_pas_muter_le_projet_institutionnel_du_courrier(): void
     {
         Notification::fake();
         $direction = Direction::factory()->create();
@@ -227,15 +227,61 @@ class MissionDocumentaireTest extends CourrierTestCase
         $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$id}/retourner", [
             'compte_rendu' => 'Projet préparé.',
             'projet_reponse_contenu' => $projet,
-        ])->assertOk();
+        ])->assertUnprocessable()->assertJsonValidationErrors('projet_reponse_contenu');
 
-        $this->assertSame($projet, $courrier->fresh()->projet_reponse_contenu);
+        $this->assertNull($courrier->fresh()->projet_reponse_contenu);
+        $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$id}/retourner", [
+            'compte_rendu' => 'Analyse terminée.',
+        ])->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
             'type' => 'direction', 'direction_id' => $destination->id, 'instruction' => 'Traiter après retour de mission.',
         ]]])
             ->assertOk()->assertJsonPath('data.statut', CourrierStatut::EN_DISPATCH->value);
         $this->assertDatabaseHas('audit_logs', ['action' => 'mission_documentaire.creee', 'auditable_id' => $id]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'mission_documentaire.retournee', 'auditable_id' => $id]);
+    }
+
+    public function test_assistant_dga_ne_recoit_que_le_courrier_missionne_et_perd_lacces_a_la_cloture(): void
+    {
+        Notification::fake();
+        $direction = Direction::factory()->create();
+        $dga = $this->agent(Poste::DGA, $direction);
+        $assistant = $this->agent(Poste::ASSISTANT_DGA, $direction);
+        $a = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'A missionné']);
+        $b = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'B confidentiel']);
+        $c = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'C confidentiel']);
+        $d = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'D confidentiel']);
+        $a->transitions()->create(['statut' => $a->statut, 'nouveau_statut' => $a->statut, 'destinataire_poste' => Poste::DGA, 'created_at' => now()]);
+        $missionId = $this->actingAs($dga)->postJson("/api/v1/courriers/{$a->id}/missions", [
+            'assistant_id' => $assistant->id, 'instruction' => 'Analyser uniquement A.',
+        ])->assertCreated()->json('data.id');
+
+        $this->actingAs($assistant)->getJson("/api/v1/courriers/{$a->id}")->assertOk();
+        foreach ([$b, $c, $d] as $courrier) {
+            $this->actingAs($assistant)->getJson("/api/v1/courriers/{$courrier->id}")->assertNotFound();
+        }
+        $this->actingAs($assistant)->getJson("/api/v1/courriers/{$d->id}/pdf")->assertNotFound();
+        $this->actingAs($assistant)->getJson("/api/v1/courriers/{$b->id}/annotations")->assertNotFound();
+        $this->actingAs($assistant)->getJson("/api/v1/courriers/{$a->id}/annotations")->assertForbidden();
+        $this->actingAs($assistant)->getJson("/api/v1/dossiers/{$a->dossier_id}")
+            ->assertOk()->assertJsonCount(1, 'data.documents')->assertJsonPath('data.documents.0.id', $a->id);
+        $this->actingAs($assistant)->getJson('/api/v1/courriers?recherche=confidentiel')
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertOk();
+        $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$missionId}/retourner", ['compte_rendu' => 'A analysé.'])->assertOk();
+        $this->actingAs($assistant)->getJson("/api/v1/courriers/{$a->id}")->assertNotFound();
+        $this->actingAs($assistant)->getJson("/api/v1/dossiers/{$a->dossier_id}")->assertNotFound();
+        $this->actingAs($assistant)->getJson('/api/v1/missions-documentaires/mes-missions')
+            ->assertOk()->assertJsonMissingPath('data.0.instruction')->assertJsonMissingPath('data.0.dossier_id');
+    }
+
+    public function test_assistant_dga_ne_peut_pas_consulter_kpi_ni_registre_institutionnels(): void
+    {
+        $assistant = $this->agent(Poste::ASSISTANT_DGA, Direction::factory()->create());
+
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/statistiques')->assertForbidden();
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/registre?debut=2026-01-01&fin=2026-12-31')->assertForbidden();
     }
 
     public function test_delegation_dg_trace_acteur_reel_et_autorite_metier(): void

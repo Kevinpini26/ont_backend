@@ -165,9 +165,9 @@ class MissionDocumentaireService
         });
     }
 
-    public function retourner(MissionDocumentaire $mission, User $assistant, string $compteRendu, ?array $projet): MissionDocumentaire
+    public function retourner(MissionDocumentaire $mission, User $assistant, string $compteRendu): MissionDocumentaire
     {
-        $mission = DB::transaction(function () use ($mission, $assistant, $compteRendu, $projet) {
+        $mission = DB::transaction(function () use ($mission, $assistant, $compteRendu) {
             $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
             if ($mission->type === MissionDocumentaireType::PREPARATION_REPONSE) {
                 throw ValidationException::withMessages(['mission' => 'Une mission de préparation de réponse se termine après validation de la relecture de son projet D.']);
@@ -179,18 +179,8 @@ class MissionDocumentaireService
             $mission->update([
                 'statut' => MissionDocumentaireStatut::RETOURNEE,
                 'compte_rendu' => $compteRendu,
-                'projet_reponse_contenu' => $projet,
                 'retournee_at' => now(),
             ]);
-
-            if ($projet !== null) {
-                // La mission cesse d'accorder sa visibilité dès qu'elle
-                // passe à RETOURNEE. L'écriture métier doit néanmoins être
-                // finalisée dans la même transaction, sans dépendre du
-                // scope HTTP de l'assistant devenu immédiatement caduc.
-                Courrier::withoutGlobalScopes()->whereKey($mission->courrier_id)
-                    ->update(['projet_reponse_contenu' => $projet]);
-            }
 
             $this->audit->enregistrer('mission_documentaire.retournee', $mission, $assistant, [
                 'courrier_id' => $mission->courrier_id,

@@ -208,6 +208,10 @@ class CourrierPolicy
             return false;
         }
 
+        if (($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) === Poste::ASSISTANT_DGA) {
+            return false;
+        }
+
         if (($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) === Poste::SECRETARIAT_2) {
             return $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
         }
@@ -272,7 +276,9 @@ class CourrierPolicy
      */
     public function voirStatistiques(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR || $this->estAgentCircuitActif($user);
+        return $user->role === UserRole::ADMINISTRATEUR
+            || ($this->estAgentCircuitActif($user)
+                && ($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) !== Poste::ASSISTANT_DGA);
     }
 
     /**
@@ -283,7 +289,9 @@ class CourrierPolicy
      */
     public function voirRegistre(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR || $this->estAgentCircuitActif($user);
+        return $user->role === UserRole::ADMINISTRATEUR
+            || ($this->estAgentCircuitActif($user)
+                && ($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) !== Poste::ASSISTANT_DGA);
     }
 
     /**
