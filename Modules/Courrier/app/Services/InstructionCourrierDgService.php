@@ -9,18 +9,20 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 class InstructionCourrierDgService
 {
     public function __construct(
         private readonly DelegationResolver $delegations,
         private readonly AuditLogger $audit,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     public function peutDonner(User $acteur): bool
     {
         return ! $this->estSec1($acteur)
-            && $this->delegations->utilisateurHabilite($acteur, [Poste::DG]);
+            && $this->autoriteDg->estAutorite($acteur);
     }
 
     public function peutExecuter(User $acteur, InstructionCourrierDg $instruction): bool
@@ -41,8 +43,6 @@ class InstructionCourrierDgService
 
     public function creer(User $donneur, array $donnees): InstructionCourrierDg
     {
-        abort_unless($this->peutDonner($donneur), 403);
-
         if (isset($donnees['destinataire_user_id'])) {
             $destinataire = User::query()->findOrFail($donnees['destinataire_user_id']);
             if (! $this->delegations->utilisateurHabilite($destinataire, [Poste::SECRETARIAT_1])) {
@@ -51,6 +51,7 @@ class InstructionCourrierDgService
         }
 
         return DB::transaction(function () use ($donneur, $donnees) {
+            abort_unless($this->peutDonner($donneur), 403);
             $instruction = InstructionCourrierDg::query()->create([
                 'donneur_id' => $donneur->id,
                 'destinataire_user_id' => $donnees['destinataire_user_id'] ?? null,
@@ -61,6 +62,7 @@ class InstructionCourrierDgService
                 'destinataire_user_id' => $instruction->destinataire_user_id,
                 'instruction' => $instruction->instruction,
                 'expire_at' => $instruction->expire_at?->toIso8601String(),
+                'source_autorite' => $this->autoriteDg->source($donneur),
             ]);
 
             return $instruction;
@@ -87,16 +89,15 @@ class InstructionCourrierDgService
 
     public function annuler(User $acteur, InstructionCourrierDg $instruction): InstructionCourrierDg
     {
-        abort_unless($this->peutDonner($acteur), 403);
-        abort_unless($this->peutVoir($acteur, $instruction), 404);
-
         return DB::transaction(function () use ($acteur, $instruction) {
+            abort_unless($this->peutDonner($acteur), 403);
+            abort_unless($this->peutVoir($acteur, $instruction), 404);
             $verrouillee = InstructionCourrierDg::query()->lockForUpdate()->findOrFail($instruction->id);
             if (! $verrouillee->active()) {
                 throw ValidationException::withMessages(['instruction' => 'Cette instruction ne peut plus être annulée.']);
             }
             $verrouillee->update(['annule_at' => now()]);
-            $this->audit->enregistrer('instruction_courrier_dg.annulee', $verrouillee, $acteur);
+            $this->audit->enregistrer('instruction_courrier_dg.annulee', $verrouillee, $acteur, ['source_autorite' => $this->autoriteDg->source($acteur)]);
 
             return $verrouillee;
         });

@@ -10,6 +10,7 @@ use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 /**
  * Relance la DG lorsqu'un courrier attend son avis depuis plus de 48h.
@@ -23,7 +24,7 @@ class RelancerAvisDgEnAttenteCommand extends Command
 
     protected $description = "Relance la DG pour les courriers en attente d'avis depuis plus de 48h";
 
-    public function __construct(private readonly NotificationService $notifications)
+    public function __construct(private readonly NotificationService $notifications, private readonly DgAuthorityResolver $autoriteDg)
     {
         parent::__construct();
     }
@@ -42,10 +43,10 @@ class RelancerAvisDgEnAttenteCommand extends Command
                 ->where('created_at', '<', $seuil))
             ->get();
 
-        $dg = User::query()
-            ->where('role', UserRole::AGENT_CIRCUIT_COURRIER)
-            ->where('poste', Poste::DG)
-            ->get();
+        $interim = $this->autoriteDg->interimOuvert();
+        $dg = $interim !== null
+            ? User::query()->whereKey($interim->dga_interimaire_id)->get()
+            : User::query()->where('role', UserRole::AGENT_CIRCUIT_COURRIER)->where('poste', Poste::DG)->get();
 
         foreach ($courriers as $courrier) {
             foreach ($dg as $destinataire) {

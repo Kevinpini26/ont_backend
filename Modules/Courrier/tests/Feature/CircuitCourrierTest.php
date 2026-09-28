@@ -80,7 +80,7 @@ class CircuitCourrierTest extends CourrierTestCase
         // La DGA ne peut pas rendre l'avis tant que la DG est disponible.
         $this->actingAs($dga)
             ->postJson("/api/v1/courriers/{$id}/rendre-avis", ['avis_dg' => 'favorable'])
-            ->assertStatus(422);
+            ->assertNotFound();
 
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$id}/rendre-avis", ['avis_dg' => 'favorable'])

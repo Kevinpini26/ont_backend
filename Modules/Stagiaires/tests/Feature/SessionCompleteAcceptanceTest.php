@@ -10,7 +10,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
-use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Services\DgInterimService;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\NotificationDiffusion;
 use Modules\Stagiaires\Models\Stagiaire;
@@ -129,7 +129,7 @@ class SessionCompleteAcceptanceTest extends StagiaireTestCase
         $this->assertSame(2, $reponsePresentation->json('data.tour'));
 
         // --- Approuvé en intérim DGA, la DG étant marquée indisponible.
-        DgDisponibilite::definir(false);
+        app(DgInterimService::class)->ouvrir($dg, $dga, 'Absence officielle.');
 
         $reponseApprobation = $this->actingAs($dga)
             ->postJson("/api/v1/tableaux-repartition/{$idTableau}/rendre-avis", ['approuve' => true])

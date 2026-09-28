@@ -15,6 +15,7 @@ use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 class MissionDocumentaireService
 {
@@ -24,22 +25,21 @@ class MissionDocumentaireService
         private readonly DelegationResolver $delegations,
         private readonly DossierWorkflowGuard $dossiers,
         private readonly CycleDecisionnelService $cycles,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     public function creer(Courrier $courrier, User $acteur, User $assistant, string $instruction): MissionDocumentaire
     {
-        $autorite = $this->autoriteDe($acteur);
-        $posteAssistantAttendu = match ($autorite) {
-            Poste::DG => [Poste::ASSISTANT_1, Poste::ASSISTANT_2],
-            Poste::DGA => [Poste::ASSISTANT_DGA],
-            default => [],
-        };
-
-        if (! in_array($assistant->poste, $posteAssistantAttendu, true)) {
-            throw ValidationException::withMessages(['assistant_id' => "Cet assistant ne dépend pas de l'autorité demandeuse."]);
-        }
-
-        $mission = DB::transaction(function () use ($courrier, $acteur, $assistant, $instruction, $autorite) {
+        $mission = DB::transaction(function () use ($courrier, $acteur, $assistant, $instruction) {
+            $autorite = $this->autoriteDe($acteur);
+            $posteAssistantAttendu = match ($autorite) {
+                Poste::DG => [Poste::ASSISTANT_1, Poste::ASSISTANT_2],
+                Poste::DGA => [Poste::ASSISTANT_DGA],
+                default => [],
+            };
+            if (! in_array($assistant->poste, $posteAssistantAttendu, true)) {
+                throw ValidationException::withMessages(['assistant_id' => "Cet assistant ne dépend pas de l'autorité demandeuse."]);
+            }
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
             $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
 
@@ -89,14 +89,14 @@ class MissionDocumentaireService
 
     public function creerPreparationReponse(Courrier $courrier, User $acteur, User $assistant, string $instruction): MissionDocumentaire
     {
-        if ($this->autoriteDe($acteur) !== Poste::DG) {
-            throw ValidationException::withMessages(['mission' => 'Seule la DG peut demander la préparation de cette réponse.']);
-        }
         if (! in_array($assistant->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true)) {
             throw ValidationException::withMessages(['assistant_id' => 'La DG doit choisir Assistant DG1 ou Assistant DG2.']);
         }
 
         $mission = DB::transaction(function () use ($courrier, $acteur, $assistant, $instruction) {
+            if ($this->autoriteDe($acteur) !== Poste::DG) {
+                throw ValidationException::withMessages(['mission' => 'Seule la DG peut demander la préparation de cette réponse.']);
+            }
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
             $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
 
@@ -239,11 +239,11 @@ class MissionDocumentaireService
 
     private function autoriteDe(User $acteur): Poste
     {
-        if ($this->delegations->posteDelegueAujourdhui($acteur) === Poste::DG) {
+        if ($this->autoriteDg->estAutorite($acteur)) {
             return Poste::DG;
         }
-        if ($acteur->poste === Poste::DG || $acteur->poste === Poste::DGA) {
-            return $acteur->poste;
+        if ($acteur->poste === Poste::DGA) {
+            return Poste::DGA;
         }
 
         $posteDelegue = $this->delegations->posteDelegueAujourdhui($acteur);

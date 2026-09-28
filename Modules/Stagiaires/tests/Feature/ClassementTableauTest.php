@@ -6,7 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
-use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Services\DgInterimService;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Models\TableauRepartition;
@@ -95,9 +95,9 @@ class ClassementTableauTest extends StagiaireTestCase
         $dfp = User::factory()->agentDfp()->create();
         $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create();
         $dga = User::factory()->agentCircuitCourrier(Poste::DGA, $direction)->create();
-        User::factory()->agentCircuitCourrier(Poste::DG, $direction)->create();
+        $dg = User::factory()->agentCircuitCourrier(Poste::DG, $direction)->create();
 
-        DgDisponibilite::definir(false);
+        app(DgInterimService::class)->ouvrir($dg, $dga, 'Absence officielle.');
 
         $stagiaire = Stagiaire::factory()->create(['statut' => StagiaireStatut::EN_ATTENTE_AFFECTATION]);
         $this->imputerADfp($stagiaire, $directionDfp);

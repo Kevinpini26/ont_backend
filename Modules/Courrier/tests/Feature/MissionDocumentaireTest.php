@@ -72,6 +72,18 @@ class MissionDocumentaireTest extends CourrierTestCase
         $assistantDga = $this->agent(Poste::ASSISTANT_DGA, $direction);
         $courrierDga = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
         $courrierDg = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        $courrierDga->transitions()->create([
+            'statut' => $courrierDga->statut,
+            'nouveau_statut' => $courrierDga->statut,
+            'destinataire_poste' => Poste::DGA,
+            'created_at' => now(),
+        ]);
+        $courrierDg->transitions()->create([
+            'statut' => $courrierDg->statut,
+            'nouveau_statut' => $courrierDg->statut,
+            'destinataire_poste' => Poste::DGA,
+            'created_at' => now(),
+        ]);
 
         $mission = $this->actingAs($dga)->postJson("/api/v1/courriers/{$courrierDga->id}/missions", [
             'assistant_id' => $assistantDga->id,

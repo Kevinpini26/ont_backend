@@ -19,7 +19,7 @@ use Modules\Courrier\Notifications\DispatchCourrierNotification;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
-use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Services\DgInterimService;
 
 class DispatchCourrierTest extends CourrierTestCase
 {
@@ -186,7 +186,7 @@ class DispatchCourrierTest extends CourrierTestCase
         $dga = $this->agent(Poste::DGA, $centrale);
         $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
         $directeur = User::factory()->directeurDirection($destination)->create();
-        DgDisponibilite::definir(false);
+        app(DgInterimService::class)->ouvrir($dg, $dga, 'Absence officielle.');
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
 
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[

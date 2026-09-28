@@ -15,6 +15,33 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
+    public function test_dga_normal_ne_voit_pas_un_courrier_dg_sans_relation_meme_en_attente_davis(): void
+    {
+        $direction = Direction::factory()->create();
+        $this->agent(Poste::DG, $direction);
+        $dga = $this->agent(Poste::DGA, $direction);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+            'niveau_confidentialite' => 'secret',
+        ]);
+
+        $this->actingAs($dga)->getJson("/api/v1/courriers/{$courrier->id}")->assertNotFound();
+        $this->actingAs($dga)->getJson("/api/v1/courriers/{$courrier->id}/piece-jointe")->assertNotFound();
+        $this->actingAs($dga)->getJson("/api/v1/courriers/{$courrier->id}/annotations")->assertNotFound();
+        $this->actingAs($dga)->postJson("/api/v1/courriers/{$courrier->id}/annotations", [
+            'contenu' => 'Sans affectation.',
+        ])->assertNotFound();
+
+        $courrier->transitions()->create([
+            'statut' => $courrier->statut,
+            'nouveau_statut' => $courrier->statut,
+            'destinataire_poste' => Poste::DGA,
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($dga)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+    }
+
     public function test_un_responsable_dont_la_direction_nest_pas_imputee_ne_peut_pas_voir_un_courrier_confidentiel(): void
     {
         $direction = Direction::factory()->create();

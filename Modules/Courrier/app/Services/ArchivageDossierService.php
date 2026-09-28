@@ -11,17 +11,18 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
-use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 class ArchivageDossierService
 {
-    public function __construct(private readonly AuditLogger $audit, private readonly DelegationResolver $delegations) {}
+    public function __construct(private readonly AuditLogger $audit, private readonly DelegationResolver $delegations, private readonly DgAuthorityResolver $autoriteDg) {}
 
     public function decider(Dossier $dossier, User $acteur): Dossier
     {
         return DB::transaction(function () use ($dossier, $acteur) {
+            $source = $this->autoriteDg->source($acteur);
             $dossier = Dossier::query()->lockForUpdate()->findOrFail($dossier->id);
-            if (! ($acteur->poste === Poste::DG || ($acteur->poste === Poste::DGA && ! DgDisponibilite::estDisponible()) || $this->delegations->posteDelegueAujourdhui($acteur) === Poste::DG)) {
+            if ($source === null) {
                 throw ValidationException::withMessages(['dossier' => 'Décision réservée à la DG/DGA habilitée.']);
             }
             if ($dossier->statut_archivage !== 'actif') {
@@ -29,7 +30,7 @@ class ArchivageDossierService
             }
             $this->assertEligiblePourArchivage($dossier);
             $dossier->update(['statut_archivage' => 'a_archiver', 'archivage_decide_par_id' => $acteur->id, 'archivage_decide_at' => now()]);
-            $this->audit->enregistrer('dossier.archivage_decide', $dossier, $acteur);
+            $this->audit->enregistrer('dossier.archivage_decide', $dossier, $acteur, ['source_autorite' => $source]);
 
             return $dossier;
         });

@@ -25,6 +25,7 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         $finances = Direction::factory()->create();
         $etudes = Direction::factory()->create();
         $marketing = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $centrale);
         $courrier = Courrier::factory()->create([
             'objet' => 'CONFIDENTIEL-TEST-ONT-92841',
             'direction_origine_id' => $centrale->id,
@@ -34,7 +35,6 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         $this->dispatchExecute($courrier, $finances);
         $this->dispatchExecute($courrier, $etudes);
 
-        $dg = $this->agent(Poste::DG, $centrale);
         $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
         $assistant = $this->agent(Poste::ASSISTANT_1, $centrale);
         $directeurFinances = User::factory()->directeurDirection($finances)->create();
@@ -152,7 +152,10 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
 
     private function dispatchExecute(Courrier $courrier, Direction $direction, DispatchStatut $statut = DispatchStatut::EXECUTE): DispatchCourrier
     {
-        $decisionnaire = User::factory()->create(['poste' => Poste::DG]);
+        // Les décisions de fixture appartiennent au titulaire déjà créé :
+        // ne pas introduire plusieurs DG dans un même scénario.
+        $decisionnaire = User::query()->where('poste', Poste::DG)->first()
+            ?? User::factory()->create(['poste' => Poste::DG]);
 
         return DispatchCourrier::query()->create([
             'courrier_id' => $courrier->id,

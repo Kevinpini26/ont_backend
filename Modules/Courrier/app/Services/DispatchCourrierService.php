@@ -22,7 +22,7 @@ use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
-use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 class DispatchCourrierService
 {
@@ -33,15 +33,16 @@ class DispatchCourrierService
         private readonly TraitementDirectionService $traitementsDirection,
         private readonly DossierWorkflowGuard $dossiers,
         private readonly CycleDecisionnelService $cycles,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     /** @param array<int, array<string, mixed>> $destinations */
     public function decider(Courrier $courrier, User $acteur, array $destinations): Courrier
     {
-        $autorite = $this->autoriteDe($acteur);
         $nouveauxDispatchs = [];
 
-        $courrier = DB::transaction(function () use ($courrier, $acteur, $destinations, $autorite, &$nouveauxDispatchs) {
+        $courrier = DB::transaction(function () use ($courrier, $acteur, $destinations, &$nouveauxDispatchs) {
+            $autorite = $this->autoriteDe($acteur);
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
             $ancienStatut = $courrier->statut;
 
@@ -93,7 +94,7 @@ class DispatchCourrierService
                 'statut' => CourrierStatut::EN_DISPATCH,
             ]);
             $this->tracer($courrier, $ancienStatut, CourrierStatut::EN_DISPATCH, $acteur, Poste::SECRETARIAT_2);
-            $this->audit->enregistrer('dispatch.decision_prise', $courrier, $acteur, ['nombre' => count($destinations), 'autorite_poste' => $autorite->value, 'cycle' => $cycle]);
+            $this->audit->enregistrer('dispatch.decision_prise', $courrier, $acteur, ['nombre' => count($destinations), 'autorite_poste' => $autorite->value, 'source_autorite' => $this->autoriteDg->source($acteur), 'cycle' => $cycle]);
 
             return $courrier;
         });
@@ -264,14 +265,7 @@ class DispatchCourrierService
 
     private function autoriteDe(User $acteur): Poste
     {
-        if ($acteur->poste === Poste::DG) {
-            return Poste::DG;
-        }
-        if ($acteur->poste === Poste::DGA && ! DgDisponibilite::estDisponible()) {
-            return Poste::DG;
-        }
-        $delegue = $this->delegations->posteDelegueAujourdhui($acteur);
-        if ($delegue === Poste::DG) {
+        if ($this->autoriteDg->estAutorite($acteur)) {
             return Poste::DG;
         }
         throw ValidationException::withMessages(['dispatch' => "Vous n'êtes pas habilité à décider ce dispatch."]);
@@ -325,7 +319,7 @@ class DispatchCourrierService
         CourrierTransition::query()->create([
             'courrier_id' => $courrier->id, 'statut' => $nouveau, 'ancien_statut' => $ancien, 'nouveau_statut' => $nouveau,
             'tour' => $courrier->tour, 'changed_by_id' => $acteur->id, 'expediteur_poste' => $acteur->poste?->value,
-            'agi_en_interim' => $this->delegations->agitEnInterimPour($acteur, [Poste::DG, Poste::SECRETARIAT_2]),
+            'agi_en_interim' => $this->autoriteDg->source($acteur) === 'interim_dga' || $this->delegations->agitEnInterimPour($acteur, [Poste::DG, Poste::SECRETARIAT_2]),
             'destinataire_poste' => $destinataire?->value, 'created_at' => now(),
         ]);
     }

@@ -47,7 +47,10 @@ abstract class StagiaireTestCase extends TestCase
     ): TestResponse {
         $directionDfp = $this->directionDfp();
         $reception ??= User::factory()->agentCircuitCourrier(Poste::RECEPTION, Direction::factory()->create())->create();
-        $dg ??= User::factory()->agentCircuitCourrier(Poste::DG, Direction::factory()->create())->create();
+        // Une même base de test peut appeler ce raccourci plusieurs fois :
+        // réutiliser le titulaire évite de fabriquer artificiellement deux DG.
+        $dg ??= User::query()->where('poste', Poste::DG)->first()
+            ?? User::factory()->agentCircuitCourrier(Poste::DG, Direction::factory()->create())->create();
 
         // Lot A : éligibilité au tableau conditionnée à une imputation du
         // courrier porteur vers la DFP (voir

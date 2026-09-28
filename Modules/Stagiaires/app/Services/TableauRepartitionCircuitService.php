@@ -16,6 +16,7 @@ use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
+use Modules\Kernel\Support\DgAuthorityResolver;
 use Modules\Kernel\Support\DgDisponibilite;
 use Modules\Kernel\Support\EmpreinteFichier;
 use Modules\Stagiaires\Contracts\AffectationRules;
@@ -56,6 +57,7 @@ class TableauRepartitionCircuitService
         private readonly AvertissementsLigneTableau $avertissements,
         private readonly DelegationResolver $delegations,
         private readonly CourrierCircuitService $courriers,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     private function assertStatut(TableauRepartition $tableau, TableauRepartitionStatut $attendu): void
@@ -381,8 +383,9 @@ class TableauRepartitionCircuitService
         // par la délégation générique de poste, pour qu'un délégataire du
         // poste DG (DelegationPoste) puisse lui aussi rendre l'avis, pas
         // seulement la DGA.
-        $delegue = $this->delegations->utilisateurHabilite($dg, [Poste::DG]);
-        $substitutionDga = $dg->poste === Poste::DGA && ! DgDisponibilite::estDisponible();
+        $sourceAutorite = $this->autoriteDg->source($dg);
+        $delegue = $sourceAutorite !== null;
+        $substitutionDga = $sourceAutorite === 'interim_dga';
 
         if (! $delegue && ! $substitutionDga) {
             if ($dg->poste === Poste::DGA) {
@@ -391,9 +394,12 @@ class TableauRepartitionCircuitService
             throw new TableauRepartitionTransitionException('Seule la Direction Générale peut se prononcer sur ce tableau.');
         }
 
-        $enInterim = $substitutionDga || $this->delegations->agitEnInterimPour($dg, [Poste::DG]);
-
-        return DB::transaction(function () use ($tableau, $dg, $approuve, $observations, $enInterim) {
+        return DB::transaction(function () use ($tableau, $dg, $approuve, $observations) {
+            $sourceAutorite = $this->autoriteDg->source($dg);
+            if ($sourceAutorite === null) {
+                throw new TableauRepartitionTransitionException('L’autorité DG n’est plus active.');
+            }
+            $enInterim = $sourceAutorite !== 'titulaire';
             /** @var Courrier $courrier */
             $courrier = $tableau->courrier()->lockForUpdate()->firstOrFail();
 

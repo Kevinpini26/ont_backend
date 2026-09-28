@@ -11,6 +11,7 @@ use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 class CourrierPolicy
 {
@@ -18,6 +19,7 @@ class CourrierPolicy
         private readonly CircuitTransitionRules $regles,
         private readonly DelegationResolver $delegations,
         private readonly CourrierVisibilityService $visibility,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     private function estAgentCircuitActif(User $user): bool
@@ -91,13 +93,13 @@ class CourrierPolicy
     public function creerMission(User $user, Courrier $courrier): bool
     {
         return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
-            && $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
+            && ($this->autoriteDg->estAutorite($user) || $user->poste === Poste::DGA);
     }
 
     public function deciderDispatch(User $user, Courrier $courrier): bool
     {
         return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true)
-            && $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
+            && $this->autoriteDg->estAutorite($user);
     }
 
     public function validerRelecture(User $user, Courrier $courrier): bool
@@ -187,7 +189,7 @@ class CourrierPolicy
      */
     public function validerAvantDiffusion(User $user, Courrier $courrier): bool
     {
-        return $user->poste === Poste::DG;
+        return $this->autoriteDg->estAutorite($user);
     }
 
     /**
@@ -196,10 +198,8 @@ class CourrierPolicy
      */
     public function signer(User $user, Courrier $courrier): bool
     {
-        $estSortant = $courrier->sens === SensCourrier::SORTANT;
-        $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
-
-        return $this->delegations->utilisateurHabilite($user, $postesAutorises);
+        return $this->autoriteDg->estAutorite($user)
+            && in_array($courrier->statut, [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER], true);
     }
 
     public function annoter(User $user, Courrier $courrier): bool
@@ -293,7 +293,7 @@ class CourrierPolicy
     public function voirTableauDeBordDg(User $user): bool
     {
         return $user->role === UserRole::ADMINISTRATEUR
-            || ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::DG);
+            || $this->autoriteDg->estAutorite($user);
     }
 
     /**

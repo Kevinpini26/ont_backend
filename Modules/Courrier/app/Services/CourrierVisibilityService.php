@@ -12,7 +12,7 @@ use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
-use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 /** Source de vérité unique de la visibilité documentaire interne. */
 class CourrierVisibilityService
@@ -20,6 +20,7 @@ class CourrierVisibilityService
     public function __construct(
         private readonly DelegationResolver $delegations,
         private readonly CircuitTransitionRules $regles,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     /** @param Builder<covariant Courrier> $query */
@@ -54,20 +55,11 @@ class CourrierVisibilityService
 
             if ($poste !== null && ! $this->estAssistant($poste)) {
                 $this->ajouterRelationsCircuit($visible, $poste);
-                $this->ajouterFileCourante($visible, $poste);
+                if ($poste !== Poste::DGA) {
+                    $this->ajouterFileCourante($visible, $poste);
+                }
             }
 
-            if ($poste === Poste::DGA && ! DgDisponibilite::estDisponible()) {
-                $this->ajouterRelationsCircuit($visible, Poste::DG);
-            }
-
-            // À l'étape d'avis, le courrier est sous contrôle de la
-            // Direction générale. La DGA peut y créer ses propres missions
-            // sans pour autant disposer de la vision institutionnelle
-            // globale et permanente de la DG.
-            if ($poste === Poste::DGA) {
-                $visible->orWhere('courriers.statut', 'en_attente_avis_dg');
-            }
         });
     }
 
@@ -81,18 +73,11 @@ class CourrierVisibilityService
 
     private function aVisionInstitutionnelle(User $user): bool
     {
-        if ($user->role === UserRole::ADMINISTRATEUR || $user->poste === Poste::DG) {
+        if ($user->role === UserRole::ADMINISTRATEUR) {
             return true;
         }
 
-        // Lorsque la DG est officiellement indisponible, la DGA exerce
-        // son intérim sur le même périmètre documentaire. Ce n'est pas
-        // un droit permanent : il disparaît dès le retour de la DG.
-        if ($user->poste === Poste::DGA && ! DgDisponibilite::estDisponible()) {
-            return true;
-        }
-
-        return $this->delegations->posteDelegueAujourdhui($user) === Poste::DG;
+        return $this->autoriteDg->estAutorite($user);
     }
 
     private function posteEffectif(User $user): ?Poste

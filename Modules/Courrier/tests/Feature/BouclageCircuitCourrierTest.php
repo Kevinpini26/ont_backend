@@ -94,7 +94,7 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
         $this->actingAs($dga)
             ->postJson("/api/v1/courriers/{$id}/rendre-avis", ['avis_dg' => 'reserve', 'avis_dg_commentaire' => 'x'])
-            ->assertStatus(422);
+            ->assertNotFound();
 
         // La DG rend cette fois un avis favorable : le circuit reprend son
         // cours normal, tour inchangé.

@@ -157,7 +157,10 @@ class TriUrgenceCourrierTest extends CourrierTestCase
 
         $this->actingAs($dga)
             ->postJson("/api/v1/courriers/{$courrier->id}/requalifier-urgence", ['degre_urgence' => 'tres_urgent'])
-            ->assertStatus(403);
+            // La DGA ordinaire ne fait pas partie du périmètre de ce courrier
+            // en attente de l'avis DG : l'absence de visibilité est donc
+            // volontairement masquée avant le contrôle d'autorisation.
+            ->assertNotFound();
 
         $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$courrier->id}/requalifier-urgence", ['degre_urgence' => 'tres_urgent'])

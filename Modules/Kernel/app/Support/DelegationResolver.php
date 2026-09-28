@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\DelegationPoste;
+use Modules\Kernel\Models\DgInterim;
 use Modules\Kernel\Models\User;
 
 /**
@@ -22,6 +23,15 @@ class DelegationResolver
      */
     public function utilisateurHabilite(User $utilisateur, array $postesAutorises): bool
     {
+        if (in_array(Poste::DG, $postesAutorises, true)) {
+            $interim = DgInterim::query()->whereNull('ended_at')->first();
+            if ($interim !== null) {
+                if ($utilisateur->id === $interim->dga_interimaire_id) {
+                    return true;
+                }
+                $postesAutorises = array_values(array_filter($postesAutorises, fn (Poste $poste) => $poste !== Poste::DG));
+            }
+        }
         if ($utilisateur->poste !== null && in_array($utilisateur->poste, $postesAutorises, true)) {
             return true;
         }
@@ -66,6 +76,10 @@ class DelegationResolver
             $memePoste->lockForUpdate();
         }
         if (count($memePoste->get()->all()) !== 1) {
+            return null;
+        }
+
+        if ($delegation->poste === Poste::DG && DgInterim::query()->whereNull('ended_at')->exists()) {
             return null;
         }
 

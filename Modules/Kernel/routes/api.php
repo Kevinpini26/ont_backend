@@ -63,6 +63,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/dg-disponibilite', [DgDisponibiliteController::class, 'show']);
         Route::post('/dg-disponibilite', [DgDisponibiliteController::class, 'update']);
+        Route::get('/dg-interims', [DgDisponibiliteController::class, 'historique']);
 
         // Hors du groupe role:administrateur ci-dessous : accessible aussi à
         // la DFP, voir Gate::genererRapportTutelle (seul vrai contrôle

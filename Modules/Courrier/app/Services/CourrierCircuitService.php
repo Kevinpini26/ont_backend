@@ -47,6 +47,7 @@ use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
+use Modules\Kernel\Support\DgAuthorityResolver;
 use Modules\Kernel\Support\DgDisponibilite;
 use Modules\Kernel\Support\EmpreinteFichier;
 use Throwable;
@@ -69,6 +70,7 @@ class CourrierCircuitService
         private readonly DocumentRelationService $relationsDocumentaires,
         private readonly DispatchCourrierService $dispatchs,
         private readonly DossierWorkflowGuard $dossiers,
+        private readonly DgAuthorityResolver $autoriteDg,
     ) {}
 
     public function creer(User $auteur, array $donnees, bool $numerisationImpossible = false): Courrier
@@ -309,6 +311,10 @@ class CourrierCircuitService
     public function validerAvantDiffusion(Courrier $courrier, User $dg): Courrier
     {
         return DB::transaction(function () use ($courrier, $dg) {
+            $sourceAutorite = $this->autoriteDg->source($dg);
+            if ($sourceAutorite === null) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $dg, CourrierStatut::EN_RELECTURE);
 
@@ -317,7 +323,7 @@ class CourrierCircuitService
             $courrier->save();
             $this->tracerTransition($courrier, $dg);
 
-            $this->audit->enregistrer('courrier.valide_par_dg', $courrier, $dg);
+            $this->audit->enregistrer('courrier.valide_par_dg', $courrier, $dg, ['source_autorite' => $sourceAutorite]);
 
             return $courrier;
         });
@@ -379,7 +385,7 @@ class CourrierCircuitService
             // d'assertTransitionAutorisee() jusqu'ici. Assez fidèle en
             // pratique : un utilisateur en délégation agit rarement aussi
             // sous son propre poste le même jour.
-            'agi_en_interim' => $utilisateur !== null && $this->delegations->posteDelegueAujourdhui($utilisateur) !== null,
+            'agi_en_interim' => $utilisateur !== null && ($this->autoriteDg->source($utilisateur) === 'interim_dga' || $this->delegations->posteDelegueAujourdhui($utilisateur) !== null),
             'destinataire_poste' => $destinatairePoste,
             'destinataire_user_id' => $destinataireUserId,
             'bordereau_lot_id' => $bordereauLotId,
@@ -511,6 +517,7 @@ class CourrierCircuitService
     public function accuserReception(Courrier $courrier, User $utilisateur): Courrier
     {
         return DB::transaction(function () use ($courrier, $utilisateur) {
+            $this->autoriteDg->source($utilisateur);
             $courrier = $this->lockCourrierFrais($courrier);
 
             $bordereau = $courrier->bordereauCourant();
@@ -530,8 +537,7 @@ class CourrierCircuitService
             } elseif ($bordereau->destinataire_poste !== null) {
                 $posteDestinataire = Poste::from($bordereau->destinataire_poste);
                 $estInterimDg = $posteDestinataire === Poste::DG
-                    && $utilisateur->poste === Poste::DGA
-                    && DgDisponibilite::estDisponible() === false;
+                    && $this->autoriteDg->source($utilisateur) === 'interim_dga';
 
                 if (! $estInterimDg && ! $this->delegations->utilisateurHabilite($utilisateur, [$posteDestinataire])) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
@@ -541,13 +547,13 @@ class CourrierCircuitService
                 // l'ajout du destinataire explicite.
                 $estSortant = $courrier->sens === SensCourrier::SORTANT;
                 $postesAutorises = $this->regles->postesAutorises($courrier->statut, $courrier->necessite_avis_dg, $courrier->initie_par_dg, $estSortant);
-                $enInterim = $utilisateur->poste === Poste::DGA;
+                $enInterim = $this->autoriteDg->source($utilisateur) === 'interim_dga';
 
                 if (! $this->delegations->utilisateurHabilite($utilisateur, $postesAutorises)) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
 
-                if ($enInterim && DgDisponibilite::estDisponible()) {
+                if ($utilisateur->poste === Poste::DGA && ! $enInterim && $this->autoriteDg->source($utilisateur) !== 'delegation') {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
             }
@@ -659,6 +665,11 @@ class CourrierCircuitService
     public function accuserReceptionLot(BordereauLot $bordereau, User $destinataire): BordereauLot
     {
         return DB::transaction(function () use ($bordereau, $destinataire) {
+            $sourceAutorite = $this->autoriteDg->source($destinataire);
+            $bordereau = BordereauLot::query()->lockForUpdate()->findOrFail($bordereau->id);
+            if ($bordereau->poste_destinataire === Poste::DG && $sourceAutorite === null) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
             if ($bordereau->accuse_reception_at !== null) {
                 throw TransitionNonAutoriseeException::dechargeDejaDonnee();
             }
@@ -810,11 +821,7 @@ class CourrierCircuitService
                 throw TransitionNonAutoriseeException::sautDetape();
             }
 
-            $enInterim = $utilisateur->poste === Poste::DGA
-                && ! $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
-            $delegue = $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
-
-            if (! $delegue && ! ($enInterim && DgDisponibilite::estDisponible() === false)) {
+            if (! $this->autoriteDg->estAutorite($utilisateur)) {
                 throw TransitionNonAutoriseeException::posteNonHabilite();
             }
 
@@ -987,10 +994,10 @@ class CourrierCircuitService
                 'courrier_impute' => $courrierImpute,
             ]);
 
-            $enInterim = $utilisateur->poste === Poste::DGA
-                && ! $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
+            $sourceAutorite = $this->autoriteDg->source($utilisateur);
+            $enInterim = $sourceAutorite === 'interim_dga';
 
-            if ($enInterim && DgDisponibilite::estDisponible()) {
+            if ($sourceAutorite === null) {
                 throw TransitionNonAutoriseeException::posteNonHabilite();
             }
 
@@ -1255,6 +1262,10 @@ class CourrierCircuitService
     public function signer(Courrier $courrier, User $utilisateur): Courrier
     {
         return DB::transaction(function () use ($courrier, $utilisateur) {
+            $sourceAutorite = $this->autoriteDg->source($utilisateur);
+            if ($sourceAutorite === null) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::SIGNE);
             $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
@@ -1301,6 +1312,8 @@ class CourrierCircuitService
 
             $this->audit->enregistrer('courrier.signature', $courrier, $utilisateur, [
                 'description' => "Signature du courrier {$courrier->numero_accuse_reception}",
+                'source_autorite' => $sourceAutorite,
+                'numero_depart' => $courrier->numero_depart,
             ]);
 
             return $courrier;
@@ -1688,9 +1701,16 @@ class CourrierCircuitService
         $evenement ??= DocumentProduitDirection::query()->where('courrier_id', $courrier->id)->exists()
             ? 'retour_direction_a_decider' : 'pret_a_traiter';
         DB::afterCommit(function () use ($courrier, $evenement) {
-            User::query()->where('poste', Poste::DG)->each(
-                fn (User $dg) => $this->notifications->notifier($dg, new CourrierDgNotification($courrier, $evenement))
-            );
+            $interim = $this->autoriteDg->interimOuvert();
+            if ($interim !== null) {
+                $destinataire = User::query()->find($interim->dga_interimaire_id);
+                if ($destinataire !== null) {
+                    $this->notifications->notifier($destinataire, new CourrierDgNotification($courrier, $evenement));
+                }
+
+                return;
+            }
+            User::query()->where('poste', Poste::DG)->each(fn (User $dg) => $this->notifications->notifier($dg, new CourrierDgNotification($courrier, $evenement)));
         });
     }
 }
