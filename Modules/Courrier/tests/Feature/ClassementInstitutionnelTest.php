@@ -25,6 +25,7 @@ class ClassementInstitutionnelTest extends CourrierTestCase
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [['type' => 'classement', 'instruction' => 'À classer']]])->assertOk();
         $dispatch = $courrier->dispatchs()->firstOrFail();
         $this->actingAs($admin)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", ['emplacement' => 'Armoire A'])->assertUnprocessable();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", ['cote' => 'COTE-1', 'emplacement' => 'Salle 1 / Armoire A', 'observation' => 'Original physique'])->assertOk();
         $classement = ClassementDocument::firstOrFail();
         $this->assertSame($courrier->dossier_id, $classement->dossier_id);
@@ -115,6 +116,7 @@ class ClassementInstitutionnelTest extends CourrierTestCase
             'type' => 'classement', 'instruction' => 'Classer.',
         ]]])->assertOk();
         $dispatch = $courrier->dispatchs()->latest('id')->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", [
             'cote' => "COTE-{$suffixe}", 'emplacement' => 'Archives',
         ])->assertOk();

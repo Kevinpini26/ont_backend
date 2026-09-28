@@ -5,6 +5,7 @@ namespace Modules\Courrier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -19,6 +20,53 @@ use Modules\Kernel\Models\User;
 class DispatchImputationCourrierTest extends CourrierTestCase
 {
     use RefreshDatabase;
+
+    public function test_la_materialisation_conserve_lauteur_reel_de_limputation(): void
+    {
+        $direction = Direction::factory()->create();
+        $auteur = $this->agent(Poste::DG, $direction);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_DISPATCH]);
+        $this->marquerDecharge($courrier, Poste::SECRETARIAT_2);
+        $imputation = $courrier->imputations()->create([
+            'direction_id' => $direction->id, 'mention' => 'pour_attribution',
+            'est_principale' => true, 'imputee_par_id' => $auteur->id,
+        ]);
+        $imputation->refresh();
+        $avant = $imputation->getRawOriginal();
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/dispatcher-direction")->assertOk();
+
+        $dispatch = DispatchCourrier::query()->sole();
+        $this->assertSame($auteur->id, $dispatch->decisionnaire_id);
+        $this->assertNotSame($sec2->id, $dispatch->decisionnaire_id);
+        $this->assertSame(Poste::DG, $dispatch->decisionnaire_poste);
+        $this->assertSame($imputation->created_at->toDateTimeString(), $dispatch->decide_at->toDateTimeString());
+        $this->assertSame($avant, $imputation->fresh()->getRawOriginal());
+    }
+
+    public function test_limputation_sans_auteur_est_refusee_sans_modifier_lhistorique(): void
+    {
+        $direction = Direction::factory()->create();
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_DISPATCH]);
+        $this->marquerDecharge($courrier, Poste::SECRETARIAT_2);
+        $imputation = $courrier->imputations()->create([
+            'direction_id' => $direction->id, 'mention' => 'pour_attribution',
+            'est_principale' => true, 'imputee_par_id' => null,
+        ]);
+        $imputation->refresh();
+        $avant = $imputation->getRawOriginal();
+        $courrierAvant = $courrier->fresh()->getRawOriginal();
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/dispatcher-direction")
+            ->assertUnprocessable()->assertJsonValidationErrors('courrier');
+
+        $this->assertSame(0, DispatchCourrier::query()->count());
+        $this->assertSame($avant, $imputation->fresh()->getRawOriginal());
+        $this->assertSame($courrierAvant, $courrier->fresh()->getRawOriginal());
+        $this->actingAs($sec2)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+    }
 
     public function test_avis_favorable_sur_courrier_impute_part_en_dispatch_plutot_quen_redaction(): void
     {

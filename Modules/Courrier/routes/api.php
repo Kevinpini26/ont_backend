@@ -64,6 +64,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/classements-documents/{classement}/archiver', [ClassementDocumentController::class, 'archiver']);
     Route::post('/classements-documents/{classement}/corriger', [ClassementDocumentController::class, 'corriger']);
     Route::post('/dossiers/{dossier}/decision-archivage', [ArchivageDossierController::class, 'decider']);
+    Route::get('/dossiers/a-archiver', [ArchivageDossierController::class, 'index']);
     Route::post('/dossiers/{dossier}/archiver', [ArchivageDossierController::class, 'archiver']);
     Route::post('/courriers', [CourrierController::class, 'store']);
     Route::post('/courriers/initier-dg', [CourrierController::class, 'initierParDg']);

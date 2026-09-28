@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 class DetecteurRupturesSequence
 {
     /**
-     * @param  Collection<int, object{id: int}>  $elements  Déjà triés dans l'ordre de la séquence.
+     * @param  Collection<int, covariant object{id: int}>  $elements  Lecture seule, déjà triés dans l'ordre de la séquence.
      * @return array<int, int> Identifiants des éléments précédés d'une rupture.
      */
     public function detecter(Collection $elements, string $colonne): array

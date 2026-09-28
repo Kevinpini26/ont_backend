@@ -8,7 +8,6 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
-use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\AuditLogger;
@@ -78,7 +77,6 @@ class ReponseCourrierPublicController extends Controller
             ->whereKey($reponse->en_reponse_a_courrier_id)
             ->where('dossier_id', $reponse->dossier_id)
             ->where('sens', SensCourrier::ENTRANT)
-            ->where('mode_reception', ModeReception::DEPOT_EN_LIGNE)
             ->whereNotNull('expediteur_externe_email')
             ->exists();
     }

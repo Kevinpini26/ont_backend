@@ -109,6 +109,7 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $source = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$source->id}/dispatchs", ['destinations' => [['type' => 'direction', 'direction_id' => $direction->id, 'instruction' => 'Traiter']]])->assertOk();
         $dispatch = $source->dispatchs()->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         $this->actingAs($secretariat)->postJson("/api/v1/dispatchs/{$dispatch->id}/accuser-reception")->assertOk();
         $traitement = TraitementDirection::query()->firstOrFail();

@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Modules\Courrier\Http\Resources\ClassementDocumentResource;
 use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Services\ClassementDocumentService;
@@ -18,27 +19,31 @@ class ClassementDocumentController extends Controller
     {
         abort_unless($this->delegations->utilisateurHabilite($request->user(), [Poste::SECRETARIAT_2]), 403);
 
-        return response()->json(ClassementDocument::query()->with(['courrier', 'dispatch.decisionnaire', 'classePar', 'archivePar'])->latest()->paginate(20));
+        $page = ClassementDocument::query()->with(['courrier'])->latest()->paginate(20);
+        $reponse = $page->toArray();
+        $reponse['data'] = ClassementDocumentResource::collection($page->items())->resolve($request);
+
+        return response()->json($reponse);
     }
 
     public function classer(Request $request, DispatchCourrier $dispatch)
     {
         $data = $request->validate(['cote' => ['nullable', 'string', 'max:255'], 'emplacement' => ['required', 'string', 'max:255'], 'observation' => ['nullable', 'string', 'max:5000']]);
 
-        return response()->json(['data' => $this->service->classer($dispatch, $request->user(), $data)]);
+        return response()->json(['data' => (new ClassementDocumentResource($this->service->classer($dispatch, $request->user(), $data)))->resolve($request)]);
     }
 
     public function archiver(Request $request, ClassementDocument $classement)
     {
         $data = $request->validate(['observation' => ['nullable', 'string', 'max:5000']]);
 
-        return response()->json(['data' => $this->service->archiver($classement, $request->user(), $data['observation'] ?? null)]);
+        return response()->json(['data' => (new ClassementDocumentResource($this->service->archiver($classement, $request->user(), $data['observation'] ?? null)))->resolve($request)]);
     }
 
     public function corriger(Request $request, ClassementDocument $classement)
     {
         $data = $request->validate(['cote' => ['nullable', 'string', 'max:255'], 'emplacement' => ['nullable', 'string', 'max:255'], 'observation' => ['nullable', 'string', 'max:5000'], 'motif' => ['required', 'string', 'max:1000']]);
 
-        return response()->json(['data' => $this->service->corriger($classement, $request->user(), $data)]);
+        return response()->json(['data' => (new ClassementDocumentResource($this->service->corriger($classement, $request->user(), $data)))->resolve($request)]);
     }
 }

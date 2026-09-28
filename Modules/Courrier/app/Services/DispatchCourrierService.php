@@ -9,6 +9,7 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
+use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Models\CourrierTransition;
@@ -38,8 +39,9 @@ class DispatchCourrierService
     public function decider(Courrier $courrier, User $acteur, array $destinations): Courrier
     {
         $autorite = $this->autoriteDe($acteur);
+        $nouveauxDispatchs = [];
 
-        $courrier = DB::transaction(function () use ($courrier, $acteur, $destinations, $autorite) {
+        $courrier = DB::transaction(function () use ($courrier, $acteur, $destinations, $autorite, &$nouveauxDispatchs) {
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
             $ancienStatut = $courrier->statut;
 
@@ -65,7 +67,7 @@ class DispatchCourrierService
                 }
                 $signatures[] = $signature;
 
-                DispatchCourrier::query()->create([
+                $nouveauxDispatchs[] = DispatchCourrier::query()->create([
                     'courrier_id' => $courrier->id,
                     'dossier_id' => $courrier->dossier_id,
                     'cycle' => $cycle,
@@ -95,7 +97,7 @@ class DispatchCourrierService
             return $courrier;
         });
 
-        $dispatchs = DispatchCourrier::query()->where('courrier_id', $courrier->id)->get();
+        $dispatchs = collect($nouveauxDispatchs);
         DB::afterCommit(function () use ($dispatchs) {
             User::query()->where('poste', Poste::SECRETARIAT_2)->each(function (User $user) use ($dispatchs) {
                 foreach ($dispatchs as $dispatch) {
@@ -109,11 +111,54 @@ class DispatchCourrierService
 
     public function executer(DispatchCourrier $dispatch, User $acteur, ?UploadedFile $preuve = null, ?string $reference = null): DispatchCourrier
     {
-        $dispatch = DB::transaction(function () use ($dispatch, $acteur, $preuve, $reference) {
-            $dispatch = DispatchCourrier::query()->lockForUpdate()->findOrFail($dispatch->id);
-            $this->dossiers->assertActifPourNouvelleActivite($dispatch->dossier_id);
-            if ($dispatch->statut !== DispatchStatut::EN_ATTENTE || ! $this->delegations->utilisateurHabilite($acteur, [Poste::SECRETARIAT_2])) {
-                throw ValidationException::withMessages(['dispatch' => 'Ce dispatch ne peut pas être exécuté.']);
+        if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT) {
+            throw ValidationException::withMessages(['dispatch' => 'Une décision de classement doit être exécutée par l’action Classer.']);
+        }
+
+        return $this->executerAction($dispatch, $acteur, $preuve, $reference);
+    }
+
+    public function executerClassement(DispatchCourrier $dispatch, User $acteur, ClassementDocument $classement): DispatchCourrier
+    {
+        if ($dispatch->type_destination !== DispatchTypeDestination::CLASSEMENT
+            || $classement->dispatch_courrier_id !== $dispatch->id
+            || $classement->courrier_id !== $dispatch->courrier_id
+            || ! $classement->exists) {
+            throw ValidationException::withMessages(['dispatch' => 'Le classement matériel correspondant est requis.']);
+        }
+
+        return $this->executerAction($dispatch, $acteur, reference: 'CLASSEMENT-'.$classement->id, classement: true);
+    }
+
+    public function verrouillerPourExecution(DispatchCourrier $dispatch, User $acteur): DispatchCourrier
+    {
+        $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($dispatch->courrier_id);
+        $dispatch = DispatchCourrier::query()->lockForUpdate()->findOrFail($dispatch->id);
+        $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
+        if ($dispatch->statut !== DispatchStatut::EN_ATTENTE
+            || ! $this->delegations->utilisateurHabilite($acteur, [Poste::SECRETARIAT_2])
+            || $dispatch->courrier_id !== $courrier->id
+            || $dispatch->dossier_id !== $courrier->dossier_id
+            || $courrier->statut !== CourrierStatut::EN_DISPATCH
+            || $dispatch->cycle !== (int) $courrier->dispatchs()->max('cycle')) {
+            throw ValidationException::withMessages(['dispatch' => 'Ce dispatch ne peut pas être exécuté : état, dossier ou cycle incompatible.']);
+        }
+        $transition = $courrier->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)
+            ->where('statut', CourrierStatut::EN_DISPATCH)->latest('id')->first();
+        if ($transition !== null && $transition->accuse_reception_at === null) {
+            throw ValidationException::withMessages(['dispatch' => 'Le bordereau doit être réceptionné par SEC2 avant exécution.']);
+        }
+
+        return $dispatch;
+    }
+
+    private function executerAction(DispatchCourrier $dispatch, User $acteur, ?UploadedFile $preuve = null, ?string $reference = null, bool $classement = false): DispatchCourrier
+    {
+        $dispatch = DB::transaction(function () use ($dispatch, $acteur, $preuve, $reference, $classement) {
+            $dispatch = $this->verrouillerPourExecution($dispatch, $acteur);
+            if (($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT) !== $classement
+                || ($classement && ! ClassementDocument::query()->where('dispatch_courrier_id', $dispatch->id)->where('courrier_id', $dispatch->courrier_id)->exists())) {
+                throw ValidationException::withMessages(['dispatch' => 'Le type de décision exige son action institutionnelle et son classement matériel.']);
             }
             if ($dispatch->type_destination === DispatchTypeDestination::EXTERIEUR && $preuve === null && blank($reference)) {
                 throw ValidationException::withMessages(['preuve' => "Une référence ou une preuve d'envoi est requise pour un destinataire extérieur."]);
@@ -152,39 +197,50 @@ class DispatchCourrierService
     /** Compatibilité de l'ancien bouton SEC2 : matérialise les imputations déjà décidées, puis les exécute. */
     public function executerDepuisImputations(Courrier $courrier, User $acteur): Courrier
     {
-        $courrier = Courrier::withoutGlobalScopes()->findOrFail($courrier->id);
-        if ($courrier->statut !== CourrierStatut::EN_DISPATCH) {
-            throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas en attente de dispatch."]);
-        }
-        if ($courrier->transitions()->where('statut', CourrierStatut::EN_DISPATCH)->whereNull('accuse_reception_at')->exists()) {
-            throw ValidationException::withMessages(['courrier' => 'Le bordereau doit être réceptionné par SEC2 avant exécution.']);
-        }
+        return DB::transaction(function () use ($courrier, $acteur) {
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
+            if (! $this->delegations->utilisateurHabilite($acteur, [Poste::SECRETARIAT_2])) {
+                throw ValidationException::withMessages(['courrier' => "Vous n'êtes pas habilité à exécuter ce dispatch."]);
+            }
+            $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
+            if ($courrier->statut !== CourrierStatut::EN_DISPATCH) {
+                throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas en attente de dispatch."]);
+            }
+            if ($courrier->transitions()->where('statut', CourrierStatut::EN_DISPATCH)->whereNull('accuse_reception_at')->exists()) {
+                throw ValidationException::withMessages(['courrier' => 'Le bordereau doit être réceptionné par SEC2 avant exécution.']);
+            }
 
-        if (! $courrier->dispatchs()->exists()) {
-            DB::transaction(function () use ($courrier, $acteur) {
-                $imputations = $courrier->imputations()->get();
-                if ($imputations->isEmpty()) {
-                    throw ValidationException::withMessages(['courrier' => 'Aucune décision de destination ne peut être exécutée.']);
-                }
-                foreach ($imputations as $imputation) {
-                    DispatchCourrier::query()->create([
-                        'courrier_id' => $courrier->id, 'dossier_id' => $courrier->dossier_id,
-                        'type_destination' => DispatchTypeDestination::DIRECTION, 'direction_id' => $imputation->direction_id,
-                        'instruction' => 'Orientation issue de l’imputation existante.',
-                        'decisionnaire_id' => $courrier->avis_dg_rendu_par_id ?? $acteur->id,
-                        'decisionnaire_poste' => $courrier->avis_dg_rendu_en_interim ? Poste::DGA : Poste::DG,
-                        'autorite_poste' => Poste::DG, 'decide_at' => $courrier->avis_dg_rendu_at ?? now(),
-                        'statut' => DispatchStatut::EN_ATTENTE,
-                    ]);
-                }
-            });
-        }
+            if (! $courrier->dispatchs()->exists()) {
+                DB::transaction(function () use ($courrier) {
+                    $imputations = $courrier->imputations()->with('imputeePar')->lockForUpdate()->get();
+                    if ($imputations->isEmpty()) {
+                        throw ValidationException::withMessages(['courrier' => 'Aucune décision de destination ne peut être exécutée.']);
+                    }
+                    foreach ($imputations as $imputation) {
+                        $auteur = $imputation->imputeePar;
+                        if ($auteur === null) {
+                            throw ValidationException::withMessages(['courrier' => "Cette imputation historique ne peut pas être exécutée car son autorité d'origine n'est pas identifiable."]);
+                        }
+                        DispatchCourrier::query()->create([
+                            'courrier_id' => $courrier->id, 'dossier_id' => $courrier->dossier_id,
+                            'type_destination' => DispatchTypeDestination::DIRECTION, 'direction_id' => $imputation->direction_id,
+                            'instruction' => 'Orientation issue de l’imputation existante.',
+                            'decisionnaire_id' => $auteur->id,
+                            'decisionnaire_poste' => $auteur->poste,
+                            'autorite_poste' => Poste::DG,
+                            'decide_at' => $imputation->created_at,
+                            'statut' => DispatchStatut::EN_ATTENTE,
+                        ]);
+                    }
+                });
+            }
 
-        foreach (DispatchCourrier::query()->where('courrier_id', $courrier->id)->where('statut', DispatchStatut::EN_ATTENTE)->get() as $dispatch) {
-            $this->executer($dispatch, $acteur);
-        }
+            foreach (DispatchCourrier::query()->where('courrier_id', $courrier->id)->where('statut', DispatchStatut::EN_ATTENTE)->get() as $dispatch) {
+                $this->executer($dispatch, $acteur);
+            }
 
-        return Courrier::withoutGlobalScopes()->findOrFail($courrier->id)->load('dispatchs.direction');
+            return Courrier::withoutGlobalScopes()->findOrFail($courrier->id)->load('dispatchs.direction');
+        });
     }
 
     public function accuserReception(DispatchCourrier $dispatch, User $acteur): DispatchCourrier

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
@@ -35,6 +36,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\DispatchCourrierService;
+use Modules\Courrier\Services\PdfOfficielIntegrity;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
@@ -64,6 +66,10 @@ class CourrierController extends Controller
         $this->authorize('viewAny', Courrier::class);
 
         $query = Courrier::query()->with(['directionOrigine', 'directionDestination', 'transitions']);
+        if ($request->filled('sens')) {
+            $request->validate(['sens' => ['in:entrant,sortant']]);
+            $query->where('sens', $request->string('sens')->toString());
+        }
 
         if ($request->filled('statut')) {
             $query->where('statut', $request->string('statut'));
@@ -557,6 +563,11 @@ class CourrierController extends Controller
         $this->authorize('view', $courrier);
 
         abort_unless($courrier->pdf_chemin, 404);
+
+        if ($courrier->signe_at !== null || $courrier->signataire_id !== null || filled($courrier->pdf_sha256)
+            || in_array($courrier->statut, [CourrierStatut::SIGNE, CourrierStatut::ENVOYE], true)) {
+            app(PdfOfficielIntegrity::class)->verifier($courrier);
+        }
 
         return Storage::disk('local')->download($courrier->pdf_chemin, "courrier-{$courrier->numero_accuse_reception}.pdf");
     }

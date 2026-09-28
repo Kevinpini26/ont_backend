@@ -70,12 +70,19 @@ class DispatchCourrierTest extends CourrierTestCase
         ]])->assertOk();
         [$interne, $classement] = $courrier->dispatchs()->orderBy('id')->get();
 
+        $this->receptionnerDispatchSec2($interne, $sec2);
+
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$interne->id}/executer")->assertOk();
         $this->assertSame(CourrierStatut::EN_DISPATCH, $courrier->fresh()->statut);
         $this->assertSame(DispatchStatut::EXECUTE, $interne->fresh()->statut);
         Notification::assertSentTo($secretariat, DispatchCourrierNotification::class);
 
-        $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$classement->id}/executer")->assertOk();
+        $this->receptionnerDispatchSec2($classement, $sec2);
+
+        $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$classement->id}/executer")->assertUnprocessable();
+        $this->assertDatabaseMissing('classements_documents', ['dispatch_courrier_id' => $classement->id]);
+        $this->receptionnerDispatchSec2($classement, $sec2);
+        $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$classement->id}/classer", ['emplacement' => 'Archives'])->assertOk();
         $this->assertSame(CourrierStatut::DISPATCH_EXECUTE, $courrier->fresh()->statut);
         $this->assertDatabaseHas('courrier_transitions', ['courrier_id' => $courrier->id, 'nouveau_statut' => 'dispatch_execute']);
     }
@@ -92,7 +99,10 @@ class DispatchCourrierTest extends CourrierTestCase
         ]]])->assertOk();
         $dispatch = $courrier->dispatchs()->firstOrFail();
 
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
+
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertUnprocessable()->assertJsonValidationErrors('preuve');
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->post("/api/v1/dispatchs/{$dispatch->id}/executer", [
             'reference_transmission' => 'BORD-2026-01',
             'preuve' => UploadedFile::fake()->create('bordereau.pdf', 40, 'application/pdf'),
@@ -116,6 +126,7 @@ class DispatchCourrierTest extends CourrierTestCase
             'instruction' => 'Transmettre selon le workflow historique.',
         ]]])->assertOk();
         $dispatch = $documentInterne->dispatchs()->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer", [
             'reference_transmission' => 'BORD-EXT-001',
         ])->assertOk();
@@ -142,6 +153,7 @@ class DispatchCourrierTest extends CourrierTestCase
         $dispatch = $courrier->dispatchs()->firstOrFail();
 
         $this->actingAs($secretariatA)->getJson('/api/v1/dispatchs/boite-direction')->assertOk()->assertJsonCount(0, 'data');
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         $this->actingAs($secretariatA)->getJson('/api/v1/dispatchs/boite-direction')->assertOk()->assertJsonCount(1, 'data');
         $this->actingAs($secretariatB)->getJson('/api/v1/dispatchs/boite-direction')->assertOk()->assertJsonCount(0, 'data');
@@ -190,6 +202,7 @@ class DispatchCourrierTest extends CourrierTestCase
         $this->actingAs($dga)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertForbidden();
         $this->actingAs($directeur)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertForbidden();
         $this->actingAs($sec2)->putJson("/api/v1/dispatchs/{$dispatch->id}", ['direction_id' => $centrale->id])->assertNotFound();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         $dispatch->refresh();
         $this->assertSame($destination->id, $dispatch->direction_id);
@@ -216,6 +229,7 @@ class DispatchCourrierTest extends CourrierTestCase
         ]]])->assertOk();
         $premier = $courrier->dispatchs()->firstOrFail();
         $this->assertSame(1, $premier->cycle);
+        $this->receptionnerDispatchSec2($premier, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$premier->id}/executer")->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [['type' => 'classement', 'instruction' => 'Trop tôt.']]])->assertUnprocessable();
 
@@ -237,6 +251,8 @@ class DispatchCourrierTest extends CourrierTestCase
         $this->assertSame($dg->id, $classement->decisionnaire_id);
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [['type' => 'classement', 'instruction' => 'Double clic.']]])->assertForbidden();
         $this->assertSame(2, $courrier->dispatchs()->count());
+
+        $this->receptionnerDispatchSec2($classement, $sec2);
 
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$classement->id}/classer", ['emplacement' => 'Archives A'])->assertOk();
         $classementDocument = $courrier->classement()->firstOrFail();
@@ -266,6 +282,7 @@ class DispatchCourrierTest extends CourrierTestCase
         ]])->assertOk();
         [$dispatchA, $dispatchB] = $courrier->dispatchs()->orderBy('id')->get();
         foreach ([$dispatchA, $dispatchB] as $dispatch) {
+            $this->receptionnerDispatchSec2($dispatch, $sec2);
             $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         }
         $this->terminerTraitement($dispatchA, $secretariatA, $directeurA);

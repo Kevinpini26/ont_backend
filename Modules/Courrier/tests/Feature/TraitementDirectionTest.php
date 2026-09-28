@@ -113,6 +113,7 @@ class TraitementDirectionTest extends CourrierTestCase
             ['type' => 'direction', 'direction_id' => $directionB->id, 'instruction' => 'B'],
         ]])->assertOk();
         foreach ($courrier->dispatchs as $dispatch) {
+            $this->receptionnerDispatchSec2($dispatch, $sec2);
             $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         }
         $dispatchA = $courrier->dispatchs()->where('direction_id', $directionA->id)->firstOrFail();
@@ -146,6 +147,7 @@ class TraitementDirectionTest extends CourrierTestCase
             'type' => 'direction', 'direction_id' => $direction->id, 'instruction' => 'Pour traitement.',
         ]]])->assertOk();
         $dispatch = $courrier->dispatchs()->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
 
         return [$courrier, $dispatch, $secretariat, $directeur, $sec2];

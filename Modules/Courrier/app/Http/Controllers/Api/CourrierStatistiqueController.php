@@ -15,6 +15,7 @@ use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\PeriodeStatistique;
 
 class CourrierStatistiqueController extends Controller
@@ -34,7 +35,8 @@ class CourrierStatistiqueController extends Controller
         $this->authorize('voirStatistiques', Courrier::class);
 
         $periode = new PeriodeStatistique($request->string('periode', '30j')->toString());
-        $sec1 = $request->user()->poste === Poste::SECRETARIAT_1;
+        $poste = app(DelegationResolver::class)->posteDelegueAujourdhui($request->user()) ?? $request->user()->poste;
+        $sec1 = $request->user()->poste === Poste::SECRETARIAT_1 || $poste === Poste::SECRETARIAT_2;
         $visibles = fn () => Courrier::query()->select('courriers.id');
         $courriers = fn () => DB::table('courriers')
             ->when($sec1, fn ($query) => $query->whereIn('courriers.id', $visibles()));
@@ -306,7 +308,8 @@ class CourrierStatistiqueController extends Controller
     {
         $this->authorize('voirJustesseTri', Courrier::class);
 
-        $sec1 = $request->user()->poste === Poste::SECRETARIAT_1;
+        $poste = app(DelegationResolver::class)->posteDelegueAujourdhui($request->user()) ?? $request->user()->poste;
+        $sec1 = $request->user()->poste === Poste::SECRETARIAT_1 || $poste === Poste::SECRETARIAT_2;
         $visibles = fn () => Courrier::query()->select('courriers.id');
 
         $tries = CourrierTransition::query()

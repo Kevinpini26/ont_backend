@@ -20,9 +20,15 @@ class CourrierResource extends JsonResource
     {
         $masquerProjetSec1 = $request->user()?->poste === Poste::SECRETARIAT_1
             && ! app(DelegationResolver::class)->utilisateurHabilite($request->user(), [Poste::DG]);
+        $posteEffectif = $request->user() === null ? null : (app(DelegationResolver::class)->posteDelegueAujourdhui($request->user()) ?? $request->user()->poste);
+        $masquerProjetSec2 = $posteEffectif === Poste::SECRETARIAT_2
+            && ! app(DelegationResolver::class)->utilisateurHabilite($request->user(), [Poste::DG, Poste::DGA])
+            && $this->relecteur_id !== $request->user()->id;
+        $masquerProjet = $masquerProjetSec1 || $masquerProjetSec2;
 
         return [
             'id' => $this->id,
+            'peut_annoter' => $request->user() !== null && Gate::forUser($request->user())->allows('annoter', $this->resource),
             'dossier_id' => $this->dossier_id,
             'numero_accuse_reception' => $this->numero_accuse_reception,
             'numero_enregistrement' => $this->numero_enregistrement,
@@ -106,18 +112,18 @@ class CourrierResource extends JsonResource
                 'lettre_demande_disponible' => filled($this->lettre_demande_chemin),
             ]),
             'avis_dg' => $this->avis_dg?->value,
-            'avis_dg_commentaire' => $masquerProjetSec1 ? null : $this->avis_dg_commentaire,
+            'avis_dg_commentaire' => $masquerProjet ? null : $this->avis_dg_commentaire,
             'avis_dg_rendu_par' => $this->whenLoaded('avisDgRenduPar', fn () => $this->avisDgRenduPar?->name),
             // Trace claire de qui a réellement pris la décision quand la DGA
             // intervient en intérim de la DG — visible sur le courrier une
             // fois traité, voir CourrierCircuitService::rendreAvisDg().
             'avis_dg_rendu_en_interim' => $this->avis_dg_rendu_en_interim,
             'anonymise_at' => $this->anonymise_at,
-            'projet_reponse_contenu' => $masquerProjetSec1 ? null : $this->projet_reponse_contenu,
+            'projet_reponse_contenu' => $masquerProjet ? null : $this->projet_reponse_contenu,
             'relecteur' => new UserResource($this->whenLoaded('relecteur')),
             'relecture_validee_at' => $this->relecture_validee_at,
-            'relecture_commentaire' => $this->relecture_commentaire,
-            'projet_renvoi_observation' => $masquerProjetSec1 ? null : $this->projet_renvoi_observation,
+            'relecture_commentaire' => $masquerProjetSec2 ? null : $this->relecture_commentaire,
+            'projet_renvoi_observation' => $masquerProjet ? null : $this->projet_renvoi_observation,
             'projet_renvoye_at' => $this->projet_renvoye_at,
             'projet_renvoye_par' => $this->whenLoaded('projetRenvoyePar', fn () => $this->projetRenvoyePar?->name),
             'signataire' => new UserResource($this->whenLoaded('signataire')),
@@ -150,7 +156,7 @@ class CourrierResource extends JsonResource
                     'tour' => $transition->tour,
                     'emetteur' => $transition->auteur?->name,
                     'expediteur_poste' => $transition->expediteur_poste,
-                    'instruction' => $transition->instruction,
+                    'instruction' => $masquerProjetSec2 && $transition->destinataire_poste !== Poste::SECRETARIAT_2->value ? null : $transition->instruction,
                     'destinataire' => match (true) {
                         $transition->destinataire_user_id !== null => $transition->destinataireUser?->name,
                         $transition->destinataire_poste !== null => Poste::from($transition->destinataire_poste)->label(),

@@ -92,7 +92,7 @@ class CourrierSortantTest extends CourrierTestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('relecteur_id');
     }
 
-    private function creerReponseEnRelecture(Direction $direction, User $relecteur): Courrier
+    private function creerReponseEnRelecture(Direction $direction, User $relecteur, string $destinataire = 'Partenaire', ?string $email = null): Courrier
     {
         $original = Courrier::factory()->create(['direction_origine_id' => $direction->id]);
         $this->marquerDecharge($original);
@@ -101,6 +101,8 @@ class CourrierSortantTest extends CourrierTestCase
         $id = $this->actingAs($responsable)->postJson("/api/v1/courriers/{$original->id}/initier-reponse", [
             'projet_reponse_contenu' => $this->projetVide,
             'relecteur_id' => $relecteur->id,
+            'destinataire_externe_nom' => $destinataire,
+            'destinataire_externe_email' => $email,
         ])->json('data.id');
 
         return Courrier::withoutGlobalScopes()->findOrFail($id);
@@ -113,7 +115,7 @@ class CourrierSortantTest extends CourrierTestCase
         $dg = $this->agent(Poste::DG, $direction);
         $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
 
-        $reponse = $this->creerReponseEnRelecture($direction, $relecteur);
+        $reponse = $this->creerReponseEnRelecture($direction, $relecteur, 'Ministère du Tourisme', 'contact@ministere.cd');
 
         $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$reponse->id}/accuser-reception")->assertOk();
         $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$reponse->id}/valider-relecture", [])->assertOk();

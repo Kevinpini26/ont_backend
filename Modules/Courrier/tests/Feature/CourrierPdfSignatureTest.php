@@ -26,6 +26,7 @@ class CourrierPdfSignatureTest extends CourrierTestCase
             // circuit 'complet' route désormais ce même rôle vers
             // PROJET_A_VALIDER (voir CourrierStatut::PROJET_A_VALIDER).
             'sens' => 'sortant',
+            'destinataire_externe_nom' => 'Partenaire signé',
             'statut' => CourrierStatut::EN_RELECTURE,
             'relecteur_id' => $relecteur->id,
             'relecture_validee_at' => now(),
@@ -71,6 +72,7 @@ class CourrierPdfSignatureTest extends CourrierTestCase
             'signataire_id' => $dg->id,
             'signe_at' => now(),
             'pdf_chemin' => 'courriers-signes/courrier-test.pdf',
+            'pdf_sha256' => hash('sha256', '%PDF-1.7 contenu de test'),
         ]);
         Storage::disk('local')->put($courrier->pdf_chemin, '%PDF-1.7 contenu de test');
 

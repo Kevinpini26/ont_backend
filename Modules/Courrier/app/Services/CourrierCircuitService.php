@@ -41,6 +41,7 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
@@ -227,6 +228,7 @@ class CourrierCircuitService
      */
     public function initierParDg(User $secretariat1, array $donnees): Courrier
     {
+        $this->assertRelecteurNonSec2((int) $donnees['relecteur_id']);
         if (! $this->delegations->utilisateurHabilite($secretariat1, [Poste::SECRETARIAT_1])) {
             throw TransitionNonAutoriseeException::posteNonHabilite();
         }
@@ -1009,6 +1011,8 @@ class CourrierCircuitService
      */
     public function soumettreProjetReponse(Courrier $courrier, User $utilisateur, array $projetReponseContenu, int $relecteurId): Courrier
     {
+        $this->assertRelecteurNonSec2($relecteurId);
+
         return DB::transaction(function () use ($courrier, $utilisateur, $projetReponseContenu, $relecteurId) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::PROJET_A_VALIDER);
@@ -1232,6 +1236,11 @@ class CourrierCircuitService
             // signé porte déjà sa référence officielle, même si sa remise
             // matérielle suit de quelques heures ou jours.
             if ($courrier->sens === SensCourrier::SORTANT) {
+                if (blank($courrier->destinataire_externe_nom)
+                    && ($courrier->missionProjetReponse()->exists()
+                        || AuditLog::query()->where('auditable_type', $courrier->getMorphClass())->where('auditable_id', $courrier->id)->where('action', 'courrier.sortant_prepare')->exists())) {
+                    throw ValidationException::withMessages(['destinataire_externe_nom' => 'Le destinataire doit être déterminé avant la signature.']);
+                }
                 $courrier->numero_depart = $this->numeros->genererNumeroDepart();
             }
 
@@ -1366,6 +1375,8 @@ class CourrierCircuitService
 
     private function creerCourrierSortant(User $auteur, array $donnees, ?Courrier $original): Courrier
     {
+        $this->assertRelecteurNonSec2((int) $donnees['relecteur_id']);
+
         return DB::transaction(function () use ($auteur, $donnees, $original) {
             $courrier = Courrier::query()->create([
                 ...$donnees,
@@ -1392,6 +1403,10 @@ class CourrierCircuitService
                 $this->relationsDocumentaires->relier($courrier, $original, DocumentRelationType::REPONSE_A, $auteur);
             }
 
+            $this->audit->enregistrer('courrier.sortant_prepare', $courrier, $auteur, [
+                'destinataire_predefini' => filled($courrier->destinataire_externe_nom),
+            ]);
+
             return $courrier;
         });
     }
@@ -1407,6 +1422,18 @@ class CourrierCircuitService
         $courrier = DB::transaction(function () use ($courrier, $utilisateur, $donnees) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENVOYE);
+            if ($courrier->signe_at === null || $courrier->signataire_id === null
+                || ! $courrier->signataire()->exists() || blank($courrier->numero_depart)
+                || ! $courrier->relectureEstValidee()) {
+                throw ValidationException::withMessages(['courrier' => 'La signature, la relecture validée et le numéro de départ sont requis avant envoi.']);
+            }
+            $signataire = $courrier->signataire;
+            if ($signataire->poste !== Poste::DG
+                && ! $courrier->transitions()->where('statut', CourrierStatut::SIGNE)
+                    ->where('changed_by_id', $signataire->id)->where('agi_en_interim', true)->exists()) {
+                throw ValidationException::withMessages(['courrier' => 'La signature institutionnelle autorisée est requise avant envoi.']);
+            }
+            app(PdfOfficielIntegrity::class)->verifier($courrier);
 
             $origine = $this->origineExternePubliqueDeLaReponse($courrier);
             if ($origine !== null) {
@@ -1418,7 +1445,7 @@ class CourrierCircuitService
                 }
                 $donnees['destinataire_externe_nom'] = $origine->expediteur_externe_nom;
                 $donnees['destinataire_externe_email'] = $origine->expediteur_externe_email;
-            } elseif ($courrier->missionProjetReponse()->exists()) {
+            } elseif ($courrier->missionProjetReponse()->exists() || filled($courrier->destinataire_externe_nom)) {
                 $nomSaisi = trim((string) ($donnees['destinataire_externe_nom'] ?? ''));
                 $emailSaisi = mb_strtolower(trim((string) ($donnees['destinataire_externe_email'] ?? '')));
                 $emailProjet = mb_strtolower(trim((string) ($courrier->destinataire_externe_email ?? '')));
@@ -1439,10 +1466,16 @@ class CourrierCircuitService
             $courrier->save();
             $this->tracerTransition($courrier, $utilisateur);
 
+            $this->audit->enregistrer('courrier.envoye', $courrier, $utilisateur, [
+                'date_envoi' => $courrier->date_envoi,
+                'destinataire' => $courrier->destinataire_externe_email ?? $courrier->destinataire_externe_nom,
+                'numero_depart' => $courrier->numero_depart,
+            ]);
+
             return $courrier;
         });
 
-        $this->notifierReponseExterneEnvoyee($courrier, $utilisateur);
+        DB::afterCommit(fn () => $this->notifierReponseExterneEnvoyee($courrier, $utilisateur));
 
         return $courrier;
     }
@@ -1494,13 +1527,21 @@ class CourrierCircuitService
             return null;
         }
 
-        return Courrier::withoutGlobalScopes()
+        $origine = Courrier::withoutGlobalScopes()
             ->whereKey($reponse->en_reponse_a_courrier_id)
             ->where('dossier_id', $reponse->dossier_id)
             ->where('sens', SensCourrier::ENTRANT)
-            ->where('mode_reception', ModeReception::DEPOT_EN_LIGNE)
             ->whereNotNull('expediteur_externe_email')
             ->first();
+
+        return $origine !== null && filter_var($origine->expediteur_externe_email, FILTER_VALIDATE_EMAIL) ? $origine : null;
+    }
+
+    private function assertRelecteurNonSec2(int $relecteurId): void
+    {
+        if (User::query()->whereKey($relecteurId)->where('poste', Poste::SECRETARIAT_2)->exists()) {
+            throw ValidationException::withMessages(['relecteur_id' => 'SEC2 ne peut pas être désigné comme relecteur dans un nouveau circuit.']);
+        }
     }
 
     /**

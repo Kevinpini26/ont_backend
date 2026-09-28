@@ -9,6 +9,7 @@ use Modules\Courrier\Http\Resources\CourrierAnnotationResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Support\DelegationResolver;
 
 class CourrierAnnotationController extends Controller
 {
@@ -19,7 +20,8 @@ class CourrierAnnotationController extends Controller
         $this->authorize('view', $courrier);
 
         $query = $courrier->annotations()->with('auteur');
-        if ($request->user()->poste === Poste::SECRETARIAT_1 && ! $request->user()->can('annoter', $courrier)) {
+        $poste = app(DelegationResolver::class)->posteDelegueAujourdhui($request->user()) ?? $request->user()->poste;
+        if (($request->user()->poste === Poste::SECRETARIAT_1 || $poste === Poste::SECRETARIAT_2) && ! $request->user()->can('annoter', $courrier)) {
             $query->where('auteur_id', $request->user()->id);
         }
 

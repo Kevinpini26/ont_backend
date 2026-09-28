@@ -157,6 +157,10 @@ class CourrierPolicy
      */
     public function accuserReception(User $user, Courrier $courrier): bool
     {
+        if ($courrier->statut === CourrierStatut::EN_DISPATCH
+            && $courrier->bordereauCourant()?->destinataire_poste === Poste::SECRETARIAT_2->value) {
+            return $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_2]);
+        }
         if ($courrier->enAttenteValidationRelecteur()) {
             return $courrier->relecteur_id === $user->id;
         }
@@ -202,6 +206,10 @@ class CourrierPolicy
     {
         if (! $this->view($user, $courrier)) {
             return false;
+        }
+
+        if (($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) === Poste::SECRETARIAT_2) {
+            return $this->delegations->utilisateurHabilite($user, [Poste::DG, Poste::DGA]);
         }
 
         if ($user->poste !== Poste::SECRETARIAT_1) {

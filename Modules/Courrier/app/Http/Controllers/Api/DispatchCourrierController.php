@@ -39,6 +39,10 @@ class DispatchCourrierController extends Controller
     {
         abort_unless(app(DelegationResolver::class)->utilisateurHabilite($request->user(), [Poste::SECRETARIAT_2]), 403);
         $query = DispatchCourrier::query()->with(['courrier', 'direction', 'decisionnaire', 'executePar'])->latest('decide_at');
+        $request->validate(['type' => ['nullable', 'in:direction,exterieur,classement'], 'statut' => ['nullable', 'in:en_attente,execute,annule']]);
+        if ($request->filled('type')) {
+            $query->where('type_destination', $request->string('type')->toString());
+        }
         if ($request->filled('statut')) {
             $query->where('statut', $request->string('statut'));
         }

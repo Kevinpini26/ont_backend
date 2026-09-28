@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -10,6 +11,15 @@ use Tests\TestCase;
 
 abstract class CourrierTestCase extends TestCase
 {
+    protected function receptionnerDispatchSec2(DispatchCourrier $dispatch, User $sec2): void
+    {
+        $transition = $dispatch->courrier()->withoutGlobalScopes()->firstOrFail()->transitions()
+            ->where('statut', 'en_dispatch')->where('destinataire_poste', Poste::SECRETARIAT_2->value)->latest('id')->first();
+        if ($transition !== null && $transition->accuse_reception_at === null) {
+            $this->actingAs($sec2)->postJson("/api/v1/courriers/{$dispatch->courrier_id}/accuser-reception")->assertOk();
+        }
+    }
+
     protected function agent(Poste $poste, Direction $direction): User
     {
         return User::factory()->agentCircuitCourrier($poste, $direction)->create();

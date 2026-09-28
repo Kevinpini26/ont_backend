@@ -186,6 +186,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
             ]]])->assertOk();
             $dispatchClassement = $document->dispatchs()->where('type_destination', 'classement')->firstOrFail();
             $this->assertSame($cyclePrecedent + 1, $dispatchClassement->cycle);
+            $this->receptionnerDispatchSec2($dispatchClassement, $sec2);
             $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatchClassement->id}/classer", [
                 'cote' => 'DOSSIER-X-'.($index + 1), 'emplacement' => 'Archives / X',
             ])->assertOk();
@@ -257,6 +258,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertSame(1, $dispatch->cycle);
         $this->assertSame($dg->id, $dispatch->decisionnaire_id);
         $this->actingAs($dg)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertForbidden();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         $this->actingAs($secretariat)->postJson("/api/v1/dispatchs/{$dispatch->id}/accuser-reception")->assertOk();
         $traitement = TraitementDirection::query()->where('dispatch_courrier_id', $dispatch->id)->firstOrFail();

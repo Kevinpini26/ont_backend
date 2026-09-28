@@ -27,6 +27,8 @@ class InitierCourrierSortantRequest extends FormRequest
         return [
             // Pas de courrier d'origine dont dériver un objet par défaut ici.
             'objet' => ['required', 'string', 'max:255'],
+            'destinataire_externe_nom' => ['nullable', 'string', 'max:255'],
+            'destinataire_externe_email' => ['nullable', 'email', 'max:255'],
             'projet_reponse_contenu' => ['required', 'array'],
             'relecteur_id' => ['required', 'integer', 'exists:users,id'],
             'degre_urgence' => ['nullable', Rule::enum(DegreUrgence::class)],
