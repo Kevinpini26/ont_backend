@@ -55,6 +55,7 @@ class DispatchCourrierService
                     'destinations' => 'Un courrier sortant déjà envoyé ne peut être orienté que vers le classement.',
                 ]);
             }
+            $this->cycles->assertReceptionDg($courrier);
             $this->cycles->assertPeutOuvrir($courrier);
             $cycle = $this->cycles->prochainNumero($courrier);
 

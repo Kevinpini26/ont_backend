@@ -16,6 +16,7 @@ use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Notifications\CourrierDgNotification;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
@@ -135,7 +136,13 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
             'mode_expedition' => 'courriel',
         ])->assertNotFound();
         $this->actingAs($assistant2)->postJson("/api/v1/courriers/{$d->id}/accuser-reception")->assertOk();
+        $this->assertSame(0, Notification::sent($dg, CourrierDgNotification::class)
+            ->filter(fn ($notification) => $notification->toArray($dg)['courrier_id'] === $d->id)->count());
         $this->actingAs($assistant2)->postJson("/api/v1/courriers/{$d->id}/valider-relecture")->assertOk();
+        $this->assertSame('retournee', MissionDocumentaire::query()->findOrFail($missionReponseId)->statut->value);
+        $this->assertSame(1, Notification::sent($dg, CourrierDgNotification::class)
+            ->filter(fn ($notification) => $notification->toArray($dg)['courrier_id'] === $d->id
+                && $notification->toArray($dg)['evenement'] === 'pret_a_signer')->count());
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/signer")->assertOk();
         $d->refresh();
         $this->assertNotNull($d->signataire_id);
@@ -246,6 +253,11 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
+        $evenement = DocumentProduitDirection::query()->where('courrier_id', $courrier->id)->exists()
+            ? 'retour_direction_a_decider' : 'pret_a_traiter';
+        $this->assertSame(1, Notification::sent($dg, CourrierDgNotification::class)
+            ->filter(fn ($notification) => $notification->toArray($dg)['courrier_id'] === $courrier->id
+                && $notification->toArray($dg)['evenement'] === $evenement)->count());
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
     }
 

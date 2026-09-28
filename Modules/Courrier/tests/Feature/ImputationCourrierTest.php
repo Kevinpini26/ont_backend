@@ -77,7 +77,7 @@ class ImputationCourrierTest extends CourrierTestCase
             ->assertForbidden();
     }
 
-    public function test_un_poste_du_circuit_central_peut_imputer_un_courrier(): void
+    public function test_nouvelle_imputation_est_refusee_au_profit_du_dispatch(): void
     {
         $courrier = Courrier::factory()->create();
         $principale = Direction::factory()->create();
@@ -91,9 +91,8 @@ class ImputationCourrierTest extends CourrierTestCase
             ],
         ]);
 
-        $reponse->assertOk();
-        $this->assertCount(2, $courrier->fresh()->imputations);
-        $this->assertSame($principale->id, $courrier->fresh()->directionPrincipale()->direction_id);
+        $reponse->assertUnprocessable()->assertJsonValidationErrors('imputations');
+        $this->assertCount(0, $courrier->fresh()->imputations);
     }
 
     public function test_imputer_sans_direction_principale_est_refuse(): void
@@ -112,7 +111,7 @@ class ImputationCourrierTest extends CourrierTestCase
             ->assertJsonValidationErrors('imputations');
     }
 
-    public function test_appeler_imputer_deux_fois_remplace_lensemble_plutot_que_dajouter(): void
+    public function test_imputation_historique_ne_peut_pas_etre_remplacee(): void
     {
         $courrier = Courrier::factory()->create();
         $directionInitiale = Direction::factory()->create();
@@ -125,12 +124,19 @@ class ImputationCourrierTest extends CourrierTestCase
             ],
         ];
 
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($directionInitiale->id))->assertOk();
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($nouvelleDirection->id))->assertOk();
+        $historique = $courrier->imputations()->create([
+            'direction_id' => $directionInitiale->id, 'mention' => 'pour_attribution',
+            'est_principale' => true, 'imputee_par_id' => $dg->id,
+        ]);
+        $historique->refresh();
+        $avant = $historique->getRawOriginal();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", $payload($nouvelleDirection->id))
+            ->assertUnprocessable()->assertJsonValidationErrors('imputations');
 
         $imputations = $courrier->fresh()->imputations;
         $this->assertCount(1, $imputations);
-        $this->assertSame($nouvelleDirection->id, $imputations->first()->direction_id);
+        $this->assertSame($directionInitiale->id, $imputations->first()->direction_id);
+        $this->assertSame($avant, $historique->fresh()->getRawOriginal());
     }
 
     public function test_un_responsable_de_direction_ne_peut_pas_imputer_un_courrier(): void

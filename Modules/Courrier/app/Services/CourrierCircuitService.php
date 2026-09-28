@@ -33,10 +33,12 @@ use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\EmpruntOriginal;
 use Modules\Courrier\Models\InstructionCourrierDg;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\ReorientationTri;
+use Modules\Courrier\Notifications\CourrierDgNotification;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
@@ -65,6 +67,8 @@ class CourrierCircuitService
         private readonly NotificationService $notifications,
         private readonly DelegationResolver $delegations,
         private readonly DocumentRelationService $relationsDocumentaires,
+        private readonly DispatchCourrierService $dispatchs,
+        private readonly DossierWorkflowGuard $dossiers,
     ) {}
 
     public function creer(User $auteur, array $donnees, bool $numerisationImpossible = false): Courrier
@@ -720,6 +724,7 @@ class CourrierCircuitService
             ]);
             if ($statutCible === CourrierStatut::EN_ATTENTE_AVIS_DG) {
                 $this->audit->enregistrer('courrier.transmis_dg', $courrier, $utilisateur, ['depuis' => CourrierStatut::EN_ATTENTE_TRI->value]);
+                $this->notifierDgApresCommit($courrier);
             }
 
             return $courrier;
@@ -743,6 +748,7 @@ class CourrierCircuitService
             $this->tracerTransition($courrier, $utilisateur, instruction: $instruction);
 
             $this->audit->enregistrer('courrier.transmis_dg', $courrier, $utilisateur, ['depuis' => CourrierStatut::EN_ATTENTE_CLASSEUR->value]);
+            $this->notifierDgApresCommit($courrier);
 
             return $courrier;
         });
@@ -804,7 +810,8 @@ class CourrierCircuitService
                 throw TransitionNonAutoriseeException::sautDetape();
             }
 
-            $enInterim = $utilisateur->poste === Poste::DGA;
+            $enInterim = $utilisateur->poste === Poste::DGA
+                && ! $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
             $delegue = $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
 
             if (! $delegue && ! ($enInterim && DgDisponibilite::estDisponible() === false)) {
@@ -910,6 +917,10 @@ class CourrierCircuitService
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $avis, $commentaire) {
             $courrier = $this->lockCourrierFrais($courrier);
+            if ($courrier->statut !== CourrierStatut::EN_ATTENTE_AVIS_DG) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+            $imputationAutomatiqueDfp = null;
 
             // Lot A (tableau généré, non ressaisi) : une demande de stage
             // n'a de sens que traitée par la DFP — sans ce filet, un avis
@@ -936,6 +947,7 @@ class CourrierCircuitService
                         'est_principale' => true,
                         'imputee_par_id' => $utilisateur->id,
                     ]);
+                    $imputationAutomatiqueDfp = $directionDfp;
                 }
             }
 
@@ -947,6 +959,24 @@ class CourrierCircuitService
             // compris par le filet ci-dessus, part en dispatch plutôt
             // qu'en rédaction interne de réponse.
             $courrierImpute = $courrier->imputations()->where('est_principale', true)->exists();
+            if ($avis === AvisDg::FAVORABLE && $courrierImpute && $imputationAutomatiqueDfp === null) {
+                throw ValidationException::withMessages(['courrier' => 'Une nouvelle orientation doit être décidée par le dispatch institutionnel ; les imputations historiques ne sont pas réutilisées comme décision.']);
+            }
+            if ($imputationAutomatiqueDfp !== null) {
+                $this->assertDechargeDonnee($courrier);
+                $courrier = $this->dispatchs->decider($courrier, $utilisateur, [[
+                    'type' => 'direction',
+                    'direction_id' => $imputationAutomatiqueDfp->id,
+                    'instruction' => 'Orientation automatique de la demande de stage vers la DFP après avis favorable DG.',
+                ]]);
+                $this->audit->enregistrer('courrier.avis_dg_rendu', $courrier, $utilisateur, [
+                    'avis' => $avis->value,
+                    'orientation_dfp_automatique' => true,
+                ]);
+                DB::afterCommit(fn () => CourrierStageAvisFavorable::dispatch($courrier));
+
+                return $courrier;
+            }
             $statutCible = match (true) {
                 $avis === AvisDg::RESERVE => CourrierStatut::RETOUR_RECEPTION,
                 $avis === AvisDg::FAVORABLE && $courrierImpute => CourrierStatut::EN_DISPATCH,
@@ -957,7 +987,8 @@ class CourrierCircuitService
                 'courrier_impute' => $courrierImpute,
             ]);
 
-            $enInterim = $utilisateur->poste === Poste::DGA;
+            $enInterim = $utilisateur->poste === Poste::DGA
+                && ! $this->delegations->utilisateurHabilite($utilisateur, [Poste::DG]);
 
             if ($enInterim && DgDisponibilite::estDisponible()) {
                 throw TransitionNonAutoriseeException::posteNonHabilite();
@@ -1171,6 +1202,10 @@ class CourrierCircuitService
                         'projet_courrier_id' => $courrier->id,
                     ]);
                 }
+                if (($mission === null || $mission->statut === MissionDocumentaireStatut::RETOURNEE)
+                    && $courrier->destinataire_externe_nom !== null) {
+                    $this->notifierDgApresCommit($courrier, 'pret_a_signer');
+                }
             }
 
             return $courrier;
@@ -1222,9 +1257,15 @@ class CourrierCircuitService
         return DB::transaction(function () use ($courrier, $utilisateur) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::SIGNE);
+            $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
 
             if (! $courrier->relectureEstValidee()) {
                 throw new RelectureNonValideeException;
+            }
+            $mission = $courrier->missionProjetReponse()->first();
+            if ($mission !== null && ($mission->type !== MissionDocumentaireType::PREPARATION_REPONSE
+                || $mission->statut !== MissionDocumentaireStatut::RETOURNEE)) {
+                throw ValidationException::withMessages(['mission' => 'La mission de préparation de réponse doit être terminée avant signature.']);
             }
 
             $courrier->signataire_id = $utilisateur->id;
@@ -1639,6 +1680,17 @@ class CourrierCircuitService
             ]);
 
             return $emprunt;
+        });
+    }
+
+    private function notifierDgApresCommit(Courrier $courrier, ?string $evenement = null): void
+    {
+        $evenement ??= DocumentProduitDirection::query()->where('courrier_id', $courrier->id)->exists()
+            ? 'retour_direction_a_decider' : 'pret_a_traiter';
+        DB::afterCommit(function () use ($courrier, $evenement) {
+            User::query()->where('poste', Poste::DG)->each(
+                fn (User $dg) => $this->notifications->notifier($dg, new CourrierDgNotification($courrier, $evenement))
+            );
         });
     }
 }

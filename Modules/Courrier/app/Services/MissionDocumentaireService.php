@@ -23,6 +23,7 @@ class MissionDocumentaireService
         private readonly NotificationService $notifications,
         private readonly DelegationResolver $delegations,
         private readonly DossierWorkflowGuard $dossiers,
+        private readonly CycleDecisionnelService $cycles,
     ) {}
 
     public function creer(Courrier $courrier, User $acteur, User $assistant, string $instruction): MissionDocumentaire
@@ -45,6 +46,8 @@ class MissionDocumentaireService
             if ($courrier->statut !== CourrierStatut::EN_ATTENTE_AVIS_DG || $courrier->dossier_id === null) {
                 throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas sous contrôle DG/DGA pour une mission."]);
             }
+            $this->cycles->assertReceptionDg($courrier);
+            $this->cycles->assertPeutOuvrir($courrier);
             if ($courrier->missionsDocumentaires()->where('autorite_poste', $autorite)->whereIn('statut', [
                 MissionDocumentaireStatut::ASSIGNEE,
                 MissionDocumentaireStatut::EN_COURS,
@@ -100,6 +103,8 @@ class MissionDocumentaireService
             if (! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true) || $courrier->dossier_id === null) {
                 throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas sous contrôle de la DG."]);
             }
+            $this->cycles->assertReceptionDg($courrier);
+            $this->cycles->assertPeutOuvrir($courrier);
             if ($courrier->missionsDocumentaires()->where('autorite_poste', Poste::DG)->whereIn('statut', [
                 MissionDocumentaireStatut::ASSIGNEE,
                 MissionDocumentaireStatut::EN_COURS,
@@ -234,12 +239,15 @@ class MissionDocumentaireService
 
     private function autoriteDe(User $acteur): Poste
     {
+        if ($this->delegations->posteDelegueAujourdhui($acteur) === Poste::DG) {
+            return Poste::DG;
+        }
         if ($acteur->poste === Poste::DG || $acteur->poste === Poste::DGA) {
             return $acteur->poste;
         }
 
         $posteDelegue = $this->delegations->posteDelegueAujourdhui($acteur);
-        if ($posteDelegue === Poste::DG || $posteDelegue === Poste::DGA) {
+        if ($posteDelegue === Poste::DGA) {
             return $posteDelegue;
         }
 

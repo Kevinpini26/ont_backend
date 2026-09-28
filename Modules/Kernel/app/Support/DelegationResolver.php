@@ -3,6 +3,7 @@
 namespace Modules\Kernel\Support;
 
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\DelegationPoste;
 use Modules\Kernel\Models\User;
@@ -37,18 +38,38 @@ class DelegationResolver
      * de la visibilité inter-directions (voir
      * DefaultDirectionScopeBypassResolver). Une seule délégation active à
      * la fois par utilisateur est supposée ; en cas de chevauchement
-     * (erreur de saisie), la plus récemment créée gagne.
+     * (erreur de saisie), l'accès est refusé.
      */
     public function posteDelegueAujourdhui(User $utilisateur): ?Poste
     {
         // ->value('poste') hydrate quand même le modèle pour appliquer le
         // cast Poste::class : la valeur reçue ici est déjà une instance
         // Poste, pas une chaîne brute — Poste::from() planterait dessus.
-        return DelegationPoste::query()
+        $query = DelegationPoste::query()
             ->where('delegataire_id', $utilisateur->id)
             ->activesLe(Date::today())
-            ->latest('id')
-            ->value('poste');
+            ->orderBy('id');
+        // Une action transactionnelle conserve la délégation verrouillée
+        // jusqu'au commit : une révocation concurrente ne peut pas prendre
+        // effet entre la vérification du droit et l'action.
+        if (DB::transactionLevel() > 0) {
+            $query->lockForUpdate();
+        }
+        $delegations = $query->get();
+        if ($delegations->count() !== 1) {
+            return null;
+        }
+        $delegation = $delegations->first();
+        $memePoste = DelegationPoste::query()->where('poste', $delegation->poste)
+            ->activesLe(Date::today())->orderBy('id');
+        if (DB::transactionLevel() > 0) {
+            $memePoste->lockForUpdate();
+        }
+        if (count($memePoste->get()->all()) !== 1) {
+            return null;
+        }
+
+        return $delegation->poste;
     }
 
     /**

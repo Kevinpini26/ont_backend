@@ -98,6 +98,7 @@ class Secretariat1PerimetreTest extends CourrierTestCase
             'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
             'changed_by_id' => $sec1->id,
             'destinataire_poste' => Poste::DG->value,
+            'accuse_reception_at' => now(),
             'created_at' => now(),
         ]);
         $missionId = $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/demander-preparation-reponse", [

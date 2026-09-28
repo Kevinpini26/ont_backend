@@ -244,6 +244,11 @@ class DispatchCourrierTest extends CourrierTestCase
         $this->assertDatabaseCount('documents_produits_direction', 1);
 
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
+            'type' => 'classement', 'instruction' => 'Document B encore actif.',
+        ]]])->assertUnprocessable();
+        DocumentProduitDirection::query()->firstOrFail()->update(['statut' => 'entre_circuit']);
+
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
             'type' => 'classement', 'instruction' => 'Classer A.',
         ]]])->assertOk();
         $classement = $courrier->dispatchs()->where('cycle', 2)->firstOrFail();

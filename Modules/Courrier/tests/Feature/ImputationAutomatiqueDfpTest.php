@@ -46,7 +46,7 @@ class ImputationAutomatiqueDfpTest extends CourrierTestCase
         $this->assertSame('pour_attribution', $imputation->mention->value);
     }
 
-    public function test_une_imputation_manuelle_deja_posee_nest_pas_remplacee(): void
+    public function test_une_imputation_historique_ne_devient_pas_automatiquement_une_nouvelle_decision(): void
     {
         $direction = Direction::factory()->create();
         $directionChoisie = Direction::factory()->create();
@@ -57,17 +57,17 @@ class ImputationAutomatiqueDfpTest extends CourrierTestCase
         ]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", [
-            'imputations' => [
-                ['direction_id' => $directionChoisie->id, 'mention' => 'pour_avis', 'est_principale' => true],
-            ],
-        ])->assertOk();
+        $courrier->imputations()->create([
+            'direction_id' => $directionChoisie->id, 'mention' => 'pour_avis',
+            'est_principale' => true, 'imputee_par_id' => $dg->id,
+        ]);
 
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])->assertUnprocessable();
 
         $imputation = $courrier->fresh()->imputations()->where('est_principale', true)->first();
         $this->assertSame($directionChoisie->id, $imputation->direction_id);
         $this->assertSame('pour_avis', $imputation->mention->value);
+        $this->assertSame(CourrierStatut::EN_ATTENTE_AVIS_DG, $courrier->fresh()->statut);
     }
 
     public function test_le_reglage_desactive_neffectue_aucune_imputation_automatique(): void

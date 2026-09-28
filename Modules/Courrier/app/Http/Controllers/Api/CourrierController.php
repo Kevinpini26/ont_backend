@@ -4,8 +4,8 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
@@ -288,20 +288,7 @@ class CourrierController extends Controller
      */
     public function imputer(ImputerCourrierRequest $request, Courrier $courrier)
     {
-        DB::transaction(function () use ($request, $courrier) {
-            $courrier->imputations()->delete();
-
-            foreach ($request->validated('imputations') as $imputation) {
-                $courrier->imputations()->create([
-                    'direction_id' => $imputation['direction_id'],
-                    'mention' => $imputation['mention'],
-                    'est_principale' => $imputation['est_principale'],
-                    'imputee_par_id' => $request->user()->id,
-                ]);
-            }
-        });
-
-        return $this->ressource($courrier->fresh());
+        throw ValidationException::withMessages(['imputations' => 'Les nouvelles orientations doivent être décidées par le dispatch institutionnel. Les imputations historiques restent consultables sans modification.']);
     }
 
     public function transmettreTri(TransmettreCourrierRequest $request, Courrier $courrier)

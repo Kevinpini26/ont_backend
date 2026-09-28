@@ -9,6 +9,8 @@ use Modules\Courrier\Enums\MissionDocumentaireStatut;
 use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Kernel\Enums\Poste;
 
 class CycleDecisionnelService
 {
@@ -34,6 +36,19 @@ class CycleDecisionnelService
                     ->orWhereHas('traitementDirection', fn ($traitement) => $traitement->where('statut', '!=', TraitementDirectionStatut::TERMINE_DIRECTEUR));
             })->exists()) {
             throw ValidationException::withMessages(['courrier' => 'Un traitement directionnel du cycle précédent est encore actif.']);
+        }
+        if (DocumentProduitDirection::query()->where('document_source_id', $courrier->id)
+            ->where('statut', '!=', 'entre_circuit')->exists()) {
+            throw ValidationException::withMessages(['courrier' => 'Un document produit par une direction est encore actif.']);
+        }
+    }
+
+    public function assertReceptionDg(Courrier $courrier): void
+    {
+        $bordereau = $courrier->bordereauCourant();
+        if ($bordereau !== null && $bordereau->destinataire_poste === Poste::DG->value
+            && $bordereau->accuse_reception_at === null) {
+            throw ValidationException::withMessages(['courrier' => 'Le bordereau destiné à la DG doit être réceptionné avant décision.']);
         }
     }
 

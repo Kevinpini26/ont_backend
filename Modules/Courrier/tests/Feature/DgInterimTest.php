@@ -78,12 +78,6 @@ class DgInterimTest extends CourrierTestCase
         $this->actingAs($dg)->postJson('/api/v1/dg-disponibilite', ['disponible' => false])->assertOk();
 
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
-        $courrier->imputations()->create([
-            'direction_id' => Direction::factory()->create()->id,
-            'mention' => 'pour_attribution',
-            'est_principale' => true,
-            'imputee_par_id' => $dga->id,
-        ]);
         $this->marquerDecharge($courrier);
 
         $response = $this->actingAs($dga)
@@ -97,7 +91,7 @@ class DgInterimTest extends CourrierTestCase
             'auditable_id' => $courrier->id,
         ]);
 
-        $response->assertJsonPath('data.statut', CourrierStatut::EN_DISPATCH->value);
+        $response->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value);
     }
 
     public function test_la_dg_reste_toujours_habilitee_meme_marquee_indisponible(): void

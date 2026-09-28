@@ -218,7 +218,9 @@ class MissionDocumentaireTest extends CourrierTestCase
         ])->assertOk();
 
         $this->assertSame($projet, $courrier->fresh()->projet_reponse_contenu);
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
+            'type' => 'direction', 'direction_id' => $destination->id, 'instruction' => 'Traiter après retour de mission.',
+        ]]])
             ->assertOk()->assertJsonPath('data.statut', CourrierStatut::EN_DISPATCH->value);
         $this->assertDatabaseHas('audit_logs', ['action' => 'mission_documentaire.creee', 'auditable_id' => $id]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'mission_documentaire.retournee', 'auditable_id' => $id]);

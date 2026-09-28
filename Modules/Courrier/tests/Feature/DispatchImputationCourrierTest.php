@@ -68,7 +68,7 @@ class DispatchImputationCourrierTest extends CourrierTestCase
         $this->actingAs($sec2)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
     }
 
-    public function test_avis_favorable_sur_courrier_impute_part_en_dispatch_plutot_quen_redaction(): void
+    public function test_nouvelle_orientation_passe_par_un_dispatch_decide_par_dg(): void
     {
         $direction = Direction::factory()->create();
         $directionImputee = Direction::factory()->create();
@@ -82,10 +82,12 @@ class DispatchImputationCourrierTest extends CourrierTestCase
             'imputations' => [
                 ['direction_id' => $directionImputee->id, 'mention' => 'pour_attribution', 'est_principale' => true],
             ],
-        ])->assertOk();
+        ])->assertUnprocessable();
 
         $reponse = $this->actingAs($dg)
-            ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", ['avis_dg' => 'favorable'])
+            ->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
+                'type' => 'direction', 'direction_id' => $directionImputee->id, 'instruction' => 'Traiter le courrier.',
+            ]]])
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_DISPATCH->value);
 
@@ -93,17 +95,18 @@ class DispatchImputationCourrierTest extends CourrierTestCase
 
         // Le Secrétariat 02 doit accuser réception du bordereau avant de
         // pouvoir dispatcher — même discipline que le reste du circuit.
+        $dispatch = $courrier->dispatchs()->sole();
         $this->actingAs($secretariat2)
-            ->postJson("/api/v1/courriers/{$courrier->id}/dispatcher-direction")
+            ->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")
             ->assertStatus(422);
 
         $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
 
         $this->actingAs($secretariat2)
-            ->postJson("/api/v1/courriers/{$courrier->id}/dispatcher-direction")
+            ->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::DISPATCH_EXECUTE->value)
-            ->assertJsonPath('data.en_transit', false);
+            ->assertJsonPath('data.statut', 'execute');
+        $this->assertSame(CourrierStatut::DISPATCH_EXECUTE, $courrier->fresh()->statut);
     }
 
     public function test_avis_favorable_non_impute_conserve_a_sous_controle_dg_en_attendant_la_mission_d(): void
@@ -129,11 +132,10 @@ class DispatchImputationCourrierTest extends CourrierTestCase
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/imputer", [
-            'imputations' => [
-                ['direction_id' => $directionImputee->id, 'mention' => 'pour_attribution', 'est_principale' => true],
-            ],
-        ])->assertOk();
+        $courrier->imputations()->create([
+            'direction_id' => $directionImputee->id, 'mention' => 'pour_attribution',
+            'est_principale' => true, 'imputee_par_id' => $dg->id,
+        ]);
 
         $this->actingAs($dg)
             ->postJson("/api/v1/courriers/{$courrier->id}/rendre-avis", [

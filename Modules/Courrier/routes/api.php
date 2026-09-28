@@ -35,6 +35,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/a-numeriser', [CourrierRattrapageNumerisationController::class, 'index']);
     Route::get('/delegations-poste', [DelegationPosteController::class, 'index']);
     Route::post('/delegations-poste', [DelegationPosteController::class, 'store']);
+    Route::post('/delegations-poste/{delegation}/revoquer', [DelegationPosteController::class, 'revoquer']);
     Route::get('/instructions-courrier-dg', [InstructionCourrierDgController::class, 'index']);
     Route::post('/instructions-courrier-dg', [InstructionCourrierDgController::class, 'store']);
     Route::get('/instructions-courrier-dg/{instruction}', [InstructionCourrierDgController::class, 'show']);

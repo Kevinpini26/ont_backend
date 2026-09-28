@@ -137,8 +137,14 @@ class CourrierStatistiqueController extends Controller
 
         $enAttenteDecision = Courrier::query()
             ->withoutGlobalScopes()
-            ->whereIn('statut', [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
+            ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
             ->count();
+        $enPreparationRelecture = Courrier::query()->withoutGlobalScopes()
+            ->whereIn('statut', [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
+            ->whereNull('relecture_validee_at')->count();
+        $aSigner = Courrier::query()->withoutGlobalScopes()
+            ->whereIn('statut', [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
+            ->whereNotNull('relecture_validee_at')->count();
 
         // Courriers dont la dernière transition remonte à plus de
         // `seuil_jours`, tous statuts non clôturés confondus — signal
@@ -175,6 +181,8 @@ class CourrierStatistiqueController extends Controller
 
         return response()->json([
             'en_attente_decision' => $enAttenteDecision,
+            'en_preparation_relecture' => $enPreparationRelecture,
+            'a_signer' => $aSigner,
             'en_attente_depuis_longtemps' => $enAttenteDepuisLongtemps,
             'seuil_jours' => $seuilJours,
             'dossiers_en_boucle' => $dossiersEnBoucle,
