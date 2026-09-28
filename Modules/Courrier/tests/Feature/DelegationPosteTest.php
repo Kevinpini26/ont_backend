@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
@@ -14,6 +15,13 @@ use Modules\Kernel\Support\DelegationResolver;
 class DelegationPosteTest extends CourrierTestCase
 {
     use RefreshDatabase;
+
+    public function test_les_champs_de_revocation_sont_presents_dans_le_schema(): void
+    {
+        $this->assertTrue(Schema::hasColumn('delegations_poste', 'revoquee_at'));
+        $this->assertTrue(Schema::hasColumn('delegations_poste', 'revoquee_par_id'));
+        $this->assertTrue(Schema::hasColumn('delegations_poste', 'motif_revocation'));
+    }
 
     public function test_lancien_poste_protocole_ne_peut_plus_etre_delegue(): void
     {
