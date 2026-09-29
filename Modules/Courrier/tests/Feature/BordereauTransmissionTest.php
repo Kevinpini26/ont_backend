@@ -87,7 +87,12 @@ class BordereauTransmissionTest extends CourrierTestCase
         $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$id}/transmettre-tri")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value)
+            ->assertJsonPath('data.en_transit', false)
+            ->assertJsonPath('data.transitions.1.ancien_statut', CourrierStatut::RECU->value)
+            ->assertJsonPath('data.transitions.1.nouveau_statut', CourrierStatut::EN_ATTENTE_TRI->value)
+            ->assertJsonPath('data.transitions.1.destinataire', null)
+            ->assertJsonPath('data.transitions.1.accuse_reception_at', null);
     }
 
     public function test_le_fil_de_bordereaux_reflete_fidelement_chaque_transmission_dans_lordre(): void
@@ -110,7 +115,6 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-tri")->assertOk();
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
@@ -128,8 +132,8 @@ class BordereauTransmissionTest extends CourrierTestCase
 
         $this->assertSame(CourrierStatut::EN_ATTENTE_TRI->value, $transitions[1]['statut']);
         $this->assertSame($secretariat1->name, $transitions[1]['emetteur']);
-        $this->assertSame('Secrétariat 01', $transitions[1]['destinataire']);
-        $this->assertSame($secretariat1->name, $transitions[1]['accuse_reception_par']);
+        $this->assertNull($transitions[1]['destinataire']);
+        $this->assertNull($transitions[1]['accuse_reception_at']);
 
         $this->assertSame(CourrierStatut::EN_ATTENTE_AVIS_DG->value, $transitions[2]['statut']);
         $this->assertSame($secretariat1->name, $transitions[2]['emetteur']);

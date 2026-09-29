@@ -55,6 +55,8 @@ class TriUrgenceCourrierTest extends CourrierTestCase
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
             ->assertJsonPath('data.degre_urgence', 'tres_urgent')
+            ->assertJsonPath('data.en_transit', true)
+            ->assertJsonPath('data.transitions.1.destinataire_poste', Poste::DG->value)
             ->assertJsonPath('data.urgence_triee_par', $secretariat1->name);
 
         $this->assertNotNull($reponse->json('data.urgence_triee_at'));
@@ -250,13 +252,31 @@ class TriUrgenceCourrierTest extends CourrierTestCase
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_TRI]);
         $this->marquerDecharge($courrier);
 
-        $this->actingAs($secretariat1)
+        $reponse = $this->actingAs($secretariat1)
             ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'normal'])
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_CLASSEUR->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_CLASSEUR->value)
+            ->assertJsonPath('data.degre_urgence', 'normal')
+            ->assertJsonPath('data.en_transit', false)
+            ->assertJsonPath('data.transitions.1.destinataire', null)
+            ->assertJsonPath('data.transitions.1.accuse_reception_at', null);
 
         $courrier->refresh();
         $this->assertSame(CourrierStatut::EN_ATTENTE_CLASSEUR, $courrier->statut);
+        $this->assertSame('normal', $courrier->degre_urgence->value);
+
+        $dg = $this->agent(Poste::DG, $direction);
+        $this->actingAs($secretariat1)
+            ->postJson("/api/v1/courriers/{$courrier->id}/transmettre-depuis-classeur")
+            ->assertOk()
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
+            ->assertJsonPath('data.en_transit', true)
+            ->assertJsonPath('data.transitions.2.destinataire_poste', Poste::DG->value);
+
+        $this->actingAs($dg)
+            ->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")
+            ->assertOk()
+            ->assertJsonPath('data.en_transit', false);
     }
 
     public function test_le_secretariat_01_transmet_depuis_le_classeur_a_son_initiative(): void

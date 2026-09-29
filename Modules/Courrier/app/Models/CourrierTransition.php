@@ -8,11 +8,9 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Kernel\Models\User;
 
 /**
- * Chaque ligne EST un bordereau de transmission, pas seulement un
- * historique de statut : elle porte le destinataire attendu (un poste, ou
- * une personne précise — le relecteur désigné, pour la transition vers
- * en_relecture) et, une fois la décharge donnée, qui a accusé réception et
- * quand — voir CourrierCircuitService::tracerTransition()/accuserReception().
+ * Chaque ligne conserve une transition de statut. Quand le dossier est remis
+ * à un autre poste ou à un relecteur précis, elle porte aussi son destinataire
+ * et les données de décharge — voir CourrierCircuitService::tracerTransition().
  */
 class CourrierTransition extends Model
 {

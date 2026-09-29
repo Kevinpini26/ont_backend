@@ -396,7 +396,6 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
     {
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertOk();
-        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
         $evenement = DocumentProduitDirection::query()->where('courrier_id', $courrier->id)->exists()
             ? 'retour_direction_a_decider' : 'pret_a_traiter';

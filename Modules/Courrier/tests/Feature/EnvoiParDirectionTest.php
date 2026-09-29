@@ -170,8 +170,10 @@ class EnvoiParDirectionTest extends CourrierTestCase
         $this->assertSame(CourrierStatut::EN_ATTENTE_TRI->value, $trace['nouveau_statut']);
         $this->assertSame($secretariat1->name, $trace['emetteur']);
         $this->assertSame(Poste::SECRETARIAT_1->value, $trace['expediteur_poste']);
-        $this->assertSame(Poste::SECRETARIAT_1->label(), $trace['destinataire']);
+        $this->assertNull($trace['destinataire']);
+        $this->assertNull($trace['accuse_reception_at']);
         $this->assertSame('Vérifier la priorité et les annexes.', $trace['instruction']);
         $this->assertNotNull($trace['created_at']);
+        $this->assertFalse($reponse->json('data.en_transit'));
     }
 }

@@ -338,14 +338,9 @@ class CourrierCircuitService
      * est nul uniquement pour un dépôt public (aucun agent à l'origine).
      */
     /**
-     * Chaque transition EST un bordereau de transmission (voir
-     * CourrierTransition) : le destinataire est calculé ici, dérivé de qui
-     * est habilité à agir depuis ce nouveau statut — sauf pour en_relecture,
-     * dont le destinataire est la personne précise désignée comme
-     * relecteur, jamais un poste générique. Un statut sans suite possible
-     * (terminal, ou sans entrée dans l'arbre de circuit — le "recu"
-     * intermédiaire de initierParDg()) n'a pas de destinataire : rien à
-     * décharger.
+     * Chaque transition est historisée. Un destinataire n'est renseigné que
+     * lorsqu'elle remet le dossier à un autre poste ou à un relecteur précis;
+     * un changement local reste traçable sans créer de décharge.
      */
     private function tracerTransition(Courrier $courrier, ?User $utilisateur, ?int $bordereauLotId = null, ?string $instruction = null): void
     {
@@ -353,6 +348,7 @@ class CourrierCircuitService
             ->where('courrier_id', $courrier->id)
             ->latest('id')
             ->value('nouveau_statut');
+        $posteEmetteur = $utilisateur?->poste?->value;
         $destinatairePoste = null;
         $destinataireUserId = null;
 
@@ -372,6 +368,10 @@ class CourrierCircuitService
             $destinatairePoste = ($postesAutorises[0] ?? null)?->value;
         }
 
+        if ($destinataireUserId === null && $destinatairePoste !== null && $destinatairePoste === $posteEmetteur) {
+            $destinatairePoste = null;
+        }
+
         CourrierTransition::query()->create([
             'courrier_id' => $courrier->id,
             'statut' => $courrier->statut,
@@ -379,7 +379,7 @@ class CourrierCircuitService
             'nouveau_statut' => $courrier->statut,
             'tour' => $courrier->tour,
             'changed_by_id' => $utilisateur?->id,
-            'expediteur_poste' => $utilisateur?->poste?->value,
+            'expediteur_poste' => $posteEmetteur,
             'instruction' => $instruction,
             // Proxy volontairement simple : "cet utilisateur détient une
             // délégation active aujourd'hui", pas une vérification que

@@ -427,9 +427,8 @@ class Courrier extends Model implements Numerisable
     }
 
     /**
-     * Le bordereau qui a amené le courrier à son statut actuel — celui
-     * dont la décharge conditionne la possibilité d'agir. Utilise la
-     * relation déjà chargée (pas de requête séparée) quand elle l'est.
+     * La transition qui a amené le courrier à son statut actuel. Elle peut
+     * représenter une remise à décharger ou une étape locale sans destinataire.
      */
     public function bordereauCourant(): ?CourrierTransition
     {

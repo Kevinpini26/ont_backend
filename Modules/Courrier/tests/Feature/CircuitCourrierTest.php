@@ -45,10 +45,8 @@ class CircuitCourrierTest extends CourrierTestCase
         $numeroEnregistrementReception = $courrier['numero_enregistrement'];
         $id = $courrier['id'];
 
-        // Chaque transition exige désormais une décharge explicite du
-        // destinataire avant de pouvoir transmettre à son tour — voir
-        // BordereauTransmissionTest.php pour la vérification dédiée du
-        // mécanisme lui-même.
+        // La remise Réception → SEC1 exige une décharge. Les changements
+        // d'étape locaux au SEC1 restent historisés sans seconde décharge.
         //
         // La Réception remet directement le dossier au Secrétariat 01,
         // sans ancien service Protocole.
@@ -58,8 +56,6 @@ class CircuitCourrierTest extends CourrierTestCase
             ->postJson("/api/v1/courriers/{$id}/transmettre-tri")
             ->assertOk()
             ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_TRI->value);
-
-        $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
 
         // Corrigé : le Secrétariat 01 transmet directement à la DG pour
         // avis, sans étape DGA obligatoire (voir DgInterimTest pour le cas
