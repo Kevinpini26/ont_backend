@@ -39,6 +39,7 @@ use Modules\Courrier\Models\InstructionCourrierDg;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\ReorientationTri;
 use Modules\Courrier\Notifications\CourrierDgNotification;
+use Modules\Courrier\Notifications\ProjetReponseRelectureNotification;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
@@ -1052,6 +1053,18 @@ class CourrierCircuitService
      */
     public function soumettreProjetReponse(Courrier $courrier, User $utilisateur, array $projetReponseContenu, int $relecteurId): Courrier
     {
+        $mission = MissionDocumentaire::query()
+            ->where('projet_courrier_id', $courrier->id)
+            ->first();
+
+        if ($mission !== null) {
+            if ($mission->type !== MissionDocumentaireType::PREPARATION_REPONSE) {
+                throw ValidationException::withMessages(['mission' => 'Ce projet doit être soumis par son workflow de mission.']);
+            }
+
+            return $this->soumettreProjetReponseMission($mission, $utilisateur, $projetReponseContenu);
+        }
+
         $this->assertRelecteurNonSec2($relecteurId);
 
         return DB::transaction(function () use ($courrier, $utilisateur, $projetReponseContenu, $relecteurId) {
@@ -1133,7 +1146,7 @@ class CourrierCircuitService
 
     public function soumettreProjetReponseMission(MissionDocumentaire $mission, User $assistant, array $projetReponseContenu): Courrier
     {
-        return DB::transaction(function () use ($mission, $assistant, $projetReponseContenu) {
+        $soumission = DB::transaction(function () use ($mission, $assistant, $projetReponseContenu) {
             $mission = MissionDocumentaire::query()->lockForUpdate()->findOrFail($mission->id);
             $this->assertMissionPreparationActive($mission, $assistant);
             if ($mission->projet_courrier_id === null) {
@@ -1149,12 +1162,16 @@ class CourrierCircuitService
             if (! in_array($assistant->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true)) {
                 throw TransitionNonAutoriseeException::posteNonHabilite();
             }
-            $relecteurs = User::query()->where('poste', $posteRelecteur)->get();
+            $relecteurs = User::query()
+                ->where('role', UserRole::AGENT_CIRCUIT_COURRIER)
+                ->where('poste', $posteRelecteur)
+                ->get();
             if ($relecteurs->count() !== 1) {
                 throw ValidationException::withMessages(['relecteur' => 'Le compte du relecteur institutionnel doit être unique et configuré.']);
             }
             $relecteur = $relecteurs->first();
 
+            $estResoumission = $courrier->projet_renvoye_at !== null;
             $courrier->projet_reponse_contenu = $projetReponseContenu;
             $courrier->relecteur_id = $relecteur->id;
             $courrier->relecture_validee_at = null;
@@ -1169,8 +1186,16 @@ class CourrierCircuitService
                 ['mission_id' => $mission->id, 'relecteur_id' => $relecteur->id],
             );
 
-            return $courrier;
+            return [$courrier, $relecteur, $estResoumission];
         });
+
+        [$courrier, $relecteur, $estResoumission] = $soumission;
+        DB::afterCommit(fn () => $this->notifications->notifier(
+            $relecteur,
+            new ProjetReponseRelectureNotification($courrier, $estResoumission ? 'resoumis' : 'soumis'),
+        ));
+
+        return $courrier;
     }
 
     public function validerRelecture(Courrier $courrier, User $utilisateur, ?string $commentaire): Courrier
@@ -1236,7 +1261,7 @@ class CourrierCircuitService
      */
     public function renvoyerPourCorrection(Courrier $courrier, User $utilisateur, string $observation): Courrier
     {
-        return DB::transaction(function () use ($courrier, $utilisateur, $observation) {
+        $courrier = DB::transaction(function () use ($courrier, $utilisateur, $observation) {
             $courrier = $this->lockCourrierFrais($courrier);
 
             if ($courrier->statut !== CourrierStatut::PROJET_A_VALIDER) {
@@ -1262,6 +1287,17 @@ class CourrierCircuitService
 
             return $courrier;
         });
+
+        DB::afterCommit(function () use ($courrier): void {
+            if ($courrier->createur !== null) {
+                $this->notifications->notifier(
+                    $courrier->createur,
+                    new ProjetReponseRelectureNotification($courrier, 'retourne_pour_correction'),
+                );
+            }
+        });
+
+        return $courrier;
     }
 
     public function signer(Courrier $courrier, User $utilisateur): Courrier
@@ -1331,6 +1367,7 @@ class CourrierCircuitService
             $mission->type !== MissionDocumentaireType::PREPARATION_REPONSE
             || $mission->autorite_poste !== Poste::DG
             || $mission->assistant_id !== $assistant->id
+            || $assistant->role !== UserRole::AGENT_CIRCUIT_COURRIER
             || ! in_array($mission->statut, [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS], true)
         ) {
             throw TransitionNonAutoriseeException::posteNonHabilite();

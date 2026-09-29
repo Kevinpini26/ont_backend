@@ -78,6 +78,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/missions', [MissionDocumentaireController::class, 'store']);
     Route::post('/courriers/{courrier}/demander-preparation-reponse', [MissionDocumentaireController::class, 'demanderPreparationReponse']);
     Route::get('/missions-documentaires/mes-missions', [MissionDocumentaireController::class, 'mesMissions']);
+    Route::get('/projets-reponse/a-relire', [MissionDocumentaireController::class, 'projetsARevoir']);
     Route::post('/missions-documentaires/{mission}/prendre-en-charge', [MissionDocumentaireController::class, 'prendreEnCharge']);
     Route::post('/missions-documentaires/{mission}/retourner', [MissionDocumentaireController::class, 'retourner']);
     Route::post('/missions-documentaires/{mission}/projet-reponse', [MissionDocumentaireController::class, 'creerProjet']);

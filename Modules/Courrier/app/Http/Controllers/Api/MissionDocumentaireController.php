@@ -5,6 +5,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Http\Requests\AnnulerMissionDocumentaireRequest;
 use Modules\Courrier\Http\Requests\CreerMissionDocumentaireRequest;
 use Modules\Courrier\Http\Requests\CreerProjetReponseMissionRequest;
@@ -14,10 +15,13 @@ use Modules\Courrier\Http\Requests\SauvegarderProjetReponseRequest;
 use Modules\Courrier\Http\Requests\SoumettreProjetReponseMissionRequest;
 use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Http\Resources\MissionDocumentaireResource;
+use Modules\Courrier\Http\Resources\ProjetReponseARevoirResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\MissionDocumentaireService;
+use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 
 class MissionDocumentaireController extends Controller
@@ -46,6 +50,24 @@ class MissionDocumentaireController extends Controller
             ->with(['courrier', 'projetCourrier', 'demandeur', 'assistant', 'annuleePar'])
             ->latest('envoyee_at')
             ->get());
+    }
+
+    public function projetsARevoir(Request $request)
+    {
+        abort_unless(
+            $request->user()->role === UserRole::AGENT_CIRCUIT_COURRIER
+                && in_array($request->user()->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true),
+            403,
+        );
+
+        return ProjetReponseARevoirResource::collection(Courrier::query()
+            ->where('relecteur_id', $request->user()->id)
+            ->where('statut', CourrierStatut::PROJET_A_VALIDER)
+            ->whereNull('relecture_validee_at')
+            ->with(['courrierOrigine:id,numero_enregistrement,numero_accuse_reception,objet', 'createur:id,name'])
+            ->latest()
+            ->orderByDesc('id')
+            ->paginate(20));
     }
 
     public function store(CreerMissionDocumentaireRequest $request, Courrier $courrier)

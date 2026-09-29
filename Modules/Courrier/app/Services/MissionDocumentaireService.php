@@ -13,6 +13,7 @@ use Modules\Courrier\Notifications\MissionDocumentaireNotification;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgAuthorityResolver;
@@ -89,7 +90,8 @@ class MissionDocumentaireService
 
     public function creerPreparationReponse(Courrier $courrier, User $acteur, User $assistant, string $instruction): MissionDocumentaire
     {
-        if (! in_array($assistant->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true)) {
+        if ($assistant->role !== UserRole::AGENT_CIRCUIT_COURRIER
+            || ! in_array($assistant->poste, [Poste::ASSISTANT_1, Poste::ASSISTANT_2], true)) {
             throw ValidationException::withMessages(['assistant_id' => 'La DG doit choisir Assistant DG1 ou Assistant DG2.']);
         }
 

@@ -4,11 +4,20 @@ namespace Modules\Courrier\Http\Requests;
 
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Courrier\Models\MissionDocumentaire;
 
 class SoumettreProjetReponseRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        $mission = MissionDocumentaire::query()
+            ->where('projet_courrier_id', $this->route('courrier')->id)
+            ->first();
+
+        if ($mission !== null) {
+            return $this->user()->can('redigerProjet', $mission);
+        }
+
         return $this->user()->can('transmettre', $this->route('courrier'));
     }
 
