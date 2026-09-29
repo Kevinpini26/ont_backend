@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\AuditLog;
@@ -37,6 +38,29 @@ class CourrierAnnotationTest extends CourrierTestCase
         $this->assertNotNull($trace->created_at);
         $this->assertSame(mb_strlen('À vérifier'), $trace->meta['contenu_longueur']);
         $this->assertArrayNotHasKey('contenu', $trace->meta);
+    }
+
+    public function test_index_serialise_un_timestamp_sans_fuseau_selon_le_fuseau_de_session(): void
+    {
+        DB::statement("SET LOCAL TIME ZONE 'Africa/Kinshasa'");
+        $direction = Direction::factory()->create();
+        $agent = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create([
+            'direction_origine_id' => $direction->id,
+            'created_by' => $agent->id,
+        ]);
+        DB::table('courrier_annotations')->insert([
+            'courrier_id' => $courrier->id,
+            'auteur_id' => $agent->id,
+            'contenu' => 'Fixture date sans timezone',
+            'created_at' => '2026-09-29 01:09:14',
+            'updated_at' => '2026-09-29 01:09:14',
+        ]);
+
+        $this->actingAs($agent)
+            ->getJson("/api/v1/courriers/{$courrier->id}/annotations")
+            ->assertOk()
+            ->assertJsonPath('data.0.created_at', '2026-09-29T00:09:14.000000Z');
     }
 
     public function test_une_direction_sans_acces_ne_peut_pas_annoter_un_courrier(): void

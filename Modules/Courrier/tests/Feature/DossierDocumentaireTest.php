@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Enums\NiveauConfidentialite;
@@ -32,6 +33,28 @@ class DossierDocumentaireTest extends TestCase
 
         $this->assertSame($initial->dossier_id, $produit->dossier_id);
         $this->assertCount(2, $initial->dossier->documents);
+    }
+
+    public function test_api_dossier_expose_la_date_de_validation_de_relecture_pour_le_resume_d(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $source = Courrier::factory()->create();
+        $relectureValideeAt = Carbon::parse('2026-09-29T00:26:57Z');
+        $reponse = Courrier::factory()->create([
+            'dossier_id' => $source->dossier_id,
+            'en_reponse_a_courrier_id' => $source->id,
+            'statut' => 'projet_a_valider',
+            'relecture_validee_at' => $relectureValideeAt,
+        ]);
+
+        $documents = $this->actingAs($admin)
+            ->getJson("/api/v1/dossiers/{$source->dossier_id}")
+            ->assertOk()
+            ->json('data.documents');
+        $documentReponse = collect($documents)->firstWhere('id', $reponse->id);
+
+        $this->assertNotNull($documentReponse);
+        $this->assertTrue(Carbon::parse($documentReponse['relecture_validee_at'])->equalTo($relectureValideeAt));
     }
 
     public function test_une_reponse_et_un_document_produit_peuvent_etre_relies(): void

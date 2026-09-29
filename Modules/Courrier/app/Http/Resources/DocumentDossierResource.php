@@ -19,6 +19,7 @@ class DocumentDossierResource extends JsonResource
             'type_label' => $this->type?->label(),
             'statut' => $this->statut?->value,
             'statut_label' => $this->statut?->label(),
+            'relecture_validee_at' => $this->relecture_validee_at,
             'numero_accuse_reception' => $this->numero_accuse_reception,
             'numero_enregistrement' => $this->numero_enregistrement,
             'reference_documentaire' => $this->reference_documentaire,
