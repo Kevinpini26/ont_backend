@@ -1,5 +1,12 @@
 <?php
 
+$localOrigins = in_array(env('APP_ENV', 'production'), ['local', 'testing'], true)
+    ? [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    ]
+    : [];
+
 return [
 
     /*
@@ -17,9 +24,12 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        env('FRONTEND_URL', 'http://localhost:5173'),
-    ],
+    'allowed_origins' => array_values(array_unique(array_filter(
+        array_merge([
+            env('FRONTEND_URL'),
+        ], $localOrigins),
+        fn ($origin) => is_string($origin) && $origin !== ''
+    ))),
 
     'allowed_origins_patterns' => [],
 
