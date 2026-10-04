@@ -284,6 +284,38 @@ class CourrierPolicy
         return $this->delegations->utilisateurHabilite($user, $postesAutorises);
     }
 
+    public function choisirModeSortie(User $user, Courrier $courrier): bool
+    {
+        return $this->peutExecuterSortieSec2($user, $courrier)
+            && $courrier->statut === CourrierStatut::SIGNE;
+    }
+
+    public function envoyerParCourriel(User $user, Courrier $courrier): bool
+    {
+        return $this->peutExecuterSortieSec2($user, $courrier);
+    }
+
+    public function rendreDisponiblePourRetrait(User $user, Courrier $courrier): bool
+    {
+        return $this->peutExecuterSortieSec2($user, $courrier);
+    }
+
+    public function confirmerRemisePhysique(User $user, Courrier $courrier): bool
+    {
+        return $this->peutExecuterSortieSec2($user, $courrier);
+    }
+
+    private function peutExecuterSortieSec2(User $user, Courrier $courrier): bool
+    {
+        return $this->view($user, $courrier)
+            && $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_2]);
+    }
+
+    public function voirFileSortiesSec2(User $user): bool
+    {
+        return $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_2]);
+    }
+
     public function enregistrerRemise(User $user, Courrier $courrier): bool
     {
         return $user->poste === Poste::SECRETARIAT_2 || $user->role === UserRole::ADMINISTRATEUR;

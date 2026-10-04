@@ -197,10 +197,21 @@ class FinalisationScanSigneTest extends CourrierTestCase
         ])->assertForbidden();
         $this->assertSame(1, $courrier->fresh()->transitions()->where('statut', CourrierStatut::SIGNE)->count());
 
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
+            'mode_sortie' => 'courriel',
+        ])->assertUnprocessable();
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
 
         $urlPublic = URL::temporarySignedRoute('api.public.reponses.telecharger', now()->addMinute(), ['courrier' => $courrier->id]);
         $this->get($urlPublic)->assertNotFound();
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
+            'mode_sortie' => 'courriel',
+        ])->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/envoyer-par-courriel")
+            ->assertOk()->assertJsonPath('data.statut', CourrierStatut::ENVOYE->value);
+        $urlPublicEnvoye = URL::temporarySignedRoute('api.public.reponses.telecharger', now()->addMinute(), ['courrier' => $courrier->id]);
+        $this->get($urlPublicEnvoye)->assertOk()->assertStreamedContent($contenuScan);
     }
 
     public function test_scan_refuse_si_le_pdf_a_signer_a_ete_altere_sans_finaliser(): void

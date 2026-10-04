@@ -8,6 +8,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\AuditLogger;
@@ -67,6 +68,12 @@ class ReponseCourrierPublicController extends Controller
             || $reponse->signataire_id === null
             || $reponse->date_envoi === null) {
             return false;
+        }
+
+        if ($reponse->mode_sortie !== null) {
+            return in_array($reponse->mode_sortie, [ModeSortie::COURRIEL, ModeSortie::COURRIEL_ET_RETRAIT], true)
+                && $reponse->courriel_envoye_at !== null
+                && $reponse->courriel_destinataire === $reponse->destinataire_externe_email;
         }
 
         if (! $reponse->transitions()->where('statut', CourrierStatut::ENVOYE)->exists()) {

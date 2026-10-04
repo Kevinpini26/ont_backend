@@ -30,6 +30,10 @@ try {
     } elseif ($action === 'finaliser-scan') {
         $scan = new UploadedFile($argv[6], 'scan.pdf', 'application/pdf', UPLOAD_ERR_OK, true);
         $service->finaliserSignaturePhysique($courrier, $acteur, $scan);
+    } elseif ($action === 'envoyer-par-courriel') {
+        $service->envoyerParCourriel($courrier, $acteur);
+    } elseif ($action === 'confirmer-remise') {
+        $service->confirmerRemisePhysique($courrier, $acteur, $argv[6] ?? 'Récupérant test', null, null);
     } else {
         $service->signer($courrier, $acteur);
     }

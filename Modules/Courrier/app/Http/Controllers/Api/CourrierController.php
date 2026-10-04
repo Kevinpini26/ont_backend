@@ -11,8 +11,11 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
+use Modules\Courrier\Http\Requests\ChoisirModeSortieRequest;
+use Modules\Courrier\Http\Requests\ConfirmerRemisePhysiqueRequest;
 use Modules\Courrier\Http\Requests\EnregistrerCourrierRequest;
 use Modules\Courrier\Http\Requests\EnregistrerRemiseRequest;
 use Modules\Courrier\Http\Requests\EnvoyerCourrierRequest;
@@ -22,6 +25,7 @@ use Modules\Courrier\Http\Requests\InitierCourrierDgRequest;
 use Modules\Courrier\Http\Requests\InitierCourrierSortantRequest;
 use Modules\Courrier\Http\Requests\InitierReponseSortanteRequest;
 use Modules\Courrier\Http\Requests\RendreAvisDgRequest;
+use Modules\Courrier\Http\Requests\RendreDisponibleRetraitRequest;
 use Modules\Courrier\Http\Requests\RenvoyerAuTriRequest;
 use Modules\Courrier\Http\Requests\RenvoyerPourCorrectionRequest;
 use Modules\Courrier\Http\Requests\RequalifierUrgenceRequest;
@@ -73,6 +77,25 @@ class CourrierController extends Controller
 
         if ($request->filled('statut')) {
             $query->where('statut', $request->string('statut'));
+        }
+
+        if ($request->boolean('file_sorties_sec2')) {
+            $this->authorize('voirFileSortiesSec2', Courrier::class);
+            $query->where('sens', 'sortant')->where(function ($sorties): void {
+                $sorties->where(function ($anciens): void {
+                    $anciens->whereNull('mode_sortie')->where('statut', CourrierStatut::SIGNE->value);
+                })->orWhere(function ($explicites): void {
+                    $explicites->whereNotNull('mode_sortie')->where(function ($canaux): void {
+                        $canaux->where(function ($courriel): void {
+                            $courriel->whereIn('mode_sortie', [ModeSortie::COURRIEL->value, ModeSortie::COURRIEL_ET_RETRAIT->value])
+                                ->whereNull('courriel_envoye_at');
+                        })->orWhere(function ($retrait): void {
+                            $retrait->whereIn('mode_sortie', [ModeSortie::RETRAIT_PHYSIQUE->value, ModeSortie::COURRIEL_ET_RETRAIT->value])
+                                ->whereNull('remis_le');
+                        });
+                    });
+                });
+            });
         }
 
         if ($request->has('necessite_avis_dg')) {
@@ -721,8 +744,50 @@ class CourrierController extends Controller
         return $this->ressource($this->circuit->envoyer($courrier, $request->user(), $request->validated()));
     }
 
+    public function choisirModeSortie(ChoisirModeSortieRequest $request, Courrier $courrier)
+    {
+        return $this->ressource($this->circuit->choisirModeSortie(
+            $courrier,
+            $request->user(),
+            ModeSortie::from($request->validated('mode_sortie')),
+        ));
+    }
+
+    public function envoyerParCourriel(Request $request, Courrier $courrier)
+    {
+        $this->authorize('envoyerParCourriel', $courrier);
+
+        return $this->ressource($this->circuit->envoyerParCourriel($courrier, $request->user()));
+    }
+
+    public function rendreDisponiblePourRetrait(RendreDisponibleRetraitRequest $request, Courrier $courrier)
+    {
+        return $this->ressource($this->circuit->rendreDisponiblePourRetrait(
+            $courrier,
+            $request->user(),
+            $request->validated('observation'),
+        ));
+    }
+
+    public function confirmerRemisePhysique(ConfirmerRemisePhysiqueRequest $request, Courrier $courrier)
+    {
+        $donnees = $request->validated();
+
+        return $this->ressource($this->circuit->confirmerRemisePhysique(
+            $courrier,
+            $request->user(),
+            $donnees['remis_a'],
+            $donnees['observation'] ?? null,
+            $donnees['decharge_remise'] ?? null,
+        ));
+    }
+
     public function enregistrerRemise(EnregistrerRemiseRequest $request, Courrier $courrier)
     {
+        if ($courrier->mode_sortie !== null) {
+            throw ValidationException::withMessages(['mode_sortie' => 'Utilisez la confirmation de remise physique du mode de sortie choisi.']);
+        }
+
         $donnees = $request->validated();
         $decharge = $donnees['decharge_remise'] ?? null;
         unset($donnees['decharge_remise']);

@@ -21,7 +21,10 @@ use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Enums\MentionImputation;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
 use Modules\Courrier\Enums\MissionDocumentaireType;
+use Modules\Courrier\Enums\ModeExpedition;
 use Modules\Courrier\Enums\ModeReception;
+use Modules\Courrier\Enums\ModeRemise;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Events\CourrierStageAvisFavorable;
@@ -1645,11 +1648,234 @@ class CourrierCircuitService
      * Distinct d'enregistrer() (qui numérote un courrier ENTRANT) — un
      * courrier sortant n'entre jamais dans le registre arrivée.
      */
+    public function choisirModeSortie(Courrier $courrier, User $utilisateur, ModeSortie $mode): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur, $mode): Courrier {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertActeurSec2($utilisateur);
+            $this->assertDechargeDonnee($courrier);
+
+            if ($courrier->statut !== CourrierStatut::SIGNE || $courrier->sens !== SensCourrier::SORTANT) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+            if ($courrier->mode_sortie !== null) {
+                throw ValidationException::withMessages(['mode_sortie' => 'Le mode de sortie est déjà fixé.']);
+            }
+            $this->assertPdfFinalPretPourSortie($courrier);
+            $this->verifierCourrielOfficielSiRequis($courrier, $mode);
+
+            $courrier->mode_sortie = $mode;
+            $courrier->save();
+            $this->audit->enregistrer('courrier.mode_sortie_choisi', $courrier, $utilisateur, [
+                'mode_sortie' => $mode->value,
+                'numero_depart' => $courrier->numero_depart,
+            ]);
+
+            return $courrier;
+        });
+    }
+
+    public function envoyerParCourriel(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur): Courrier {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertActeurSec2($utilisateur);
+            $this->assertDechargeDonnee($courrier);
+            $this->assertPdfFinalPretPourSortie($courrier);
+
+            if (! in_array($courrier->mode_sortie, [ModeSortie::COURRIEL, ModeSortie::COURRIEL_ET_RETRAIT], true)) {
+                throw ValidationException::withMessages(['mode_sortie' => 'Le canal courriel n’est pas prévu pour ce courrier.']);
+            }
+            if ($courrier->courriel_envoye_at !== null) {
+                throw ValidationException::withMessages(['courriel' => 'Le courriel a déjà été exécuté.']);
+            }
+            $this->verifierCourrielOfficielSiRequis($courrier, $courrier->mode_sortie);
+
+            $destinataire = trim((string) $courrier->destinataire_externe_email);
+            $origine = $this->originePourCourriel($courrier);
+            $ttl = max(1, (int) config('courrier.reponse_externe.lien_ttl_minutes', 10080));
+            $url = URL::temporarySignedRoute(
+                'api.public.reponses.telecharger',
+                now()->addMinutes($ttl),
+                ['courrier' => $courrier->id],
+            );
+            $mail = new ReponseFinaleCourrierExterneMail($origine, $courrier, $url);
+            $instantEnvoi = now();
+            $ancienStatut = $courrier->statut;
+            $courrier->courriel_envoye_at = $instantEnvoi;
+            $courrier->courriel_envoye_par_id = $utilisateur->id;
+            $courrier->courriel_destinataire = $destinataire;
+            $courrier->date_envoi = $instantEnvoi->toDateString();
+            if ($courrier->statut !== CourrierStatut::REMIS) {
+                $courrier->statut = CourrierStatut::ENVOYE;
+            }
+            $courrier->save();
+            if ($ancienStatut !== $courrier->statut) {
+                $this->tracerTransition($courrier, $utilisateur);
+            }
+            $this->notifications->envoyerMail($destinataire, $mail);
+            $this->audit->enregistrer('courrier.courriel_envoye', $courrier, $utilisateur, [
+                'courriel_destinataire' => $destinataire,
+                'courriel_envoye_at' => $instantEnvoi->toISOString(),
+                'numero_depart' => $courrier->numero_depart,
+                'pdf_sha256' => $courrier->pdf_sha256,
+            ]);
+
+            return $courrier;
+        });
+    }
+
+    public function rendreDisponiblePourRetrait(Courrier $courrier, User $utilisateur, ?string $observation): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur, $observation): Courrier {
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertActeurSec2($utilisateur);
+            $this->assertDechargeDonnee($courrier);
+            $this->assertPdfFinalPretPourSortie($courrier);
+
+            if (! in_array($courrier->mode_sortie, [ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)) {
+                throw ValidationException::withMessages(['mode_sortie' => 'Le canal retrait physique n’est pas prévu pour ce courrier.']);
+            }
+            if ($courrier->retrait_disponible_at !== null || $courrier->remis_le !== null) {
+                throw ValidationException::withMessages(['retrait' => 'Le retrait est déjà disponible ou a déjà été effectué.']);
+            }
+
+            $instantDisponibilite = now();
+            $ancienStatut = $courrier->statut;
+            $courrier->retrait_disponible_at = $instantDisponibilite;
+            $courrier->retrait_disponible_par_id = $utilisateur->id;
+            $courrier->retrait_disponible_observation = $observation;
+            if ($courrier->courriel_envoye_at === null) {
+                $courrier->statut = CourrierStatut::DISPONIBLE_RETRAIT;
+            }
+            $courrier->save();
+            if ($ancienStatut !== $courrier->statut) {
+                $this->tracerTransition($courrier, $utilisateur);
+            }
+            $this->audit->enregistrer('courrier.retrait_disponible', $courrier, $utilisateur, [
+                'retrait_disponible_at' => $instantDisponibilite->toISOString(),
+                'observation' => $observation,
+            ]);
+
+            return $courrier;
+        });
+    }
+
+    public function confirmerRemisePhysique(
+        Courrier $courrier,
+        User $utilisateur,
+        string $remisA,
+        ?string $observation,
+        ?UploadedFile $decharge,
+    ): Courrier {
+        $cheminDecharge = null;
+
+        try {
+            return DB::transaction(function () use ($courrier, $utilisateur, $remisA, $observation, $decharge, &$cheminDecharge): Courrier {
+                $courrier = $this->lockCourrierFrais($courrier);
+                $this->assertActeurSec2($utilisateur);
+                $this->assertDechargeDonnee($courrier);
+                $this->assertPdfFinalPretPourSortie($courrier);
+
+                if (! in_array($courrier->mode_sortie, [ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)
+                    || $courrier->retrait_disponible_at === null) {
+                    throw ValidationException::withMessages(['retrait' => 'Le courrier doit être disponible au retrait avant la remise.']);
+                }
+                if ($courrier->remis_le !== null || $courrier->retrait_effectue_par_id !== null) {
+                    throw ValidationException::withMessages(['retrait' => 'La remise physique a déjà été confirmée.']);
+                }
+
+                if ($decharge !== null) {
+                    $cheminDecharge = 'courriers-decharges/'.Str::uuid().'.'.$decharge->guessExtension();
+                    $cheminStocke = Storage::disk('local')->putFileAs('courriers-decharges', $decharge, basename($cheminDecharge));
+                    if (! is_string($cheminStocke) || $cheminStocke === '') {
+                        throw ValidationException::withMessages(['decharge_remise' => 'Le stockage de la décharge a échoué.']);
+                    }
+                }
+
+                $instantRemise = now();
+                $courrier->remis_le = $instantRemise;
+                $courrier->remis_a = $remisA;
+                $courrier->mode_remise = ModeRemise::RETRAIT_PHYSIQUE;
+                $courrier->decharge_remise_chemin = $cheminDecharge;
+                $courrier->retrait_effectue_par_id = $utilisateur->id;
+                $courrier->retrait_observation = $observation;
+                $courrier->statut = CourrierStatut::REMIS;
+                $courrier->save();
+                $this->tracerTransition($courrier, $utilisateur);
+                $this->audit->enregistrer('courrier.remise_physique_confirmee', $courrier, $utilisateur, [
+                    'remis_a' => $remisA,
+                    'remis_le' => $instantRemise->toISOString(),
+                    'decharge_remise_chemin' => $cheminDecharge,
+                    'observation' => $observation,
+                ]);
+
+                return $courrier;
+            });
+        } catch (Throwable $exception) {
+            if (is_string($cheminDecharge)) {
+                Storage::disk('local')->delete($cheminDecharge);
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function assertActeurSec2(User $utilisateur): void
+    {
+        if (! $this->delegations->utilisateurHabilite($utilisateur, [Poste::SECRETARIAT_2])) {
+            throw TransitionNonAutoriseeException::posteNonHabilite();
+        }
+    }
+
+    private function assertPdfFinalPretPourSortie(Courrier $courrier): void
+    {
+        if ($courrier->sens !== SensCourrier::SORTANT
+            || ! in_array($courrier->statut, [
+                CourrierStatut::SIGNE,
+                CourrierStatut::DISPONIBLE_RETRAIT,
+                CourrierStatut::ENVOYE,
+                CourrierStatut::REMIS,
+            ], true)
+            || $courrier->signe_at === null
+            || $courrier->signataire_id === null
+            || blank($courrier->numero_depart)) {
+            throw ValidationException::withMessages(['courrier' => 'Un courrier sortant signé et numéroté est requis.']);
+        }
+
+        app(PdfOfficielIntegrity::class)->verifier($courrier);
+    }
+
+    private function verifierCourrielOfficielSiRequis(Courrier $courrier, ModeSortie $mode): void
+    {
+        if (in_array($mode, [ModeSortie::COURRIEL, ModeSortie::COURRIEL_ET_RETRAIT], true)
+            && (blank($courrier->destinataire_externe_email)
+                || filter_var($courrier->destinataire_externe_email, FILTER_VALIDATE_EMAIL) === false)) {
+            throw ValidationException::withMessages(['destinataire_externe_email' => 'Une adresse email officielle valide est requise pour le canal courriel.']);
+        }
+    }
+
+    private function originePourCourriel(Courrier $reponse): ?Courrier
+    {
+        if ($reponse->en_reponse_a_courrier_id === null) {
+            return null;
+        }
+
+        return Courrier::withoutGlobalScopes()
+            ->whereKey($reponse->en_reponse_a_courrier_id)
+            ->where('dossier_id', $reponse->dossier_id)
+            ->where('sens', SensCourrier::ENTRANT)
+            ->first();
+    }
+
     public function envoyer(Courrier $courrier, User $utilisateur, array $donnees): Courrier
     {
         $courrier = DB::transaction(function () use ($courrier, $utilisateur, $donnees) {
             $courrier = $this->lockCourrierFrais($courrier);
             $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::ENVOYE);
+            if ($courrier->mode_sortie !== null || $courrier->scan_signe_televerse_at !== null) {
+                throw ValidationException::withMessages(['mode_sortie' => 'Ce courrier doit utiliser les actions explicites de sortie SEC2.']);
+            }
             if ($courrier->signe_at === null || $courrier->signataire_id === null
                 || ! $courrier->signataire()->exists() || blank($courrier->numero_depart)
                 || ! $courrier->relectureEstValidee()) {
@@ -1710,6 +1936,10 @@ class CourrierCircuitService
 
     private function notifierReponseExterneEnvoyee(Courrier $reponse, User $acteur): void
     {
+        if ($reponse->mode_expedition !== ModeExpedition::COURRIEL) {
+            return;
+        }
+
         $origine = $this->origineExternePubliqueDeLaReponse($reponse);
         if ($origine === null || blank($reponse->pdf_chemin) || blank($reponse->pdf_sha256)) {
             return;
@@ -1780,6 +2010,9 @@ class CourrierCircuitService
      */
     public function enregistrerRemise(Courrier $courrier, User $utilisateur, array $donnees): Courrier
     {
+        if ($courrier->mode_sortie !== null) {
+            throw ValidationException::withMessages(['mode_sortie' => 'Utilisez la confirmation de remise physique du mode de sortie choisi.']);
+        }
         if ($courrier->statut !== CourrierStatut::ENVOYE) {
             throw TransitionNonAutoriseeException::sautDetape();
         }

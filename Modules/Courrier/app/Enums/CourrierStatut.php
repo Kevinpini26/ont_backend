@@ -134,6 +134,8 @@ enum CourrierStatut: string
     case EN_ATTENTE_VALIDATION_DG = 'en_attente_validation_dg';
     case EN_RELECTURE = 'en_relecture';
     case SIGNE = 'signe';
+    case DISPONIBLE_RETRAIT = 'disponible_retrait';
+    case REMIS = 'remis';
     case ENREGISTRE = 'enregistre';
 
     /**
@@ -166,6 +168,8 @@ enum CourrierStatut: string
             self::EN_ATTENTE_VALIDATION_DG => 'En attente de validation DG',
             self::EN_RELECTURE => 'En relecture',
             self::SIGNE => 'Signé',
+            self::DISPONIBLE_RETRAIT => 'Disponible pour retrait',
+            self::REMIS => 'Remis',
             self::ENREGISTRE => 'Enregistré',
             self::ENVOYE => 'Envoyé',
         };

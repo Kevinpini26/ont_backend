@@ -2,20 +2,18 @@
 
 namespace Modules\Courrier\Enums;
 
-enum ModeRemise: string
+enum ModeSortie: string
 {
-    case PORTEUR_AVEC_DECHARGE = 'porteur_avec_decharge';
-    case POSTE = 'poste';
     case COURRIEL = 'courriel';
     case RETRAIT_PHYSIQUE = 'retrait_physique';
+    case COURRIEL_ET_RETRAIT = 'courriel_et_retrait';
 
     public function label(): string
     {
         return match ($this) {
-            self::PORTEUR_AVEC_DECHARGE => 'Porteur avec décharge signée',
-            self::POSTE => 'Poste',
             self::COURRIEL => 'Courriel',
             self::RETRAIT_PHYSIQUE => 'Retrait physique',
+            self::COURRIEL_ET_RETRAIT => 'Courriel + retrait',
         };
     }
 }

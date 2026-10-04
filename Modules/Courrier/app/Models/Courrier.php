@@ -20,6 +20,7 @@ use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\ModeExpedition;
 use Modules\Courrier\Enums\ModeReception;
 use Modules\Courrier\Enums\ModeRemise;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Enums\SensCourrier;
@@ -132,7 +133,16 @@ class Courrier extends Model implements Numerisable
         'destinataire_externe_nom',
         'destinataire_externe_email',
         'mode_expedition',
+        'mode_sortie',
         'date_envoi',
+        'courriel_envoye_at',
+        'courriel_envoye_par_id',
+        'courriel_destinataire',
+        'retrait_disponible_at',
+        'retrait_disponible_par_id',
+        'retrait_disponible_observation',
+        'retrait_effectue_par_id',
+        'retrait_observation',
         'numero_depart',
         'remis_le',
         'remis_a',
@@ -222,7 +232,10 @@ class Courrier extends Model implements Numerisable
             'niveau_confidentialite' => NiveauConfidentialite::class,
             'sens' => SensCourrier::class,
             'mode_expedition' => ModeExpedition::class,
+            'mode_sortie' => ModeSortie::class,
             'date_envoi' => 'date',
+            'courriel_envoye_at' => 'datetime',
+            'retrait_disponible_at' => 'datetime',
             'remis_le' => 'datetime',
             'mode_remise' => ModeRemise::class,
             'numerisation_statut' => NumerisationStatut::class,
@@ -278,6 +291,21 @@ class Courrier extends Model implements Numerisable
     public function signataire(): BelongsTo
     {
         return $this->belongsTo(User::class, 'signataire_id');
+    }
+
+    public function courrielEnvoyePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'courriel_envoye_par_id');
+    }
+
+    public function retraitDisponiblePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'retrait_disponible_par_id');
+    }
+
+    public function retraitEffectuePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'retrait_effectue_par_id');
     }
 
     public function avisDgRenduPar(): BelongsTo

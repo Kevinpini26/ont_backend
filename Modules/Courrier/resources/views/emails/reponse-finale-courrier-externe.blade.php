@@ -1,12 +1,14 @@
 <x-mail::message>
 # Office National du Tourisme
 
-Bonjour {{ $courrierOrigine->expediteur_externe_nom }},
+Bonjour {{ $courrierOrigine?->expediteur_externe_nom ?? $reponse->destinataire_externe_nom }},
 
 L’Office National du Tourisme vous informe qu’une réponse officielle a été apportée à votre courrier.
 
+@if ($courrierOrigine)
 **Objet initial :** {{ $courrierOrigine->objet }}<br>
 **Référence de suivi :** {{ $courrierOrigine->numero_accuse_reception }}<br>
+@endif
 **Référence de la réponse :** {{ $reponse->reference_documentaire ?? $reponse->numero_depart }}<br>
 @if ($reponse->numero_depart)
 **Numéro de départ :** {{ $reponse->numero_depart }}<br>

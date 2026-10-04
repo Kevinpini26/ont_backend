@@ -91,6 +91,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/imputer', [CourrierController::class, 'imputer']);
     Route::post('/courriers/{courrier}/initier-reponse', [CourrierController::class, 'initierReponse']);
     Route::post('/courriers/{courrier}/envoyer', [CourrierController::class, 'envoyer']);
+    Route::post('/courriers/{courrier}/mode-sortie', [CourrierController::class, 'choisirModeSortie']);
+    Route::post('/courriers/{courrier}/envoyer-par-courriel', [CourrierController::class, 'envoyerParCourriel']);
+    Route::post('/courriers/{courrier}/rendre-disponible-retrait', [CourrierController::class, 'rendreDisponiblePourRetrait']);
+    Route::post('/courriers/{courrier}/confirmer-remise-physique', [CourrierController::class, 'confirmerRemisePhysique']);
     Route::post('/courriers/{courrier}/enregistrer-remise', [CourrierController::class, 'enregistrerRemise']);
     Route::post('/courriers/{courrier}/transmettre-tri', [CourrierController::class, 'transmettreTri']);
     Route::post('/courriers/{courrier}/valider-avant-diffusion', [CourrierController::class, 'validerAvantDiffusion']);

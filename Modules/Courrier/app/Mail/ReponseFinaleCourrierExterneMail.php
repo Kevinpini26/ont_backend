@@ -15,7 +15,7 @@ class ReponseFinaleCourrierExterneMail extends Mailable implements ShouldQueue
     use Queueable, SerializesModels;
 
     public function __construct(
-        public readonly Courrier $courrierOrigine,
+        public readonly ?Courrier $courrierOrigine,
         public readonly Courrier $reponse,
         public readonly string $urlTelechargement,
     ) {}

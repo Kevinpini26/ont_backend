@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\SensCourrier;
-use Modules\Courrier\Mail\ReponseFinaleCourrierExterneMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\InstructionCourrierDg;
@@ -262,7 +261,7 @@ class Sec2InstitutionnelTest extends CourrierTestCase
         $this->assertNotContains($etranger->dossier_id, collect($pageDeux->json('data'))->pluck('id')->all());
     }
 
-    public function test_reponse_physique_notifie_uniquement_si_origine_possede_un_email(): void
+    public function test_mode_poste_ne_declenche_jamais_un_email_final_implicite(): void
     {
         Storage::fake('local');
         $direction = Direction::factory()->create();
@@ -290,18 +289,7 @@ class Sec2InstitutionnelTest extends CourrierTestCase
                 'destinataire_externe_nom' => $origine->expediteur_externe_nom,
                 'destinataire_externe_email' => $email, 'mode_expedition' => 'poste',
             ])->assertOk();
-            if ($email === null) {
-                Mail::assertNothingQueued();
-            } else {
-                $url = null;
-                Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use ($email, &$url) {
-                    $url = $mail->urlTelechargement;
-
-                    return $mail->hasTo($email);
-                });
-                Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
-                $this->get($url)->assertOk();
-            }
+            Mail::assertNothingQueued();
         }
     }
 }
