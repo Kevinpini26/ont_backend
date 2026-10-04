@@ -17,6 +17,7 @@ use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\ArchivageDossierService;
 use Modules\Courrier\Services\ClassementDocumentService;
 use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Kernel\Enums\Poste;
@@ -710,6 +711,102 @@ class ClassementInstitutionnelTest extends CourrierTestCase
         $this->actingAs($dg)->postJson("/api/v1/dossiers/{$a->dossier_id}/decision-archivage")
             ->assertOk()->assertJsonPath('data.statut_archivage', 'a_archiver');
         $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$a->dossier_id}/archiver")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'archive');
+    }
+
+    public function test_archivage_refuse_un_dossier_quand_un_document_cache_du_meme_dossier_nest_pas_archive(): void
+    {
+        $directionVisible = Direction::factory()->create();
+        $directionCachee = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $directionVisible);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $directionVisible);
+
+        $visible = Courrier::factory()->create([
+            'direction_origine_id' => $directionVisible->id,
+            'direction_destination_id' => $directionVisible->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+        ]);
+        $cache = Courrier::factory()->create([
+            'dossier_id' => $visible->dossier_id,
+            'direction_origine_id' => $directionCachee->id,
+            'direction_destination_id' => $directionCachee->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+        ]);
+
+        $this->archiverDocument($visible, $dg, $sec2, 'VISIBLE');
+
+        $visible->dossier()->update(['statut_archivage' => 'a_archiver', 'archivage_decide_at' => now()]);
+
+        $documentsApi = $this->actingAs($sec2)->getJson("/api/v1/dossiers/{$visible->dossier_id}")
+            ->assertOk()
+            ->json('data.documents');
+        $this->assertCount(1, $documentsApi);
+        $this->assertSame($visible->id, $documentsApi[0]['id']);
+
+        try {
+            app(ArchivageDossierService::class)->archiver($visible->dossier, $sec2);
+            $this->fail('Un document caché non archivé devait bloquer l’archivage du dossier.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('dossier', $exception->errors());
+        }
+
+        $this->assertDatabaseHas('dossiers', ['id' => $visible->dossier_id, 'statut_archivage' => 'a_archiver']);
+        $this->assertDatabaseHas('courriers', ['id' => $cache->id, 'dossier_id' => $visible->dossier_id]);
+    }
+
+    public function test_decision_dg_refuse_un_dossier_avec_un_document_non_archive(): void
+    {
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $visible = Courrier::factory()->create([
+            'direction_origine_id' => $direction->id,
+            'direction_destination_id' => $direction->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+        ]);
+        Courrier::factory()->create([
+            'dossier_id' => $visible->dossier_id,
+            'direction_origine_id' => Direction::factory()->create()->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+        ]);
+        $this->archiverDocument($visible, $dg, $sec2, 'DECISION');
+
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$visible->dossier_id}/decision-archivage")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('dossier');
+        $this->assertDatabaseHas('dossiers', ['id' => $visible->dossier_id, 'statut_archivage' => 'actif']);
+    }
+
+    public function test_archivage_reste_autorise_quand_tous_les_documents_du_dossier_sont_eligibles(): void
+    {
+        $directionVisible = Direction::factory()->create();
+        $directionCachee = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $directionVisible);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $directionVisible);
+        $lecteur = User::factory()->directeurDirection($directionVisible)->create();
+        $visible = Courrier::factory()->create([
+            'direction_origine_id' => $directionVisible->id,
+            'direction_destination_id' => $directionVisible->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+        ]);
+        $cache = Courrier::factory()->create([
+            'dossier_id' => $visible->dossier_id,
+            'direction_origine_id' => $directionCachee->id,
+            'direction_destination_id' => $directionCachee->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+        ]);
+        $this->archiverDocument($visible, $dg, $sec2, 'POSITIF-A');
+        $this->archiverDocument($cache, $dg, $sec2, 'POSITIF-B');
+
+        $documentsApi = $this->actingAs($lecteur)->getJson("/api/v1/dossiers/{$visible->dossier_id}")
+            ->assertOk()
+            ->json('data.documents');
+        $this->assertCount(1, $documentsApi);
+        $this->assertSame($visible->id, $documentsApi[0]['id']);
+
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$visible->dossier_id}/decision-archivage")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'a_archiver');
+        $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$visible->dossier_id}/archiver")
             ->assertOk()->assertJsonPath('data.statut_archivage', 'archive');
     }
 

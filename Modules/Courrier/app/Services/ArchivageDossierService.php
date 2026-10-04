@@ -7,6 +7,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
 use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Courrier\Models\Dossier;
+use Modules\Courrier\Scopes\CourrierDirectionScope;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
@@ -53,19 +54,21 @@ class ArchivageDossierService
 
     private function assertEligiblePourArchivage(Dossier $dossier): void
     {
-        $documentNonArchive = $dossier->documents()
+        $documents = fn () => $dossier->documents()->withoutGlobalScope(CourrierDirectionScope::class);
+
+        $documentNonArchive = $documents()
             ->whereDoesntHave('classement', fn ($q) => $q->where('statut', 'archive'))
             ->exists();
-        $dispatchEnAttente = $dossier->documents()
+        $dispatchEnAttente = $documents()
             ->whereHas('dispatchs', fn ($q) => $q->where('statut', 'en_attente'))
             ->exists();
-        $missionActive = $dossier->documents()
+        $missionActive = $documents()
             ->whereHas('missionsDocumentaires', fn ($q) => $q->whereIn('statut', [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS]))
             ->exists();
-        $traitementActif = $dossier->documents()
+        $traitementActif = $documents()
             ->whereHas('traitementsDirection', fn ($q) => $q->where('statut', '!=', TraitementDirectionStatut::TERMINE_DIRECTEUR))
             ->exists();
-        $documentProduitActif = $dossier->documents()
+        $documentProduitActif = $documents()
             ->whereHas('documentProduitDirection', fn ($q) => $q->whereNotIn('statut', ['entre_circuit']))
             ->exists();
 
