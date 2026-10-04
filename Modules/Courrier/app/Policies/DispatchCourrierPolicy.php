@@ -2,8 +2,10 @@
 
 namespace Modules\Courrier\Policies;
 
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
@@ -34,6 +36,19 @@ class DispatchCourrierPolicy
 
     public function accuserReception(User $user, DispatchCourrier $dispatch): bool
     {
+        if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT) {
+            $courrier = $dispatch->courrier;
+
+            return $dispatch->statut === DispatchStatut::EN_ATTENTE
+                && $dispatch->accuse_reception_at === null
+                && $courrier !== null
+                && in_array($courrier->mode_sortie, [ModeSortie::COURRIEL, ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)
+                && $courrier->estSortieCompletee()
+                && $courrier->estCycleClassementApresSortieCompletee()
+                && $dispatch->cycle === (int) $courrier->dispatchs()->max('cycle')
+                && $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_2]);
+        }
+
         return $dispatch->type_destination === DispatchTypeDestination::DIRECTION
             && $dispatch->statut === DispatchStatut::EXECUTE
             && $dispatch->accuse_reception_at === null

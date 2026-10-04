@@ -68,6 +68,56 @@ class ConcurrenceSortieSec2PostgresTest extends CourrierTestCase
         }
     }
 
+    public function test_deux_decisions_de_classement_concurrentes_ne_creent_quun_cycle(): void
+    {
+        $this->assertSame('pgsql', config('database.default'));
+        $this->assertSame('ont_testing', config('database.connections.pgsql.database'));
+        [$courrier, $dg, $sec2, $autreSec2] = $this->courrierSigne();
+        $courrier->update([
+            'statut' => CourrierStatut::ENVOYE,
+            'mode_sortie' => ModeSortie::COURRIEL,
+            'date_envoi' => today(),
+            'courriel_envoye_at' => now(),
+            'courriel_envoye_par_id' => $sec2->id,
+            'courriel_destinataire' => $courrier->destinataire_externe_email,
+        ]);
+        $champsPreuves = [
+            'pdf_chemin', 'pdf_sha256', 'signataire_id', 'signe_at', 'numero_depart',
+            'mode_sortie', 'date_envoi', 'courriel_envoye_at', 'courriel_envoye_par_id',
+            'courriel_destinataire', 'destinataire_externe_email',
+        ];
+        $preuvesAvant = array_intersect_key($courrier->fresh()->getRawOriginal(), array_flip($champsPreuves));
+        $transitionsAvant = $courrier->transitions()->count();
+
+        try {
+            $this->concurrence('decider-classement', $courrier->id, $dg, $dg);
+            $courrier->refresh();
+            $dispatchs = $courrier->dispatchs()->get();
+            $this->assertSame(CourrierStatut::ENVOYE, $courrier->statut);
+            $this->assertTrue($courrier->estSortieCompletee());
+            $this->assertCount(1, $dispatchs);
+            $dispatch = $dispatchs->sole();
+            $this->assertSame('classement', $dispatch->type_destination->value);
+            $this->assertSame('en_attente', $dispatch->statut->value);
+            $this->assertSame($transitionsAvant, $courrier->transitions()->count());
+
+            $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/accuser-reception")->assertOk();
+            $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", ['emplacement' => 'Archives concurrence'])->assertOk();
+            $courrier->refresh();
+            $dispatch->refresh();
+            $this->assertSame(CourrierStatut::ENVOYE, $courrier->statut);
+            $this->assertSame('execute', $dispatch->statut->value);
+            $this->assertSame(1, DB::table('dispatchs_courrier')->where('courrier_id', $courrier->id)->where('type_destination', 'classement')->count());
+            $this->assertSame(1, DB::table('classements_documents')->where('courrier_id', $courrier->id)->count());
+            $this->assertSame('classe', DB::table('classements_documents')->where('courrier_id', $courrier->id)->value('statut'));
+            $this->assertSame($preuvesAvant, array_intersect_key($courrier->getRawOriginal(), array_flip($champsPreuves)));
+            $this->assertSame($transitionsAvant, $courrier->transitions()->count());
+            $this->assertNotContains($courrier->statut, [CourrierStatut::EN_DISPATCH, CourrierStatut::DISPATCH_EXECUTE]);
+        } finally {
+            Storage::disk('local')->delete($courrier->pdf_chemin);
+        }
+    }
+
     private function concurrence(string $action, int $courrierId, User $premier, User $second): void
     {
         $barriere = sys_get_temp_dir().'/ont-sortie-sec2-'.bin2hex(random_bytes(6));
@@ -83,7 +133,7 @@ class ConcurrenceSortieSec2PostgresTest extends CourrierTestCase
                     $barriere,
                     (string) ($index + 1),
                     $action,
-                ], base_path(), ['APP_ENV' => 'testing']);
+                ], base_path(), ['APP_ENV' => 'testing', 'DB_DATABASE' => 'ont_testing']);
             }
             foreach ($processus as $process) {
                 $process->setTimeout(30)->start();

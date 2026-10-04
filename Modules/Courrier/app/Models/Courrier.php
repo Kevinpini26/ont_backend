@@ -473,6 +473,60 @@ class Courrier extends Model implements Numerisable
     }
 
     /**
+     * Un mode de sortie explicite impose une preuve de fin de livraison.
+     * Les courriers historiques sans mode_sortie conservent le comportement
+     * précédent et ne sont pas reinterprétés.
+     */
+    public function estSortieCompletee(): bool
+    {
+        if ($this->mode_sortie === null) {
+            return true;
+        }
+
+        return match ($this->mode_sortie) {
+            ModeSortie::COURRIEL => $this->statut === CourrierStatut::ENVOYE && $this->preuvesCourrielCoherentes(),
+            ModeSortie::RETRAIT_PHYSIQUE => $this->statut === CourrierStatut::REMIS && $this->preuvesRemisePhysiqueCoherentes(),
+            ModeSortie::COURRIEL_ET_RETRAIT => $this->statut === CourrierStatut::REMIS
+                && $this->preuvesCourrielCoherentes()
+                && $this->preuvesRemisePhysiqueCoherentes(),
+            default => false,
+        };
+    }
+
+    private function preuvesCourrielCoherentes(): bool
+    {
+        return $this->courriel_envoye_at !== null
+            && $this->courriel_envoye_par_id !== null
+            && $this->date_envoi !== null
+            && $this->date_envoi->toDateString() === $this->courriel_envoye_at->toDateString()
+            && filter_var(trim((string) $this->destinataire_externe_email), FILTER_VALIDATE_EMAIL) !== false
+            && strcasecmp(trim((string) $this->courriel_destinataire), trim((string) $this->destinataire_externe_email)) === 0;
+    }
+
+    private function preuvesRemisePhysiqueCoherentes(): bool
+    {
+        return $this->retrait_disponible_at !== null
+            && $this->retrait_disponible_par_id !== null
+            && $this->remis_le !== null
+            && filled($this->remis_a)
+            && $this->mode_remise === ModeRemise::RETRAIT_PHYSIQUE
+            && $this->retrait_effectue_par_id !== null;
+    }
+
+    /**
+     * Un courrier dont la sortie explicite est complètement terminée conserve
+     * son statut final (ENVOYE/REMIS) pendant un cycle de classement
+     * institutionnel : il ne redevient pas "en dispatch" ni "dispatch
+     * exécuté" comme un courrier historique sans sortie explicite.
+     */
+    public function estCycleClassementApresSortieCompletee(): bool
+    {
+        return $this->mode_sortie !== null
+            && $this->estSortieCompletee()
+            && in_array($this->statut, [CourrierStatut::ENVOYE, CourrierStatut::REMIS], true);
+    }
+
+    /**
      * La transition qui a amené le courrier à son statut actuel. Elle peut
      * représenter une remise à décharger ou une étape locale sans destinataire.
      */

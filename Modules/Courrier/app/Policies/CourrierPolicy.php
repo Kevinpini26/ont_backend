@@ -4,8 +4,10 @@ namespace Modules\Courrier\Policies;
 
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\CycleDecisionnelService;
 use Modules\Courrier\Services\CourrierVisibilityService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
@@ -98,8 +100,29 @@ class CourrierPolicy
 
     public function deciderDispatch(User $user, Courrier $courrier): bool
     {
-        return in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true)
+        $statutAutorise = in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true)
+            || ($courrier->statut === CourrierStatut::REMIS
+                && in_array($courrier->mode_sortie, [ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)
+                && $courrier->estSortieCompletee());
+
+        return $statutAutorise
             && $this->autoriteDg->estAutorite($user);
+    }
+
+    public function deciderClassement(User $user, Courrier $courrier): bool
+    {
+        if ($courrier->dossier_id === null
+            || ! $courrier->estCycleClassementApresSortieCompletee()
+            || ! $this->autoriteDg->estAutorite($user)) {
+            return false;
+        }
+
+        $bordereau = $courrier->bordereauCourant();
+        if ($bordereau !== null && $bordereau->destinataire_poste === Poste::DG->value && $bordereau->accuse_reception_at === null) {
+            return false;
+        }
+
+        return app(CycleDecisionnelService::class)->peutOuvrir($courrier);
     }
 
     public function validerRelecture(User $user, Courrier $courrier): bool

@@ -8,11 +8,17 @@ use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CourrierCircuitService;
+use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Kernel\Models\User;
 
 require dirname(__DIR__, 4).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 4).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
+
+if ($app->environment() !== 'testing' || $app['config']->get('database.connections.pgsql.database') !== 'ont_testing') {
+    fwrite(STDERR, 'Concurrent test worker refuses any non-ont_testing database.');
+    exit(2);
+}
 
 [$script, $courrierId, $acteurId, $barriere, $numero] = $argv;
 $action = $argv[5] ?? 'signer';
@@ -34,6 +40,11 @@ try {
         $service->envoyerParCourriel($courrier, $acteur);
     } elseif ($action === 'confirmer-remise') {
         $service->confirmerRemisePhysique($courrier, $acteur, $argv[6] ?? 'Récupérant test', null, null);
+    } elseif ($action === 'decider-classement') {
+        app(DispatchCourrierService::class)->decider($courrier, $acteur, [[
+            'type' => 'classement',
+            'instruction' => 'Décision concurrente.',
+        ]]);
     } else {
         $service->signer($courrier, $acteur);
     }

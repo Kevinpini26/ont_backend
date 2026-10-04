@@ -206,6 +206,8 @@ class CourrierResource extends JsonResource
             'dispatchs' => DispatchCourrierResource::collection($this->whenLoaded('dispatchs')),
             'peut_ouvrir_nouveau_cycle' => in_array($this->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
                 && app(CycleDecisionnelService::class)->peutOuvrir($this->resource),
+            'peut_decider_classement' => $request->user() !== null
+                && Gate::forUser($request->user())->allows('deciderClassement', $this->resource),
             'provenance_directionnelle' => $this->whenLoaded('documentProduitDirection', fn () => $this->documentProduitDirection ? [
                 'direction_id' => $this->documentProduitDirection->direction_id,
                 'document_source_id' => $this->documentProduitDirection->document_source_id,

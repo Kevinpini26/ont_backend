@@ -37,6 +37,7 @@ class DispatchCourrier extends Model
         ];
     }
 
+    /** @return BelongsTo<Courrier, $this> */
     public function courrier(): BelongsTo
     {
         return $this->belongsTo(Courrier::class);

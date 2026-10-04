@@ -9,6 +9,7 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
@@ -46,14 +47,23 @@ class DispatchCourrierService
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->id);
             $ancienStatut = $courrier->statut;
 
-            if (! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true) || $courrier->dossier_id === null) {
+            $remisePhysiqueComplete = $courrier->statut === CourrierStatut::REMIS
+                && in_array($courrier->mode_sortie, [ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)
+                && $courrier->estSortieCompletee();
+            if ((! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE, CourrierStatut::ENVOYE], true)
+                && ! $remisePhysiqueComplete) || $courrier->dossier_id === null) {
                 throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas disponible pour une décision de dispatch."]);
             }
 
-            if ($courrier->statut === CourrierStatut::ENVOYE
+            if (in_array($courrier->statut, [CourrierStatut::ENVOYE, CourrierStatut::REMIS], true)
                 && collect($destinations)->contains(fn (array $destination) => ($destination['type'] ?? null) !== DispatchTypeDestination::CLASSEMENT->value)) {
                 throw ValidationException::withMessages([
-                    'destinations' => 'Un courrier sortant déjà envoyé ne peut être orienté que vers le classement.',
+                    'destinations' => 'Un courrier sortant dont la sortie est déjà complète ne peut être orienté que vers le classement.',
+                ]);
+            }
+            if ($courrier->mode_sortie !== null && ! $courrier->estSortieCompletee()) {
+                throw ValidationException::withMessages([
+                    'courrier' => 'La sortie de ce courrier n’est pas entièrement terminée pour autoriser une décision de classement.',
                 ]);
             }
             $this->cycles->assertReceptionDg($courrier);
@@ -86,15 +96,24 @@ class DispatchCourrierService
                 ]);
             }
 
+            $cycleClassementModerne = $courrier->estCycleClassementApresSortieCompletee();
+            $statutCourrier = $cycleClassementModerne ? $courrier->statut : CourrierStatut::EN_DISPATCH;
+            $statutCycle = $cycleClassementModerne ? CourrierStatut::EN_DISPATCH : $statutCourrier;
             $courrier->update([
                 'avis_dg' => AvisDg::FAVORABLE,
                 'avis_dg_rendu_at' => now(),
                 'avis_dg_rendu_par_id' => $acteur->id,
                 'avis_dg_rendu_en_interim' => $autorite !== $acteur->poste,
-                'statut' => CourrierStatut::EN_DISPATCH,
+                'statut' => $statutCourrier,
             ]);
-            $this->tracer($courrier, $ancienStatut, CourrierStatut::EN_DISPATCH, $acteur, Poste::SECRETARIAT_2);
-            $this->audit->enregistrer('dispatch.decision_prise', $courrier, $acteur, ['nombre' => count($destinations), 'autorite_poste' => $autorite->value, 'source_autorite' => $this->autoriteDg->source($acteur), 'cycle' => $cycle]);
+            if (! $cycleClassementModerne) {
+                $this->tracer($courrier, $ancienStatut, $statutCycle, $acteur, Poste::SECRETARIAT_2);
+            }
+            $metadonnees = ['nombre' => count($destinations), 'autorite_poste' => $autorite->value, 'source_autorite' => $this->autoriteDg->source($acteur), 'cycle' => $cycle, 'statut_courrier' => $statutCourrier->value];
+            if (! $cycleClassementModerne) {
+                $metadonnees['statut_cycle'] = $statutCycle->value;
+            }
+            $this->audit->enregistrer('dispatch.decision_prise', $courrier, $acteur, $metadonnees);
 
             return $courrier;
         });
@@ -141,14 +160,29 @@ class DispatchCourrierService
             || ! $this->delegations->utilisateurHabilite($acteur, [Poste::SECRETARIAT_2])
             || $dispatch->courrier_id !== $courrier->id
             || $dispatch->dossier_id !== $courrier->dossier_id
-            || $courrier->statut !== CourrierStatut::EN_DISPATCH
+            || (! $courrier->estCycleClassementApresSortieCompletee() && $courrier->statut !== CourrierStatut::EN_DISPATCH)
             || $dispatch->cycle !== (int) $courrier->dispatchs()->max('cycle')) {
             throw ValidationException::withMessages(['dispatch' => 'Ce dispatch ne peut pas être exécuté : état, dossier ou cycle incompatible.']);
         }
-        $transition = $courrier->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)
-            ->where('statut', CourrierStatut::EN_DISPATCH)->latest('id')->first();
-        if ($transition !== null && $transition->accuse_reception_at === null) {
-            throw ValidationException::withMessages(['dispatch' => 'Le bordereau doit être réceptionné par SEC2 avant exécution.']);
+        if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT && $courrier->mode_sortie !== null && ! $courrier->estSortieCompletee()) {
+            throw ValidationException::withMessages(['dispatch' => 'Le courrier ne peut pas être classé tant que sa sortie explicite n’est pas entièrement terminée.']);
+        }
+        $autoriseStatutCourrier = $courrier->statut === CourrierStatut::EN_DISPATCH || $courrier->estCycleClassementApresSortieCompletee();
+        if (! $autoriseStatutCourrier) {
+            throw ValidationException::withMessages(['dispatch' => 'Ce dispatch ne peut pas être exécuté : état, dossier ou cycle incompatible.']);
+        }
+        if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT
+            && in_array($courrier->mode_sortie, [ModeSortie::COURRIEL, ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)
+            && $courrier->estCycleClassementApresSortieCompletee()) {
+            if ($dispatch->accuse_reception_at === null) {
+                throw ValidationException::withMessages(['dispatch' => 'Le dispatch de classement doit être réceptionné par SEC2 avant exécution.']);
+            }
+        } else {
+            $transition = $courrier->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)
+                ->where('statut', CourrierStatut::EN_DISPATCH)->latest('id')->first();
+            if ($transition !== null && $transition->accuse_reception_at === null) {
+                throw ValidationException::withMessages(['dispatch' => 'Le bordereau doit être réceptionné par SEC2 avant exécution.']);
+            }
         }
 
         return $dispatch;
@@ -178,9 +212,11 @@ class DispatchCourrierService
 
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($dispatch->courrier_id);
             if (! $courrier->dispatchs()->where('statut', DispatchStatut::EN_ATTENTE)->exists()) {
-                $ancien = $courrier->statut;
-                $courrier->update(['statut' => CourrierStatut::DISPATCH_EXECUTE]);
-                $this->tracer($courrier, $ancien, CourrierStatut::DISPATCH_EXECUTE, $acteur);
+                if (! $courrier->estCycleClassementApresSortieCompletee()) {
+                    $ancien = $courrier->statut;
+                    $courrier->update(['statut' => CourrierStatut::DISPATCH_EXECUTE]);
+                    $this->tracer($courrier, $ancien, CourrierStatut::DISPATCH_EXECUTE, $acteur);
+                }
             }
 
             return $dispatch;
@@ -248,15 +284,29 @@ class DispatchCourrierService
     public function accuserReception(DispatchCourrier $dispatch, User $acteur): DispatchCourrier
     {
         return DB::transaction(function () use ($dispatch, $acteur) {
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($dispatch->courrier_id);
             $dispatch = DispatchCourrier::query()->lockForUpdate()->findOrFail($dispatch->id);
             $this->dossiers->assertActifPourNouvelleActivite($dispatch->dossier_id);
-            if ($dispatch->type_destination !== DispatchTypeDestination::DIRECTION || $dispatch->statut !== DispatchStatut::EXECUTE
+
+            if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT) {
+                if ($dispatch->statut !== DispatchStatut::EN_ATTENTE
+                    || $dispatch->accuse_reception_at !== null
+                    || ! in_array($courrier->mode_sortie, [ModeSortie::COURRIEL, ModeSortie::RETRAIT_PHYSIQUE, ModeSortie::COURRIEL_ET_RETRAIT], true)
+                    || ! $courrier->estSortieCompletee()
+                    || ! $courrier->estCycleClassementApresSortieCompletee()
+                    || $dispatch->cycle !== (int) $courrier->dispatchs()->max('cycle')
+                    || ! $this->delegations->utilisateurHabilite($acteur, [Poste::SECRETARIAT_2])) {
+                    throw ValidationException::withMessages(['dispatch' => 'La réception de ce dispatch de classement ne peut pas être confirmée.']);
+                }
+            } elseif ($dispatch->type_destination !== DispatchTypeDestination::DIRECTION || $dispatch->statut !== DispatchStatut::EXECUTE
                 || $dispatch->accuse_reception_at !== null || $acteur->role !== UserRole::SECRETARIAT_DIRECTION
                 || $acteur->direction_id !== $dispatch->direction_id) {
                 throw ValidationException::withMessages(['dispatch' => 'La réception de ce dispatch ne peut pas être confirmée.']);
             }
             $dispatch->update(['accuse_reception_par_id' => $acteur->id, 'accuse_reception_at' => now()]);
-            $this->traitementsDirection->creerDepuisReception($dispatch, $acteur);
+            if ($dispatch->type_destination === DispatchTypeDestination::DIRECTION) {
+                $this->traitementsDirection->creerDepuisReception($dispatch, $acteur);
+            }
             $this->audit->enregistrer('dispatch.reception_confirmee', $dispatch, $acteur);
 
             return $dispatch->load(['courrier', 'direction', 'decisionnaire', 'executePar', 'accuseReceptionPar']);

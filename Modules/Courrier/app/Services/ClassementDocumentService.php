@@ -25,7 +25,11 @@ class ClassementDocumentService
             $dispatch = $this->dispatchs->verrouillerPourExecution($dispatch, $sec2);
             if ($dispatch->type_destination !== DispatchTypeDestination::CLASSEMENT || $dispatch->statut !== DispatchStatut::EN_ATTENTE || ! $this->delegations->utilisateurHabilite($sec2, [Poste::SECRETARIAT_2])) {
                 throw ValidationException::withMessages(['dispatch' => 'Seul SEC2 peut exécuter une décision de classement en attente.']);
-            } if (ClassementDocument::query()->where('courrier_id', $dispatch->courrier_id)->exists()) {
+            }
+            if ($dispatch->courrier->mode_sortie !== null && ! $dispatch->courrier->estSortieCompletee()) {
+                throw ValidationException::withMessages(['courrier' => 'Le classement institutionnel exige une sortie explicitement terminée.']);
+            }
+            if (ClassementDocument::query()->where('courrier_id', $dispatch->courrier_id)->exists()) {
                 throw ValidationException::withMessages(['courrier' => 'Ce document possède déjà un classement institutionnel.']);
             } $classement = ClassementDocument::query()->create(['courrier_id' => $dispatch->courrier_id, 'dossier_id' => $dispatch->dossier_id, 'dispatch_courrier_id' => $dispatch->id, 'statut' => ClassementDocumentStatut::CLASSE, 'cote' => $data['cote'] ?? null, 'emplacement' => $data['emplacement'], 'observation' => $data['observation'] ?? null, 'classe_par_id' => $sec2->id, 'classe_at' => now()]);
             Courrier::withoutGlobalScopes()->whereKey($dispatch->courrier_id)->update(['cote_classement' => $classement->cote, 'emplacement_physique' => $classement->emplacement]);

@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Kernel\Http\Resources\UserResource;
@@ -41,6 +42,8 @@ class DispatchCourrierResource extends JsonResource
             'preuve_disponible' => $this->preuve_piece_jointe_id !== null,
             'accuse_reception_par' => new UserResource($this->whenLoaded('accuseReceptionPar')),
             'accuse_reception_at' => $this->accuse_reception_at,
+            'peut_accuser_reception' => $request->user() !== null
+                && Gate::forUser($request->user())->allows('accuserReception', $this->resource),
             'traitement_direction' => new TraitementDirectionResource($this->whenLoaded('traitementDirection')),
         ];
     }
