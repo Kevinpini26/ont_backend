@@ -39,6 +39,7 @@ use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
+use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\EmpruntOriginal;
 use Modules\Courrier\Models\InstructionCourrierDg;
@@ -2033,6 +2034,16 @@ class CourrierCircuitService
     public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation
     {
         return DB::transaction(function () use ($courrier, $auteur, $contenu) {
+            if ($courrier->dossier_id === null) {
+                throw ValidationException::withMessages([
+                    'dossier' => 'Une annotation métier exige un dossier actif.',
+                ]);
+            }
+
+            User::query()->sharedLock()->findOrFail($auteur->id);
+            $dossier = Dossier::query()->lockForUpdate()->findOrFail($courrier->dossier_id);
+            $this->dossiers->assertActifPourNouvelleActivite($dossier);
+
             /** @var CourrierAnnotation $annotation */
             $annotation = $courrier->annotations()->create([
                 'auteur_id' => $auteur->id,
