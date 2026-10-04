@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentRelation;
 use Modules\Courrier\Services\DocumentRelationService;
+use Modules\Courrier\Services\DossierWorkflowGuard;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Tests\TestCase;
@@ -176,5 +177,25 @@ class DossierDocumentaireTest extends TestCase
 
         $this->expectException(ValidationException::class);
         app(DocumentRelationService::class)->relier($cible, $source, DocumentRelationType::SUITE_DE, null);
+    }
+
+    public function test_guard_refuse_une_nouvelle_activite_sauf_si_le_dossier_est_actif(): void
+    {
+        $source = Courrier::factory()->create();
+        $dossier = $source->dossier;
+        $guard = app(DossierWorkflowGuard::class);
+
+        $guard->assertActifPourNouvelleActivite($dossier);
+
+        foreach (['a_archiver', 'archive'] as $statut) {
+            $dossier->update(['statut_archivage' => $statut]);
+
+            try {
+                $guard->assertActifPourNouvelleActivite($dossier);
+                $this->fail("Le guard aurait dû refuser le statut {$statut}.");
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('dossier', $exception->errors());
+            }
+        }
     }
 }

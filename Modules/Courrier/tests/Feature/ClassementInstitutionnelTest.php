@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\ClassementDocumentStatut;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\DecisionDirection;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
 use Modules\Courrier\Enums\ModeReception;
@@ -17,9 +18,11 @@ use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\TraitementDirection;
 use Modules\Courrier\Services\ArchivageDossierService;
 use Modules\Courrier\Services\ClassementDocumentService;
 use Modules\Courrier\Services\DispatchCourrierService;
+use Modules\Courrier\Services\TraitementDirectionService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\DelegationPoste;
 use Modules\Kernel\Models\Direction;
@@ -712,6 +715,78 @@ class ClassementInstitutionnelTest extends CourrierTestCase
             ->assertOk()->assertJsonPath('data.statut_archivage', 'a_archiver');
         $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$a->dossier_id}/archiver")
             ->assertOk()->assertJsonPath('data.statut_archivage', 'archive');
+    }
+
+    public function test_decision_archivage_est_refusee_si_un_dispatch_direction_execute_nest_pas_receptionne(): void
+    {
+        $centrale = Direction::factory()->create();
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $centrale);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+
+        app(DispatchCourrierService::class)->decider($courrier, $dg, [
+            ['type' => DispatchTypeDestination::DIRECTION->value, 'direction_id' => $direction->id, 'instruction' => 'Traiter'],
+            ['type' => DispatchTypeDestination::CLASSEMENT->value, 'instruction' => 'Classer'],
+        ]);
+        $dispatchDirection = $courrier->dispatchs()->where('type_destination', DispatchTypeDestination::DIRECTION)->firstOrFail();
+        $dispatchClassement = $courrier->dispatchs()->where('type_destination', DispatchTypeDestination::CLASSEMENT)->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatchDirection, $sec2);
+        app(DispatchCourrierService::class)->executer($dispatchDirection, $sec2);
+        $classement = app(ClassementDocumentService::class)->classer($dispatchClassement, $sec2, [
+            'cote' => 'COTE-ACCUSÉ-EN-ATTENTE',
+            'emplacement' => 'Archives',
+        ]);
+        app(ClassementDocumentService::class)->archiver($classement, $sec2, null);
+
+        $this->assertSame(DispatchStatut::EXECUTE, $dispatchDirection->fresh()->statut);
+        $this->assertNull($dispatchDirection->fresh()->accuse_reception_at);
+        $this->assertDatabaseCount('traitements_direction', 0);
+
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/decision-archivage")
+            ->assertUnprocessable()->assertJsonValidationErrors('dossier');
+        $this->assertDatabaseHas('dossiers', ['id' => $courrier->dossier_id, 'statut_archivage' => 'actif']);
+    }
+
+    public function test_decision_archivage_reste_possible_apres_reception_et_traitement_du_dispatch_direction(): void
+    {
+        $centrale = Direction::factory()->create();
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $centrale);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create();
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+
+        app(DispatchCourrierService::class)->decider($courrier, $dg, [
+            ['type' => DispatchTypeDestination::DIRECTION->value, 'direction_id' => $direction->id, 'instruction' => 'Traiter'],
+            ['type' => DispatchTypeDestination::CLASSEMENT->value, 'instruction' => 'Classer'],
+        ]);
+        $dispatchDirection = $courrier->dispatchs()->where('type_destination', DispatchTypeDestination::DIRECTION)->firstOrFail();
+        $dispatchClassement = $courrier->dispatchs()->where('type_destination', DispatchTypeDestination::CLASSEMENT)->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatchDirection, $sec2);
+        app(DispatchCourrierService::class)->executer($dispatchDirection, $sec2);
+        app(DispatchCourrierService::class)->accuserReception($dispatchDirection, $secretariat);
+
+        $traitement = TraitementDirection::query()->where('dispatch_courrier_id', $dispatchDirection->id)->firstOrFail();
+        $traitements = app(TraitementDirectionService::class);
+        $traitements->transmettreDirecteur($traitement, $secretariat, null);
+        $traitements->prendreEnCharge($traitement->fresh(), $directeur);
+        $traitements->decider($traitement->fresh(), $directeur, DecisionDirection::TRAITEMENT_TERMINE, null);
+
+        $classement = app(ClassementDocumentService::class)->classer($dispatchClassement, $sec2, [
+            'cote' => 'COTE-REÇU-ET-TRAITÉ',
+            'emplacement' => 'Archives',
+        ]);
+        app(ClassementDocumentService::class)->archiver($classement, $sec2, null);
+
+        $this->assertNotNull($dispatchDirection->fresh()->accuse_reception_at);
+        $this->assertSame('termine_directeur', $traitement->fresh()->statut->value);
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$courrier->dossier_id}/decision-archivage")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'a_archiver');
+        app(ArchivageDossierService::class)->archiver($courrier->dossier, $sec2);
+        $this->assertDatabaseHas('dossiers', ['id' => $courrier->dossier_id, 'statut_archivage' => 'archive']);
     }
 
     public function test_archivage_refuse_un_dossier_quand_un_document_cache_du_meme_dossier_nest_pas_archive(): void

@@ -14,9 +14,9 @@ class DossierWorkflowGuard
             ? $dossier->fresh()
             : Dossier::query()->findOrFail($dossier);
 
-        if ($dossier->statut_archivage === 'archive') {
+        if ($dossier->statut_archivage !== 'actif') {
             throw ValidationException::withMessages([
-                'dossier' => 'Un dossier archivé ne peut plus recevoir de nouvelle activité métier.',
+                'dossier' => "Un dossier qui n'est plus actif ne peut pas recevoir de nouvelle activité métier.",
             ]);
         }
     }

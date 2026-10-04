@@ -4,6 +4,8 @@ namespace Modules\Courrier\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Modules\Courrier\Enums\DispatchStatut;
+use Modules\Courrier\Enums\DispatchTypeDestination;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
 use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Courrier\Models\Dossier;
@@ -62,6 +64,12 @@ class ArchivageDossierService
         $dispatchEnAttente = $documents()
             ->whereHas('dispatchs', fn ($q) => $q->where('statut', 'en_attente'))
             ->exists();
+        $dispatchDirectionNonRecu = $documents()
+            ->whereHas('dispatchs', fn ($q) => $q
+                ->where('type_destination', DispatchTypeDestination::DIRECTION->value)
+                ->where('statut', DispatchStatut::EXECUTE->value)
+                ->whereNull('accuse_reception_at'))
+            ->exists();
         $missionActive = $documents()
             ->whereHas('missionsDocumentaires', fn ($q) => $q->whereIn('statut', [MissionDocumentaireStatut::ASSIGNEE, MissionDocumentaireStatut::EN_COURS]))
             ->exists();
@@ -72,7 +80,7 @@ class ArchivageDossierService
             ->whereHas('documentProduitDirection', fn ($q) => $q->whereNotIn('statut', ['entre_circuit']))
             ->exists();
 
-        if ($documentNonArchive || $dispatchEnAttente || $missionActive || $traitementActif || $documentProduitActif) {
+        if ($documentNonArchive || $dispatchEnAttente || $dispatchDirectionNonRecu || $missionActive || $traitementActif || $documentProduitActif) {
             throw ValidationException::withMessages([
                 'dossier' => 'Le dossier ne peut pas encore être proposé à l’archivage : il contient un document non archivé ou une opération active.',
             ]);
