@@ -5,7 +5,6 @@ namespace Modules\Courrier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
@@ -17,7 +16,7 @@ class CircuitCourrierTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_le_circuit_progresse_etape_par_etape_jusqua_lenregistrement(): void
+    public function test_le_circuit_d_reste_en_attente_de_signature_apres_validation_dg(): void
     {
         Storage::fake('local');
 
@@ -92,6 +91,7 @@ class CircuitCourrierTest extends CourrierTestCase
         Courrier::withoutGlobalScopes()->whereKey($id)->update([
             'statut' => CourrierStatut::PROJET_A_REDIGER,
             'created_by' => $redacteur->id,
+            'destinataire_externe_nom' => 'Partenaire externe',
         ]);
 
         $this->actingAs($redacteur)
@@ -119,30 +119,24 @@ class CircuitCourrierTest extends CourrierTestCase
         $this->assertFalse($traceRelecture->meta['commentaire_fourni']);
         $this->assertArrayHasKey('relecture_validee_at', $traceRelecture->meta);
 
-        // La décharge du bordereau en_relecture, donnée par le relecteur
-        // ci-dessus, suffit aussi à débloquer la signature de la DG : ce
-        // n'est pas un nouveau bordereau distinct (voir
-        // CourrierCircuitService::tracerTransition()).
+        // La décharge du bordereau en_relecture, donnée par le relecteur,
+        // débloque la validation DG pour signature sans transmettre à SEC2.
         $this->actingAs($dg)
-            ->postJson("/api/v1/courriers/{$id}/signer")
+            ->postJson("/api/v1/courriers/{$id}/valider-pour-signature")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::SIGNE->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_SIGNATURE->value);
 
-        $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$id}/accuser-reception")->assertOk();
-
-        // Créé par la Réception (mail physique externe, aucune direction
-        // d'origine forcée) : classé externe automatiquement, voir
-        // Courrier::classificationAttendue() et ConformiteCahierDesChargesTest.
-        $response = $this->actingAs($secretariat2)
-            ->postJson("/api/v1/courriers/{$id}/enregistrer", [
-                'classification' => CourrierClassification::EXTERNE->value,
-                'accuse_reception_partenaire' => 'AR-PARTENAIRE-001',
-            ])
-            ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::ENREGISTRE->value);
-
-        $this->assertSame($numeroEnregistrementReception, $response->json('data.numero_enregistrement'));
-        $this->assertStringStartsWith((string) now()->year, $response->json('data.numero_enregistrement'));
+        $courrierFinal = Courrier::withoutGlobalScopes()->findOrFail($id);
+        $this->assertNotNull($courrierFinal->numero_depart);
+        $this->assertNull($courrierFinal->signe_at);
+        $this->assertNull($courrierFinal->pdf_chemin);
+        $this->assertNull($courrierFinal->pdf_sha256);
+        $this->assertSame(0, $courrierFinal->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
+        $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$id}/envoyer", [
+            'destinataire_externe_nom' => 'Partenaire externe',
+            'mode_expedition' => 'courriel',
+        ])->assertNotFound();
+        $this->assertSame($numeroEnregistrementReception, $courrierFinal->numero_enregistrement);
     }
 
     public function test_impossible_de_sauter_une_etape_du_circuit(): void
@@ -180,7 +174,10 @@ class CircuitCourrierTest extends CourrierTestCase
         $redacteur = $this->agent(Poste::ASSISTANT_1, $direction);
         $relecteur = $this->agent(Poste::ASSISTANT_2, $direction);
 
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::PROJET_A_REDIGER]);
+        $courrier = Courrier::factory()->create([
+            'statut' => CourrierStatut::PROJET_A_REDIGER,
+            'destinataire_externe_nom' => 'Destinataire officiel',
+        ]);
         $this->marquerDecharge($courrier, Poste::ASSISTANT_1);
 
         $this->actingAs($redacteur)->postJson("/api/v1/courriers/{$courrier->id}/soumettre-projet-reponse", [
@@ -190,22 +187,22 @@ class CircuitCourrierTest extends CourrierTestCase
 
         $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
 
-        // Tentative de signature sans validation préalable de la relecture.
+        // Ni validation DG ni signature ne sont possibles avant la relecture finale.
         $this->actingAs($dg)
-            ->postJson("/api/v1/courriers/{$courrier->id}/signer")
+            ->postJson("/api/v1/courriers/{$courrier->id}/valider-pour-signature")
             ->assertStatus(422);
 
         $courrier->refresh();
         $this->assertSame(CourrierStatut::PROJET_A_VALIDER, $courrier->statut);
         $this->assertNull($courrier->signe_at);
 
-        // Une fois la relecture validée, la signature devient possible.
+        // Après relecture validée, la DG prépare le document à signer sans le déclarer signé.
         $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$courrier->id}/valider-relecture")->assertOk();
 
         $this->actingAs($dg)
-            ->postJson("/api/v1/courriers/{$courrier->id}/signer")
+            ->postJson("/api/v1/courriers/{$courrier->id}/valider-pour-signature")
             ->assertOk()
-            ->assertJsonPath('data.statut', CourrierStatut::SIGNE->value);
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_SIGNATURE->value);
     }
 
     public function test_seul_le_relecteur_designe_peut_valider_la_relecture(): void

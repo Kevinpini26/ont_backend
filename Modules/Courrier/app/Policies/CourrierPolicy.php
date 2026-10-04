@@ -199,7 +199,20 @@ class CourrierPolicy
     public function signer(User $user, Courrier $courrier): bool
     {
         return $this->autoriteDg->estAutorite($user)
-            && in_array($courrier->statut, [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER], true);
+            && $courrier->statut === CourrierStatut::EN_RELECTURE;
+    }
+
+    public function validerPourSignature(User $user, Courrier $courrier): bool
+    {
+        return $this->autoriteDg->estAutorite($user)
+            && $courrier->statut === CourrierStatut::PROJET_A_VALIDER;
+    }
+
+    public function telechargerPdfASigner(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::EN_ATTENTE_SIGNATURE
+            && ($courrier->valide_signature_par_id === $user->id || $this->autoriteDg->estAutorite($user))
+            && $this->view($user, $courrier);
     }
 
     public function annoter(User $user, Courrier $courrier): bool

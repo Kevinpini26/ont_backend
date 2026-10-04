@@ -396,6 +396,30 @@ class CourrierController extends Controller
         return $this->ressource($this->circuit->signer($courrier, $request->user()));
     }
 
+    public function validerPourSignature(Request $request, Courrier $courrier)
+    {
+        $this->authorize('validerPourSignature', $courrier);
+
+        return $this->ressource($this->circuit->validerPourSignature($courrier, $request->user()));
+    }
+
+    public function telechargerPdfASigner(Courrier $courrier)
+    {
+        $this->authorize('view', $courrier);
+        $this->authorize('telechargerPdfASigner', $courrier);
+
+        app(PdfOfficielIntegrity::class)->verifierFichier(
+            $courrier->pdf_a_signer_chemin,
+            $courrier->pdf_a_signer_sha256,
+            'pdf_a_signer',
+        );
+
+        return Storage::disk('local')->download(
+            $courrier->pdf_a_signer_chemin,
+            "reponse-{$courrier->numero_depart}-a-signer.pdf",
+        );
+    }
+
     /**
      * Impression généralisée : contrairement à telechargerPdf() (le PDF
      * définitif, seulement une fois le courrier signé), cette fiche est
@@ -717,7 +741,7 @@ class CourrierController extends Controller
     private function ressource(Courrier $courrier): CourrierResource
     {
         return new CourrierResource($courrier->load([
-            'directionOrigine', 'directionDestination', 'relecteur', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
+            'directionOrigine', 'directionDestination', 'relecteur', 'valideSignaturePar', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
             'missionsDocumentaires.demandeur', 'missionsDocumentaires.assistant', 'missionsDocumentaires.annuleePar', 'missionsDocumentaires.projetCourrier',
             'dispatchs.direction', 'dispatchs.decisionnaire', 'dispatchs.executePar', 'dispatchs.accuseReceptionPar',

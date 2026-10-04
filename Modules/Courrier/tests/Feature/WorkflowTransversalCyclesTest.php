@@ -7,6 +7,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Mail\ReponseFinaleCourrierExterneMail;
@@ -26,7 +27,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_parcours_a_b_c_classement_documents_et_archivage_dossier(): void
+    public function test_parcours_a_b_c_et_d_en_attente_signature_bloque_archivage(): void
     {
         Storage::fake('local');
         Mail::fake();
@@ -152,50 +153,30 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertSame(1, Notification::sent($dg, CourrierDgNotification::class)
             ->filter(fn ($notification) => $notification->toArray($dg)['courrier_id'] === $d->id
                 && $notification->toArray($dg)['evenement'] === 'pret_a_signer')->count());
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/signer")->assertOk();
+        $validation = $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/valider-pour-signature")
+            ->assertOk()->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_SIGNATURE->value);
         $d->refresh();
-        $this->assertNotNull($d->signataire_id);
-        $this->assertNotNull($d->signe_at);
+        $this->assertSame($dg->id, $d->valide_signature_par_id);
+        $this->assertNotNull($d->valide_signature_at);
+        $this->assertNull($d->signataire_id);
+        $this->assertNull($d->signe_at);
         $this->assertNotNull($d->numero_depart);
-        $this->assertNotNull($d->pdf_chemin);
-        $this->assertNotNull($d->pdf_sha256);
-        Storage::disk('local')->assertExists($d->pdf_chemin);
-        $hashSigne = $d->pdf_sha256;
+        $this->assertNotNull($d->pdf_a_signer_chemin);
+        $this->assertNotNull($d->pdf_a_signer_sha256);
+        $this->assertNull($d->pdf_chemin);
+        $this->assertNull($d->pdf_sha256);
+        Storage::disk('local')->assertExists($d->pdf_a_signer_chemin);
         Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/accuser-reception")->assertOk();
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/envoyer", [
-            'destinataire_externe_nom' => 'Nom arbitraire ignoré',
-            'destinataire_externe_email' => 'detournement@example.test',
-            'mode_expedition' => 'courriel',
-        ])->assertUnprocessable()->assertJsonValidationErrors('destinataire_externe_email');
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/envoyer", [
-            'destinataire_externe_nom' => 'Nom arbitraire ignoré',
-            'destinataire_externe_email' => 'partenaire@example.test',
-            'mode_expedition' => 'courriel',
-        ])->assertOk();
-        $urlFinale = null;
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use ($a, $d, &$urlFinale) {
-            $urlFinale = $mail->urlTelechargement;
-
-            return $mail->hasTo('partenaire@example.test')
-            && $mail->courrierOrigine->is($a)
-            && $mail->reponse->is($d);
-        });
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/envoyer", [
             'destinataire_externe_nom' => 'Organisation Partenaire Tourisme RDC',
             'destinataire_externe_email' => 'partenaire@example.test',
             'mode_expedition' => 'courriel',
-        ])->assertForbidden();
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
-        $this->assertSame($hashSigne, $d->fresh()->pdf_sha256);
-        $this->assertAuditActeur('courrier.reponse_finale_notifiee', $d->id, $sec2->id);
-        $telechargement = $this->get($urlFinale)->assertOk()->assertHeader('content-type', 'application/pdf');
-        $this->assertSame($hashSigne, hash('sha256', $telechargement->streamedContent()));
-
+        ])->assertNotFound();
         $this->actingAs($dg)->postJson("/api/v1/dossiers/{$dossierId}/decision-archivage")->assertUnprocessable();
+        $this->assertDatabaseHas('dossiers', ['id' => $dossierId, 'statut_archivage' => 'actif']);
 
-        foreach ([$a, $b, $c, $d] as $index => $document) {
+        foreach ([$a, $b, $c] as $index => $document) {
             $cyclePrecedent = (int) $document->dispatchs()->max('cycle');
             $this->actingAs($dg)->postJson("/api/v1/courriers/{$document->id}/dispatchs", ['destinations' => [[
                 'type' => 'classement', 'instruction' => 'Classer le document.',
@@ -214,10 +195,8 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
             }
         }
 
-        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$dossierId}/decision-archivage")->assertOk();
-        $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$dossierId}/archiver")->assertOk()->assertJsonPath('data.statut_archivage', 'archive');
-        $this->assertSame($hashSigne, $d->fresh()->pdf_sha256);
-        $this->get($urlFinale)->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$dossierId}/decision-archivage")->assertUnprocessable();
+        $this->assertDatabaseHas('dossiers', ['id' => $dossierId, 'statut_archivage' => 'actif']);
 
         $this->assertDatabaseCount('courriers', 4);
         $this->assertDatabaseCount('dossiers', 1);
@@ -231,10 +210,10 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertSame($numeroA, $a->fresh()->numero_enregistrement);
         $this->assertSame($referenceB, $b->fresh()->reference_documentaire);
         $this->assertSame($referenceC, $c->fresh()->reference_documentaire);
-        $this->assertDatabaseCount('classements_documents', 4);
+        $this->assertDatabaseCount('classements_documents', 3);
         $this->assertDatabaseCount('document_relations', 3);
         $this->assertNotNull($a->fresh()->piece_jointe_chemin);
-        $this->assertDatabaseHas('dossiers', ['id' => $dossierId, 'statut_archivage' => 'archive']);
+        $this->assertDatabaseHas('dossiers', ['id' => $dossierId, 'statut_archivage' => 'actif']);
 
         $this->actingAs($reception)->get("/api/v1/courriers/{$a->id}/piece-jointe")->assertOk();
         Storage::disk('local')->assertExists($a->fresh()->piece_jointe_chemin);
@@ -244,16 +223,96 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertAuditActeur('mission_documentaire.retournee', $missionId, $assistant->id);
         $this->assertSame($dg->id, AuditLog::query()->where('action', 'dispatch.decision_prise')->where('auditable_id', $a->id)->oldest('id')->value('user_id'));
         $this->assertSame($sec2->id, AuditLog::query()->where('action', 'dispatch.execute')->oldest('id')->value('user_id'));
-        $this->assertSame($dg->id, AuditLog::query()->where('action', 'dossier.archivage_decide')->where('auditable_id', $dossierId)->value('user_id'));
-        $this->assertSame($sec2->id, AuditLog::query()->where('action', 'dossier.archive')->where('auditable_id', $dossierId)->value('user_id'));
 
         $this->assertSame([1, 2], $a->dispatchs()->orderBy('cycle')->pluck('cycle')->unique()->values()->all());
         $this->assertSame([1, 2], $b->dispatchs()->orderBy('cycle')->pluck('cycle')->unique()->values()->all());
         $this->assertSame([1], $c->dispatchs()->orderBy('cycle')->pluck('cycle')->unique()->values()->all());
-        $this->assertSame([1], $d->dispatchs()->orderBy('cycle')->pluck('cycle')->unique()->values()->all());
+        $this->assertSame(0, $d->dispatchs()->count());
+    }
 
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/dispatchs", ['destinations' => [['type' => 'classement', 'instruction' => 'Interdit après archive.']]])->assertUnprocessable();
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/missions", ['assistant_id' => $assistant->id, 'instruction' => 'Interdit après archive.'])->assertUnprocessable();
+    public function test_archivage_historique_reste_couvert_apres_un_envoi_legacy(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+        $responsable = User::factory()->responsableDirection($direction)->create();
+        $relecteur = User::factory()->responsableDirection($direction)->create();
+        $source = Courrier::factory()->create([
+            'sens' => 'entrant',
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+            'direction_origine_id' => $direction->id,
+            'expediteur_externe_nom' => 'Partenaire historique',
+            'expediteur_externe_email' => 'partenaire-historique@example.test',
+        ]);
+        $this->marquerDecharge($source);
+
+        $idReponse = $this->actingAs($responsable)->postJson("/api/v1/courriers/{$source->id}/initier-reponse", [
+            'objet' => 'Réponse historique archivable',
+            'destinataire_externe_nom' => 'Partenaire historique',
+            'destinataire_externe_email' => 'partenaire-historique@example.test',
+            'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
+            'relecteur_id' => $relecteur->id,
+        ])->assertCreated()->json('data.id');
+        $reponse = Courrier::withoutGlobalScopes()->findOrFail($idReponse);
+
+        $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$reponse->id}/accuser-reception")->assertOk();
+        $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$reponse->id}/valider-relecture")->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$reponse->id}/signer")
+            ->assertOk()->assertJsonPath('data.statut', CourrierStatut::SIGNE->value);
+        $reponse->refresh();
+        $hashPdf = $reponse->pdf_sha256;
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$reponse->id}/accuser-reception")->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$reponse->id}/envoyer", [
+            'destinataire_externe_nom' => 'Partenaire historique',
+            'destinataire_externe_email' => 'partenaire-historique@example.test',
+            'mode_expedition' => 'courriel',
+        ])->assertOk()->assertJsonPath('data.statut', CourrierStatut::ENVOYE->value);
+
+        $urlFinale = null;
+        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use (&$urlFinale): bool {
+            $urlFinale = $mail->urlTelechargement;
+
+            return $mail->hasTo('partenaire-historique@example.test');
+        });
+
+        foreach ([$source, $reponse] as $index => $document) {
+            $this->actingAs($dg)->postJson("/api/v1/courriers/{$document->id}/dispatchs", ['destinations' => [[
+                'type' => 'classement', 'instruction' => 'Classement historique avant archivage.',
+            ]]])->assertOk();
+            $dispatch = DispatchCourrier::query()->where('courrier_id', $document->id)
+                ->where('type_destination', 'classement')->firstOrFail();
+            $this->receptionnerDispatchSec2($dispatch, $sec2);
+            $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", [
+                'cote' => 'HIST-'.($index + 1),
+                'emplacement' => 'Archives historiques',
+            ])->assertOk();
+            $classement = ClassementDocument::query()->where('courrier_id', $document->id)->firstOrFail();
+            $this->actingAs($sec2)->postJson("/api/v1/classements-documents/{$classement->id}/archiver")->assertOk();
+        }
+
+        $dossierId = $source->dossier_id;
+        $this->actingAs($dg)->postJson("/api/v1/dossiers/{$dossierId}/decision-archivage")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'a_archiver');
+        $this->assertAuditActeur('dossier.archivage_decide', $dossierId, $dg->id);
+        $this->actingAs($sec2)->postJson("/api/v1/dossiers/{$dossierId}/archiver")
+            ->assertOk()->assertJsonPath('data.statut_archivage', 'archive');
+        $this->assertAuditActeur('dossier.archive', $dossierId, $sec2->id);
+
+        $this->assertDatabaseCount('classements_documents', 2);
+        $this->assertDatabaseHas('dossiers', ['id' => $dossierId, 'statut_archivage' => 'archive']);
+        $this->assertSame($hashPdf, $reponse->fresh()->pdf_sha256);
+        $telechargement = $this->get($urlFinale)->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertSame($hashPdf, hash('sha256', $telechargement->streamedContent()));
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$source->id}/dispatchs", ['destinations' => [[
+            'type' => 'classement', 'instruction' => 'Interdit après archivage.',
+        ]]])->assertUnprocessable();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$source->id}/missions", [
+            'assistant_id' => $relecteur->id,
+            'instruction' => 'Interdit après archivage.',
+        ])->assertUnprocessable();
     }
 
     public function test_parcours_physique_complet_de_la_reception_a_lenvoi_officiel(): void
@@ -353,42 +412,23 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertSame('retournee', $mission->fresh()->statut->value);
 
         Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
-        $this->actingAs($dg)->postJson("/api/v1/courriers/{$idD}/signer")->assertOk()->assertJsonPath('data.statut', 'signe');
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$idD}/valider-pour-signature")
+            ->assertOk()->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_SIGNATURE->value);
         $d->refresh();
         $this->assertSame($idD, $d->id);
-        $this->assertSame($dg->id, $d->signataire_id);
-        $this->assertNotNull($d->signe_at);
+        $this->assertSame($dg->id, $d->valide_signature_par_id);
+        $this->assertNotNull($d->valide_signature_at);
+        $this->assertNull($d->signataire_id);
+        $this->assertNull($d->signe_at);
         $this->assertNotNull($d->numero_depart);
-        $this->assertNotNull($d->pdf_chemin);
-        $this->assertNotNull($d->pdf_sha256);
-        Storage::disk('local')->assertExists($d->pdf_chemin);
-        $hashSigne = $d->pdf_sha256;
-        $this->assertAuditActeur('courrier.signature', $idD, $dg->id);
-
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$idD}/accuser-reception")->assertOk();
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$idD}/envoyer", [
-            'destinataire_externe_nom' => 'Partenaire physique TEST',
-            'destinataire_externe_email' => 'physique-e2e@example.test',
-            'mode_expedition' => 'courriel',
-        ])->assertOk()->assertJsonPath('data.statut', 'envoye');
-        $urlFinale = null;
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use ($a, $d, &$urlFinale): bool {
-            $urlFinale = $mail->urlTelechargement;
-
-            return $mail->hasTo('physique-e2e@example.test') && $mail->courrierOrigine->is($a) && $mail->reponse->is($d);
-        });
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
-        $this->assertAuditActeur('courrier.envoye', $idD, $sec2->id);
-        $this->assertAuditActeur('courrier.reponse_finale_notifiee', $idD, $sec2->id);
-        $this->assertSame($hashSigne, $d->fresh()->pdf_sha256);
-        $telechargement = $this->get($urlFinale)->assertOk()->assertHeader('content-type', 'application/pdf');
-        $this->assertSame($hashSigne, hash('sha256', $telechargement->streamedContent()));
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$idD}/envoyer", [
-            'destinataire_externe_nom' => 'Partenaire physique TEST',
-            'destinataire_externe_email' => 'physique-e2e@example.test',
-            'mode_expedition' => 'courriel',
-        ])->assertForbidden();
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertNotNull($d->pdf_a_signer_chemin);
+        $this->assertNotNull($d->pdf_a_signer_sha256);
+        $this->assertNull($d->pdf_chemin);
+        $this->assertNull($d->pdf_sha256);
+        Storage::disk('local')->assertExists($d->pdf_a_signer_chemin);
+        $this->assertAuditActeur('courrier.valide_pour_signature', $idD, $dg->id);
+        Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
+        $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
         $this->assertSame($identiteA, [$a->fresh()->id, $a->fresh()->dossier_id, $a->fresh()->numero_enregistrement]);
     }
 

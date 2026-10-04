@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\BordereauLot;
@@ -167,6 +168,7 @@ class DgInterimTest extends CourrierTestCase
             'instruction' => 'Préparer une correspondance officielle.', 'donneur_id' => $dg->id,
         ])->assertCreated()->assertJsonPath('data.donneur_id', $dga->id);
 
+        Storage::fake('local');
         $this->actingAs($dga)->postJson("/api/v1/courriers/{$courrier->id}/demander-preparation-reponse", [
             'assistant_id' => $assistantDg->id, 'instruction' => 'Rédiger D.',
         ])->assertCreated()->assertJsonPath('data.autorite_poste', Poste::DG->value);
@@ -178,12 +180,15 @@ class DgInterimTest extends CourrierTestCase
             'projet_reponse_contenu' => ['type' => 'doc', 'content' => []],
         ]);
         $this->marquerDecharge($d);
-        $this->actingAs($dga)->postJson("/api/v1/courriers/{$d->id}/signer", [
+        $this->actingAs($dga)->postJson("/api/v1/courriers/{$d->id}/valider-pour-signature", [
             'signataire_id' => $dg->id, 'numero_depart' => 'FORGE-0001',
-        ])->assertOk()->assertJsonPath('data.signataire.id', $dga->id);
-        $this->assertSame($dga->id, $d->fresh()->signataire_id);
+        ])->assertOk()->assertJsonPath('data.valide_signature_par.id', $dga->id)
+            ->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_SIGNATURE->value);
+        $this->assertSame($dga->id, $d->fresh()->valide_signature_par_id);
         $this->assertNotSame('FORGE-0001', $d->fresh()->numero_depart);
-        $this->assertDatabaseHas('audit_logs', ['action' => 'courrier.signature', 'user_id' => $dga->id]);
+        $this->assertNull($d->fresh()->signataire_id);
+        $this->assertNull($d->fresh()->signe_at);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'courrier.valide_pour_signature', 'user_id' => $dga->id]);
 
         $this->actingAs($dg)->postJson('/api/v1/dg-disponibilite', ['disponible' => true])->assertOk();
         $this->actingAs($dga)->postJson('/api/v1/instructions-courrier-dg', [

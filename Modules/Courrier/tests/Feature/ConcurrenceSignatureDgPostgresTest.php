@@ -19,7 +19,7 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
 {
     use DatabaseMigrations;
 
-    public function test_deux_processus_ne_signent_quune_fois_le_meme_d(): void
+    public function test_deux_processus_ne_valident_quune_fois_le_meme_d(): void
     {
         $this->assertSame('pgsql', config('database.default'));
         $direction = Direction::factory()->create();
@@ -51,7 +51,7 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
             foreach ([1, 2] as $numero) {
                 $processus[] = new Process([
                     PHP_BINARY, base_path('Modules/Courrier/tests/Support/signature_dg_worker.php'),
-                    (string) $d->id, (string) $dg->id, $barriere, (string) $numero,
+                    (string) $d->id, (string) $dg->id, $barriere, (string) $numero, 'valider-pour-signature',
                 ], base_path(), ['APP_ENV' => 'testing']);
             }
             foreach ($processus as $process) {
@@ -71,14 +71,18 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
             $resultats = collect([1, 2])->map(fn ($numero) => json_decode((string) file_get_contents($barriere.'/result-'.$numero.'.json'), true, flags: JSON_THROW_ON_ERROR));
             $this->assertSame(['ok', 'refused'], $resultats->pluck('status')->sort()->values()->all(), $resultats->toJson());
             $d->refresh();
-            $this->assertSame(CourrierStatut::SIGNE, $d->statut);
+            $this->assertSame(CourrierStatut::EN_ATTENTE_SIGNATURE, $d->statut);
             $this->assertNotNull($d->numero_depart);
-            $this->assertNotNull($d->signe_at);
-            $this->assertSame($dg->id, $d->signataire_id);
-            $this->assertNotNull($d->pdf_chemin);
-            $this->assertSame(hash('sha256', Storage::disk('local')->get($d->pdf_chemin)), $d->pdf_sha256);
-            $this->assertSame(1, $d->transitions()->where('statut', CourrierStatut::SIGNE)->count());
-            $this->assertSame(1, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
+            $this->assertNotNull($d->valide_signature_at);
+            $this->assertSame($dg->id, $d->valide_signature_par_id);
+            $this->assertNull($d->signe_at);
+            $this->assertNull($d->signataire_id);
+            $this->assertNotNull($d->pdf_a_signer_chemin);
+            $this->assertSame(hash('sha256', Storage::disk('local')->get($d->pdf_a_signer_chemin)), $d->pdf_a_signer_sha256);
+            $this->assertNull($d->pdf_chemin);
+            $this->assertNull($d->pdf_sha256);
+            $this->assertSame(1, $d->transitions()->where('statut', CourrierStatut::EN_ATTENTE_SIGNATURE)->count());
+            $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
         } finally {
             foreach ($processus as $process) {
                 if ($process->isRunning()) {
@@ -89,13 +93,13 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
                 unlink($fichier);
             }
             rmdir($barriere);
-            if ($d->fresh()?->pdf_chemin) {
-                Storage::disk('local')->delete($d->fresh()->pdf_chemin);
+            if ($d->fresh()?->pdf_a_signer_chemin) {
+                Storage::disk('local')->delete($d->fresh()->pdf_a_signer_chemin);
             }
         }
     }
 
-    public function test_signature_et_revocation_concurrentes_respectent_lordre_des_verrous(): void
+    public function test_validation_pour_signature_et_revocation_concurrentes_respectent_lordre_des_verrous(): void
     {
         $this->assertSame('pgsql', config('database.default'));
         $direction = Direction::factory()->create();
@@ -118,7 +122,7 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
         mkdir($barriere, 0700, true);
         $processus = [
             new Process([PHP_BINARY, base_path('Modules/Courrier/tests/Support/signature_dg_worker.php'),
-                (string) $d->id, (string) $delegataire->id, $barriere, '1'], base_path(), ['APP_ENV' => 'testing']),
+                (string) $d->id, (string) $delegataire->id, $barriere, '1', 'valider-pour-signature'], base_path(), ['APP_ENV' => 'testing']),
             new Process([PHP_BINARY, base_path('Modules/Courrier/tests/Support/revocation_dg_worker.php'),
                 (string) $delegation->id, (string) $admin->id, $barriere, '2'], base_path(), ['APP_ENV' => 'testing']),
         ];
@@ -144,14 +148,23 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
             $this->assertNotNull($delegation->fresh()->revoquee_at);
             $d->refresh();
             if ($signature['status'] === 'ok') {
-                $this->assertSame($delegataire->id, $d->signataire_id);
+                $this->assertSame(CourrierStatut::EN_ATTENTE_SIGNATURE, $d->statut);
+                $this->assertSame($delegataire->id, $d->valide_signature_par_id);
                 $this->assertNotNull($d->numero_depart);
-                $this->assertNotNull($d->pdf_chemin);
-                $this->assertNotNull($d->pdf_sha256);
-                $this->assertSame(1, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
+                $this->assertNotNull($d->valide_signature_at);
+                $this->assertNull($d->signe_at);
+                $this->assertNotNull($d->pdf_a_signer_chemin);
+                $this->assertNotNull($d->pdf_a_signer_sha256);
+                $this->assertNull($d->pdf_chemin);
+                $this->assertNull($d->pdf_sha256);
+                $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
             } else {
                 $this->assertNull($d->numero_depart);
+                $this->assertNull($d->valide_signature_at);
+                $this->assertNull($d->valide_signature_par_id);
                 $this->assertNull($d->signe_at);
+                $this->assertNull($d->pdf_a_signer_chemin);
+                $this->assertNull($d->pdf_a_signer_sha256);
                 $this->assertNull($d->pdf_chemin);
                 $this->assertNull($d->pdf_sha256);
                 $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
@@ -166,8 +179,8 @@ class ConcurrenceSignatureDgPostgresTest extends CourrierTestCase
                 unlink($fichier);
             }
             rmdir($barriere);
-            if ($d->fresh()?->pdf_chemin) {
-                Storage::disk('local')->delete($d->fresh()->pdf_chemin);
+            if ($d->fresh()?->pdf_a_signer_chemin) {
+                Storage::disk('local')->delete($d->fresh()->pdf_a_signer_chemin);
             }
         }
     }

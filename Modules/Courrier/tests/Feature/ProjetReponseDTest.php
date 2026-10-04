@@ -22,7 +22,7 @@ class ProjetReponseDTest extends CourrierTestCase
         'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Projet officiel.']]]],
     ];
 
-    public function test_cycle_dg1_redige_dg2_corrige_et_valide_puis_dg_signe_et_sec2_envoie(): void
+    public function test_cycle_dg1_redige_dg2_corrige_puis_dg_valide_pour_signature(): void
     {
         Storage::fake('local');
         [$a, $dg, $dg1, $dg2, $sec2] = $this->acteurs(Poste::ASSISTANT_1);
@@ -68,17 +68,24 @@ class ProjetReponseDTest extends CourrierTestCase
         $this->actingAs($dg2)->postJson("/api/v1/courriers/{$d->id}/valider-relecture")->assertOk();
         $this->assertSame(MissionDocumentaireStatut::RETOURNEE, $mission->fresh()->statut);
 
-        $signature = $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/signer")
-            ->assertOk()->assertJsonPath('data.statut', 'signe');
-        $this->assertNotNull($signature->json('data.numero_depart'));
-        $this->assertNotNull($signature->json('data.pdf_sha256'));
-
-        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/accuser-reception")->assertOk();
+        $validation = $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/valider-pour-signature")
+            ->assertOk()->assertJsonPath('data.statut', CourrierStatut::EN_ATTENTE_SIGNATURE->value);
+        $d->refresh();
+        $this->assertSame($dg->id, $d->valide_signature_par_id);
+        $this->assertNotNull($d->valide_signature_at);
+        $this->assertNotNull($validation->json('data.numero_depart'));
+        $this->assertNotNull($d->pdf_a_signer_sha256);
+        $this->assertSame(hash('sha256', Storage::disk('local')->get($d->pdf_a_signer_chemin)), $d->pdf_a_signer_sha256);
+        $this->assertNull($d->signataire_id);
+        $this->assertNull($d->signe_at);
+        $this->assertNull($d->pdf_chemin);
+        $this->assertNull($d->pdf_sha256);
+        $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/envoyer", [
             'destinataire_externe_nom' => 'Entreprise Test ONT',
             'destinataire_externe_email' => 'contact@example.test',
             'mode_expedition' => 'courriel',
-        ])->assertOk()->assertJsonPath('data.statut', 'envoye');
+        ])->assertNotFound();
 
         $a->refresh();
         $this->assertSame('entrant', $a->sens->value);

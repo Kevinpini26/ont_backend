@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class RelectureNonValideeException extends Exception
 {
-    protected $message = "Signature refusée : le relecteur désigné n'a pas encore validé le projet de réponse.";
+    protected $message = "Action refusée : le relecteur désigné n'a pas encore validé le projet de réponse.";
 
     public function render(Request $request): JsonResponse
     {

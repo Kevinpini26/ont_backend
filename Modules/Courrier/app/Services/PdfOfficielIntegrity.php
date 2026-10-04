@@ -10,14 +10,18 @@ class PdfOfficielIntegrity
 {
     public function verifier(Courrier $courrier): void
     {
-        $chemin = $courrier->pdf_chemin;
+        $this->verifierFichier($courrier->pdf_chemin, $courrier->pdf_sha256);
+    }
+
+    public function verifierFichier(?string $chemin, ?string $sha256, string $cle = 'pdf'): void
+    {
         if (blank($chemin) || str_starts_with($chemin, '/') || str_contains($chemin, '..')
             || str_contains($chemin, '://') || str_contains($chemin, '\\')
-            || blank($courrier->pdf_sha256) || ! Storage::disk('local')->exists($chemin)) {
-            throw ValidationException::withMessages(['pdf' => 'Le PDF officiel ou son empreinte est absent ou invalide.']);
+            || blank($sha256) || ! Storage::disk('local')->exists($chemin)) {
+            throw ValidationException::withMessages([$cle => 'Le PDF ou son empreinte est absent ou invalide.']);
         }
-        if (! hash_equals($courrier->pdf_sha256, hash('sha256', Storage::disk('local')->get($chemin)))) {
-            throw ValidationException::withMessages(['pdf' => 'Le PDF officiel a été altéré et ne peut pas être communiqué.']);
+        if (! hash_equals($sha256, hash('sha256', Storage::disk('local')->get($chemin)))) {
+            throw ValidationException::withMessages([$cle => 'Le PDF a été altéré et ne peut pas être communiqué.']);
         }
     }
 }

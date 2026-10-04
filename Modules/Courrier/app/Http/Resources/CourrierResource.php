@@ -34,6 +34,13 @@ class CourrierResource extends JsonResource
             'numero_enregistrement' => $this->numero_enregistrement,
             'reference_documentaire' => $this->reference_documentaire,
             'numero_depart' => $this->numero_depart,
+            'valide_signature_at' => $this->valide_signature_at,
+            'valide_signature_par' => $this->whenLoaded('valideSignaturePar', fn () => $this->valideSignaturePar ? [
+                'id' => $this->valideSignaturePar->id,
+                'name' => $this->valideSignaturePar->name,
+                'poste' => $this->valideSignaturePar->poste?->value,
+            ] : null),
+            'pdf_a_signer_disponible' => filled($this->pdf_a_signer_chemin),
             'pdf_sha256' => $this->pdf_sha256,
             // Généré uniquement à la signature (voir CourrierCircuitService::
             // signer()). Les dossiers courts historiques peuvent donc être

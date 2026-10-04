@@ -73,8 +73,9 @@ return [
      *       observation obligatoire — hors de cette table (comme
      *       validerRelecture()), gardé par le relecteur désigné lui-même,
      *       voir CourrierCircuitService::renvoyerPourCorrection().
-     *     - projet_a_valider -> signe : la DG signe — refusé si le relecteur
-     *       désigné n'a pas explicitement validé la relecture.
+     *     - projet_a_valider -> en_attente_signature : la DG valide le projet
+     *       pour signature après relecture ; la signature réelle et la remise
+     *       à SEC2 appartiennent à une phase ultérieure.
      *     - signe -> enregistre : le Secrétariat 02 enregistre le courrier
      *       signé (numérotation, classification interne/externe).
      *
@@ -182,12 +183,13 @@ return [
             ],
             'projet_a_valider' => [
                 [
-                    'action' => 'signer',
-                    'statut_arrivee' => 'signe',
+                    'action' => 'valider_pour_signature',
+                    'statut_arrivee' => 'en_attente_signature',
                     'postes' => [Poste::DG->value],
                     'condition' => null,
                 ],
             ],
+            'en_attente_signature' => [],
             'signe' => [
                 [
                     'action' => 'enregistrer',
@@ -231,25 +233,25 @@ return [
         ],
 
         /**
-         * 'sortant' : courrier de réponse à un courrier d'arrivée
-         * (Courrier::sens = sortant, voir CourrierCircuitService::initierReponseSortante()) —
-         * créé directement à en_relecture (le relecteur est désigné à la
-         * création, comme soumettreProjetReponse() le fait déjà pour la
-         * réponse historique). La DG signe, puis le Secrétariat 02 marque
-         * l'envoi effectif (numéro de départ, date d'envoi) — "envoye"
-         * remplace "enregistre" comme état terminal, un courrier sortant
-         * n'est jamais "enregistré" au sens du registre arrivée.
+         * 'sortant' : courrier de réponse à un courrier d'arrivée ou courrier
+         * sortant direct. La branche historique en_relecture → signe → envoye
+         * reste inchangée. Un projet en projet_a_valider suit maintenant
+         * projet_a_valider → en_attente_signature : la DG valide et prépare
+         * le PDF à signer; la signature réelle et la remise à SEC2 sont des
+         * phases ultérieures. Un courrier sortant n'est jamais enregistré au
+         * sens du registre arrivée.
          */
         'sortant' => [
             'projet_a_rediger' => [],
             'projet_a_valider' => [
                 [
-                    'action' => 'signer',
-                    'statut_arrivee' => 'signe',
+                    'action' => 'valider_pour_signature',
+                    'statut_arrivee' => 'en_attente_signature',
                     'postes' => [Poste::DG->value],
                     'condition' => null,
                 ],
             ],
+            'en_attente_signature' => [],
             'en_relecture' => [
                 [
                     'action' => 'signer',

@@ -1361,6 +1361,55 @@ class CourrierCircuitService
         });
     }
 
+    public function validerPourSignature(Courrier $courrier, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $utilisateur) {
+            $sourceAutorite = $this->autoriteDg->source($utilisateur);
+            if ($sourceAutorite === null) {
+                throw TransitionNonAutoriseeException::posteNonHabilite();
+            }
+
+            $courrier = $this->lockCourrierFrais($courrier);
+            $this->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_SIGNATURE);
+            $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
+
+            if (! $courrier->relectureEstValidee()) {
+                throw new RelectureNonValideeException;
+            }
+            if (blank($courrier->destinataire_externe_nom)) {
+                throw ValidationException::withMessages(['destinataire_externe_nom' => 'Le destinataire doit être déterminé avant la validation pour signature.']);
+            }
+
+            $mission = $courrier->missionProjetReponse()->first();
+            if ($mission !== null && ($mission->type !== MissionDocumentaireType::PREPARATION_REPONSE
+                || $mission->statut !== MissionDocumentaireStatut::RETOURNEE)) {
+                throw ValidationException::withMessages(['mission' => 'La mission doit être terminée après la relecture finale avant la validation pour signature.']);
+            }
+            if ($courrier->numero_depart !== null || $courrier->pdf_a_signer_chemin !== null || $courrier->pdf_a_signer_sha256 !== null) {
+                throw ValidationException::withMessages(['courrier' => 'Ce projet possède déjà un document préparé pour signature.']);
+            }
+
+            $courrier->valide_signature_par_id = $utilisateur->id;
+            $courrier->valide_signature_at = now();
+            $courrier->numero_depart = $this->numeros->genererNumeroDepart();
+            $courrier->statut = CourrierStatut::EN_ATTENTE_SIGNATURE;
+            $courrier->setRelation('valideSignaturePar', $utilisateur);
+            $courrier->pdf_a_signer_chemin = $this->pdf->genererPourSignature($courrier, $sourceAutorite);
+            $courrier->pdf_a_signer_sha256 = EmpreinteFichier::pourFichierStocke($courrier->pdf_a_signer_chemin);
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            $this->auditerIdentite($courrier, $utilisateur, 'numero_depart', $courrier->numero_depart);
+            $this->audit->enregistrer('courrier.valide_pour_signature', $courrier, $utilisateur, [
+                'source_autorite' => $sourceAutorite,
+                'numero_depart' => $courrier->numero_depart,
+                'pdf_a_signer_sha256' => $courrier->pdf_a_signer_sha256,
+            ]);
+
+            return $courrier;
+        });
+    }
+
     private function assertMissionPreparationActive(MissionDocumentaire $mission, User $assistant): void
     {
         if (

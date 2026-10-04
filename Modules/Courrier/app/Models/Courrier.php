@@ -99,6 +99,10 @@ class Courrier extends Model implements Numerisable
         'projet_renvoi_observation',
         'projet_renvoye_at',
         'projet_renvoye_par_id',
+        'valide_signature_par_id',
+        'valide_signature_at',
+        'pdf_a_signer_chemin',
+        'pdf_a_signer_sha256',
         'signataire_id',
         'signe_at',
         'pdf_chemin',
@@ -201,6 +205,7 @@ class Courrier extends Model implements Numerisable
             'periode_souhaitee_fin' => 'date',
             'relecture_validee_at' => 'datetime',
             'projet_renvoye_at' => 'datetime',
+            'valide_signature_at' => 'datetime',
             'signe_at' => 'datetime',
             'enregistre_at' => 'datetime',
             'relance_avis_dg_envoyee_at' => 'datetime',
@@ -255,6 +260,11 @@ class Courrier extends Model implements Numerisable
     public function relecteur(): BelongsTo
     {
         return $this->belongsTo(User::class, 'relecteur_id');
+    }
+
+    public function valideSignaturePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'valide_signature_par_id');
     }
 
     public function signataire(): BelongsTo

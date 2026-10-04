@@ -14,16 +14,21 @@ $app = require dirname(__DIR__, 4).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
 [$script, $courrierId, $acteurId, $barriere, $numero] = $argv;
+$action = $argv[5] ?? 'signer';
 file_put_contents($barriere.'/ready-'.$numero, 'ready');
 $limite = microtime(true) + 15;
 while (! file_exists($barriere.'/start') && microtime(true) < $limite) {
     usleep(10_000);
 }
 try {
-    app(CourrierCircuitService::class)->signer(
-        Courrier::withoutGlobalScopes()->findOrFail((int) $courrierId),
-        User::query()->findOrFail((int) $acteurId),
-    );
+    $service = app(CourrierCircuitService::class);
+    $courrier = Courrier::withoutGlobalScopes()->findOrFail((int) $courrierId);
+    $acteur = User::query()->findOrFail((int) $acteurId);
+    if ($action === 'valider-pour-signature') {
+        $service->validerPourSignature($courrier, $acteur);
+    } else {
+        $service->signer($courrier, $acteur);
+    }
     $resultat = ['status' => 'ok'];
 } catch (ValidationException|TransitionNonAutoriseeException $exception) {
     $resultat = ['status' => 'refused'];

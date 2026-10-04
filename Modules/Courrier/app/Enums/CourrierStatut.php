@@ -86,6 +86,8 @@ enum CourrierStatut: string
      * PROJET_A_REDIGER.
      */
     case PROJET_A_VALIDER = 'projet_a_valider';
+    /** Validation DG achevée, document imprimable mais signature physique absente. */
+    case EN_ATTENTE_SIGNATURE = 'en_attente_signature';
 
     /**
      * Lot 3 (orientation et dispatch) : un avis DG favorable rendu sur un
@@ -154,6 +156,7 @@ enum CourrierStatut: string
             self::EN_ATTENTE_AVIS_DG => "En attente d'avis DG",
             self::PROJET_A_REDIGER => 'Projet de réponse à rédiger',
             self::PROJET_A_VALIDER => 'Projet en attente de validation',
+            self::EN_ATTENTE_SIGNATURE => 'En attente de signature',
             self::EN_DISPATCH => 'En dispatch vers la direction',
             self::CHEZ_DIRECTION => 'Chez le secrétariat de la direction',
             self::DISPATCH_EXECUTE => 'Dispatch exécuté',
