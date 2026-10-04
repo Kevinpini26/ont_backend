@@ -420,6 +420,25 @@ class CourrierController extends Controller
         );
     }
 
+    public function televerserScanSigne(Request $request, Courrier $courrier)
+    {
+        $this->authorize('televerserScanSigne', $courrier);
+        $validated = $request->validate([
+            'scan' => [
+                'required',
+                'file',
+                'mimetypes:application/pdf',
+                'max:'.(int) config('courrier.signature_physique.taille_max_scan_ko', 10240),
+            ],
+        ]);
+
+        return $this->ressource($this->circuit->finaliserSignaturePhysique(
+            $courrier,
+            $request->user(),
+            $validated['scan'],
+        ));
+    }
+
     /**
      * Impression généralisée : contrairement à telechargerPdf() (le PDF
      * définitif, seulement une fois le courrier signé), cette fiche est

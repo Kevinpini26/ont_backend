@@ -53,6 +53,11 @@ class DgAuthorityResolver
         return $this->source($acteur) !== null;
     }
 
+    public function estAutoritePourTeleverserScanSigne(User $acteur): bool
+    {
+        return in_array($this->source($acteur), ['titulaire', 'interim_dga'], true);
+    }
+
     public function titulaire(): ?User
     {
         return User::query()->where('poste', Poste::DG->value)->orderBy('id')->first();

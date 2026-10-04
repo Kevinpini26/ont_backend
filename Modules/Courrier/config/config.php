@@ -288,6 +288,10 @@ return [
         'lien_ttl_minutes' => config('ont.courrier_reponse_externe.lien_ttl_minutes', 10080),
     ],
 
+    'signature_physique' => [
+        'taille_max_scan_ko' => config('ont.courrier_scan_signe_taille_max_ko', 10240),
+    ],
+
     /**
      * Lot 2 (tri par urgence) : un dossier encore "en_attente_tri" sans
      * degre_urgence renseigné au-delà de ce délai remonte en alerte plutôt

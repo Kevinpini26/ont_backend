@@ -15,4 +15,6 @@ return [
     'courrier_reponse_externe' => [
         'lien_ttl_minutes' => (int) env('COURRIER_REPONSE_LIEN_TTL_MINUTES', 10080),
     ],
+
+    'courrier_scan_signe_taille_max_ko' => (int) env('COURRIER_SCAN_SIGNE_TAILLE_MAX_KO', 10240),
 ];

@@ -215,6 +215,13 @@ class CourrierPolicy
             && $this->view($user, $courrier);
     }
 
+    public function televerserScanSigne(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::EN_ATTENTE_SIGNATURE
+            && $this->autoriteDg->estAutoritePourTeleverserScanSigne($user)
+            && $this->view($user, $courrier);
+    }
+
     public function annoter(User $user, Courrier $courrier): bool
     {
         if (! $this->view($user, $courrier)) {

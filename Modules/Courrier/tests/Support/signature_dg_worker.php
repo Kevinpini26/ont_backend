@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Exceptions\TransitionNonAutoriseeException;
 use Modules\Courrier\Models\Courrier;
@@ -26,6 +27,9 @@ try {
     $acteur = User::query()->findOrFail((int) $acteurId);
     if ($action === 'valider-pour-signature') {
         $service->validerPourSignature($courrier, $acteur);
+    } elseif ($action === 'finaliser-scan') {
+        $scan = new UploadedFile($argv[6], 'scan.pdf', 'application/pdf', UPLOAD_ERR_OK, true);
+        $service->finaliserSignaturePhysique($courrier, $acteur, $scan);
     } else {
         $service->signer($courrier, $acteur);
     }

@@ -2,9 +2,12 @@
 
 namespace Modules\Courrier\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Contracts\CourrierPdfGenerator;
@@ -1408,6 +1411,85 @@ class CourrierCircuitService
 
             return $courrier;
         });
+    }
+
+    public function finaliserSignaturePhysique(Courrier $courrier, User $utilisateur, UploadedFile $scan): Courrier
+    {
+        $cheminFinal = null;
+
+        try {
+            return DB::transaction(function () use ($courrier, $utilisateur, $scan, &$cheminFinal): Courrier {
+                if (! $this->autoriteDg->estAutoritePourTeleverserScanSigne($utilisateur)) {
+                    throw TransitionNonAutoriseeException::posteNonHabilite();
+                }
+
+                $courrier = $this->lockCourrierFrais($courrier);
+                if ($courrier->statut !== CourrierStatut::EN_ATTENTE_SIGNATURE) {
+                    throw ValidationException::withMessages(['courrier' => 'Ce courrier n’attend pas un scan signé.']);
+                }
+                if (blank($courrier->numero_depart)
+                    || $courrier->valide_signature_par_id === null
+                    || $courrier->valide_signature_at === null
+                    || blank($courrier->pdf_a_signer_chemin)
+                    || blank($courrier->pdf_a_signer_sha256)) {
+                    throw ValidationException::withMessages(['courrier' => 'La validation DG et le PDF à signer sont requis avant finalisation.']);
+                }
+                if ($courrier->signataire_id !== null || $courrier->signe_at !== null
+                    || filled($courrier->pdf_chemin) || filled($courrier->pdf_sha256)) {
+                    throw ValidationException::withMessages(['courrier' => 'Une version finale existe déjà pour ce courrier.']);
+                }
+                if (! $courrier->transitions()->where('statut', CourrierStatut::EN_ATTENTE_SIGNATURE)
+                    ->where('changed_by_id', $courrier->valide_signature_par_id)->exists()) {
+                    throw ValidationException::withMessages(['courrier' => 'L’autorité validatrice ne correspond pas à l’historique du courrier.']);
+                }
+
+                app(PdfOfficielIntegrity::class)->verifierFichier(
+                    $courrier->pdf_a_signer_chemin,
+                    $courrier->pdf_a_signer_sha256,
+                    'pdf_a_signer',
+                );
+                $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
+                $contenuScan = file_get_contents($scan->getRealPath());
+                if ($contenuScan === false || $contenuScan === '' || ! str_starts_with($contenuScan, '%PDF-')) {
+                    throw ValidationException::withMessages(['scan' => 'Le fichier téléversé n’est pas un PDF valide.']);
+                }
+
+                $cheminFinal = 'courriers-signes/'.$courrier->id.'/'.Str::uuid().'.pdf';
+                $cheminStocke = Storage::disk('local')->putFileAs(
+                    'courriers-signes/'.$courrier->id,
+                    $scan,
+                    basename($cheminFinal),
+                );
+                if (! is_string($cheminStocke) || $cheminStocke === '') {
+                    throw ValidationException::withMessages(['scan' => 'Le stockage du scan a échoué.']);
+                }
+
+                $instantAcceptation = now();
+                $courrier->pdf_chemin = $cheminFinal;
+                $courrier->pdf_sha256 = EmpreinteFichier::pourFichierStocke($cheminFinal);
+                $courrier->signataire_id = $courrier->valide_signature_par_id;
+                $courrier->signe_at = $instantAcceptation;
+                $courrier->scan_signe_televerse_par_id = $utilisateur->id;
+                $courrier->scan_signe_televerse_at = $instantAcceptation;
+                $courrier->statut = CourrierStatut::SIGNE;
+                $courrier->save();
+                $this->tracerTransition($courrier, $utilisateur);
+
+                $this->audit->enregistrer('courrier.scan_signe_finalise', $courrier, $utilisateur, [
+                    'signataire_id' => $courrier->signataire_id,
+                    'televerse_par_id' => $utilisateur->id,
+                    'pdf_sha256' => $courrier->pdf_sha256,
+                ]);
+
+                return $courrier;
+            });
+        } catch (Throwable $exception) {
+            if (is_string($cheminFinal)) {
+                Storage::disk('local')->delete($cheminFinal);
+            }
+
+            throw $exception;
+        }
     }
 
     private function assertMissionPreparationActive(MissionDocumentaire $mission, User $assistant): void

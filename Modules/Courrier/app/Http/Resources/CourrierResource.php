@@ -41,6 +41,10 @@ class CourrierResource extends JsonResource
                 'poste' => $this->valideSignaturePar->poste?->value,
             ] : null),
             'pdf_a_signer_disponible' => filled($this->pdf_a_signer_chemin),
+            'peut_televerser_scan_signe' => $request->user() !== null && Gate::forUser($request->user())->allows('televerserScanSigne', $this->resource),
+            'scan_signe_televerse_par_id' => $this->scan_signe_televerse_par_id,
+            'scan_signe_televerse_at' => $this->scan_signe_televerse_at,
+            'scan_signe_televerse_par' => $this->whenLoaded('scanSigneTeleversePar', fn () => $this->scanSigneTeleversePar?->name),
             'pdf_sha256' => $this->pdf_sha256,
             // Généré uniquement à la signature (voir CourrierCircuitService::
             // signer()). Les dossiers courts historiques peuvent donc être

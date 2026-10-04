@@ -103,6 +103,8 @@ class Courrier extends Model implements Numerisable
         'valide_signature_at',
         'pdf_a_signer_chemin',
         'pdf_a_signer_sha256',
+        'scan_signe_televerse_par_id',
+        'scan_signe_televerse_at',
         'signataire_id',
         'signe_at',
         'pdf_chemin',
@@ -206,6 +208,7 @@ class Courrier extends Model implements Numerisable
             'relecture_validee_at' => 'datetime',
             'projet_renvoye_at' => 'datetime',
             'valide_signature_at' => 'datetime',
+            'scan_signe_televerse_at' => 'datetime',
             'signe_at' => 'datetime',
             'enregistre_at' => 'datetime',
             'relance_avis_dg_envoyee_at' => 'datetime',
@@ -265,6 +268,11 @@ class Courrier extends Model implements Numerisable
     public function valideSignaturePar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'valide_signature_par_id');
+    }
+
+    public function scanSigneTeleversePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'scan_signe_televerse_par_id');
     }
 
     public function signataire(): BelongsTo

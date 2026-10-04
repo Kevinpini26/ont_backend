@@ -140,6 +140,8 @@ class RegenererPdfASignerService
             || $courrier->signataire_id !== null
             || filled($courrier->pdf_chemin)
             || filled($courrier->pdf_sha256)
+            || $courrier->scan_signe_televerse_par_id !== null
+            || $courrier->scan_signe_televerse_at !== null
             || $courrier->transitions()->whereIn('statut', [CourrierStatut::SIGNE->value, CourrierStatut::ENVOYE->value])->exists()
             || $courrier->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->exists()) {
             throw ValidationException::withMessages(['courrier' => 'Un courrier signé, finalisé ou transmis ne peut pas être régénéré.']);

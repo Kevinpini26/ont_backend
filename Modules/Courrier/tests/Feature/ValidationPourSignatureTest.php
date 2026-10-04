@@ -178,6 +178,8 @@ class ValidationPourSignatureTest extends CourrierTestCase
         $this->assertNull($apres->signataire_id);
         $this->assertNull($apres->pdf_chemin);
         $this->assertNull($apres->pdf_sha256);
+        $this->assertNull($apres->scan_signe_televerse_par_id);
+        $this->assertNull($apres->scan_signe_televerse_at);
         $this->assertSame($cheminInitial, $apres->pdf_a_signer_chemin);
         $this->assertNotSame($shaInitial, $apres->pdf_a_signer_sha256);
         $this->assertSame(hash('sha256', $pdf), $apres->pdf_a_signer_sha256);
@@ -214,6 +216,8 @@ class ValidationPourSignatureTest extends CourrierTestCase
             'signataire_id' => $dg->id,
             'pdf_chemin' => "courriers-signes/{$courrier->id}/final.pdf",
             'pdf_sha256' => str_repeat('a', 64),
+            'scan_signe_televerse_par_id' => $dg->id,
+            'scan_signe_televerse_at' => now(),
         ])->saveQuietly();
 
         try {
