@@ -12,6 +12,7 @@ use Modules\Kernel\Exceptions\DocumentNumeriseRejeteException;
 use Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob;
 use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
+use Throwable;
 
 /**
  * Point d'entrée unique pour enregistrer une nouvelle version d'un document
@@ -36,42 +37,58 @@ class GestionnaireDocumentNumerise
         ?int $nombrePagesAnnonce = null,
         string $disque = 'local',
     ): DocumentNumerise {
-        $numerisable->assertCanReceiveNumerisation();
+        try {
+            $document = $numerisable->getConnection()->transaction(function () use ($numerisable, $chemin, $source, $capturePar, $nombrePagesAnnonce, $disque): DocumentNumerise {
+                $numerisableVerrouille = $numerisable->newQuery()
+                    ->lockForUpdate()
+                    ->findOrFail($numerisable->getKey());
 
-        $contenu = Storage::disk($disque)->get($chemin);
-        $poidsOctets = Storage::disk($disque)->size($chemin);
-        $nombrePagesDetectees = CompteurPagesPdf::compter($contenu);
+                if (! $numerisableVerrouille instanceof Model || ! $numerisableVerrouille instanceof Numerisable) {
+                    throw new LogicException('Le verrou de numérisation doit recharger un modèle Numerisable.');
+                }
 
-        if ($nombrePagesDetectees !== null && ($poidsOctets / $nombrePagesDetectees) < config('kernel.numerisation.seuil_octets_par_page')) {
+                $numerisableVerrouille->assertCanReceiveNumerisation();
+
+                $contenu = Storage::disk($disque)->get($chemin);
+                $poidsOctets = Storage::disk($disque)->size($chemin);
+                $nombrePagesDetectees = CompteurPagesPdf::compter($contenu);
+
+                if ($nombrePagesDetectees !== null && ($poidsOctets / $nombrePagesDetectees) < config('kernel.numerisation.seuil_octets_par_page')) {
+                    throw DocumentNumeriseRejeteException::qualiteInsuffisante();
+                }
+
+                $qualite = ($nombrePagesAnnonce !== null && $nombrePagesDetectees !== null && $nombrePagesAnnonce !== $nombrePagesDetectees)
+                    ? QualiteDocumentNumerise::FAIBLE
+                    : QualiteDocumentNumerise::BONNE;
+
+                $versionSuivante = ((int) $numerisableVerrouille->numerisations()->max('version')) + 1;
+
+                // Courrier::statut et Stagiaire::statut sont chacun castés vers
+                // leur propre enum : la valeur brute suffit ici comme simple
+                // libellé d'étape, sans avoir besoin de connaître le type concret
+                // de $numerisableVerrouille.
+                $document = $numerisableVerrouille->numerisations()->create([
+                    'version' => $versionSuivante,
+                    'etape_circuit' => $numerisableVerrouille->statut?->value,
+                    'chemin' => $chemin,
+                    'nombre_pages' => $nombrePagesDetectees,
+                    'poids_octets' => $poidsOctets,
+                    'source' => $source,
+                    'sha256' => hash('sha256', $contenu),
+                    'qualite' => $qualite,
+                    'capture_par_id' => $capturePar?->id,
+                ]);
+
+                if (! $document instanceof DocumentNumerise) {
+                    throw new LogicException('La relation de numérisation doit créer un DocumentNumerise.');
+                }
+
+                return $document;
+            });
+        } catch (Throwable $exception) {
             Storage::disk($disque)->delete($chemin);
 
-            throw DocumentNumeriseRejeteException::qualiteInsuffisante();
-        }
-
-        $qualite = ($nombrePagesAnnonce !== null && $nombrePagesDetectees !== null && $nombrePagesAnnonce !== $nombrePagesDetectees)
-            ? QualiteDocumentNumerise::FAIBLE
-            : QualiteDocumentNumerise::BONNE;
-
-        $versionSuivante = ((int) $numerisable->numerisations()->max('version')) + 1;
-
-        // Courrier::statut et Stagiaire::statut sont chacun castés vers
-        // leur propre enum : la valeur brute suffit ici comme simple
-        // libellé d'étape, sans avoir besoin de connaître le type concret
-        // de $numerisable.
-        $document = $numerisable->numerisations()->create([
-            'version' => $versionSuivante,
-            'etape_circuit' => $numerisable->statut?->value,
-            'chemin' => $chemin,
-            'nombre_pages' => $nombrePagesDetectees,
-            'poids_octets' => $poidsOctets,
-            'source' => $source,
-            'sha256' => hash('sha256', $contenu),
-            'qualite' => $qualite,
-            'capture_par_id' => $capturePar?->id,
-        ]);
-
-        if (! $document instanceof DocumentNumerise) {
-            throw new LogicException('La relation de numérisation doit créer un DocumentNumerise.');
+            throw $exception;
         }
 
         // Jamais dans la requête HTTP : un OCR peut prendre plusieurs

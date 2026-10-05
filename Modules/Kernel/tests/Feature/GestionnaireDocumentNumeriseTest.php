@@ -3,6 +3,8 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\Kernel\Enums\QualiteDocumentNumerise;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
@@ -92,5 +94,42 @@ class GestionnaireDocumentNumeriseTest extends TestCase
 
         $this->assertSame(1, $v1->version);
         $this->assertSame(2, $v2->version);
+    }
+
+    public function test_une_erreur_sql_lors_de_la_creation_supprime_le_fichier_stocke(): void
+    {
+        Storage::fake('local');
+        $stagiaire = Stagiaire::factory()->create();
+        $chemin = 'numerisations/echec-sql.pdf';
+        Storage::disk('local')->put($chemin, $this->contenuPdfFactice(1).str_repeat('x', 30 * 1024));
+
+        DB::unprepared('DROP TRIGGER IF EXISTS ont_test_reject_document_numerise_insert ON documents_numerises');
+        DB::unprepared('DROP FUNCTION IF EXISTS ont_test_reject_document_numerise_insert()');
+        DB::unprepared(<<<'SQL'
+            CREATE FUNCTION ont_test_reject_document_numerise_insert() RETURNS trigger AS $$
+            BEGIN
+                RAISE EXCEPTION 'forced document insert failure';
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER ont_test_reject_document_numerise_insert
+                BEFORE INSERT ON documents_numerises
+                FOR EACH ROW EXECUTE FUNCTION ont_test_reject_document_numerise_insert();
+        SQL);
+
+        try {
+            try {
+                app(GestionnaireDocumentNumerise::class)->enregistrerVersion(
+                    $stagiaire,
+                    $chemin,
+                    SourceDocumentNumerise::TELEPHONE,
+                );
+                $this->fail('L’insertion de la version aurait dû échouer.');
+            } catch (QueryException) {
+                Storage::disk('local')->assertMissing($chemin);
+            }
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS ont_test_reject_document_numerise_insert ON documents_numerises');
+            DB::unprepared('DROP FUNCTION IF EXISTS ont_test_reject_document_numerise_insert()');
+        }
     }
 }

@@ -251,15 +251,20 @@ class CourrierController extends Controller
             // reste, pour l'instant, un dépôt direct — la capture mobile
             // (source TELEPHONE) créera ses propres versions via son propre
             // point d'entrée au lot 1.
-            $courrier->numerisations()->create([
-                'version' => 1,
-                'etape_circuit' => $courrier->statut->value,
-                'chemin' => $cheminPiecePrincipale,
-                'poids_octets' => $pieceJointe->getSize(),
-                'source' => SourceDocumentNumerise::TELEVERSEMENT,
-                'sha256' => EmpreinteFichier::pourFichierStocke($cheminPiecePrincipale),
-                'capture_par_id' => $request->user()?->id,
-            ]);
+            DB::transaction(function () use ($courrier, $cheminPiecePrincipale, $pieceJointe, $request): void {
+                $courrierVerrouille = Courrier::query()->lockForUpdate()->findOrFail($courrier->id);
+                $versionSuivante = ((int) $courrierVerrouille->numerisations()->max('version')) + 1;
+
+                $courrierVerrouille->numerisations()->create([
+                    'version' => $versionSuivante,
+                    'etape_circuit' => $courrierVerrouille->statut->value,
+                    'chemin' => $cheminPiecePrincipale,
+                    'poids_octets' => $pieceJointe->getSize(),
+                    'source' => SourceDocumentNumerise::TELEVERSEMENT,
+                    'sha256' => EmpreinteFichier::pourFichierStocke($cheminPiecePrincipale),
+                    'capture_par_id' => $request->user()?->id,
+                ]);
+            });
         }
         foreach ($piecesSupplementaires as $index => $piece) {
             CourrierPieceJointe::query()->create([
