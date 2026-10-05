@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
@@ -547,21 +548,26 @@ class CourrierController extends Controller
         $courrier = Courrier::query()->where('numero_accuse_reception', $request->string('numero_accuse_reception'))->firstOrFail();
         $this->authorize('view', $courrier);
 
-        $chemin = $request->file('fichier')->store('numerisations', 'local');
+        return DB::transaction(function () use ($request, $courrier) {
+            $courrier = Courrier::query()->lockForUpdate()->findOrFail($courrier->id);
+            $courrier->assertCanReceiveNumerisation();
 
-        $document = $this->gestionnaire->enregistrerVersion(
-            $courrier,
-            $chemin,
-            SourceDocumentNumerise::COPIEUR,
-            $request->user(),
-        );
+            $chemin = $request->file('fichier')->store('numerisations', 'local');
 
-        $courrier->update(['numerisation_statut' => NumerisationStatut::NUMERISE]);
+            $document = $this->gestionnaire->enregistrerVersion(
+                $courrier,
+                $chemin,
+                SourceDocumentNumerise::COPIEUR,
+                $request->user(),
+            );
 
-        return response()->json([
-            'message' => 'Segment importé avec succès.',
-            'document' => ['version' => $document->version, 'qualite' => $document->qualite?->value],
-        ], 201);
+            $courrier->update(['numerisation_statut' => NumerisationStatut::NUMERISE]);
+
+            return response()->json([
+                'message' => 'Segment importé avec succès.',
+                'document' => ['version' => $document->version, 'qualite' => $document->qualite?->value],
+            ], 201);
+        });
     }
 
     /**

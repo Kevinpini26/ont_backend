@@ -7,4 +7,6 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 interface Numerisable
 {
     public function numerisations(): MorphMany;
+
+    public function assertCanReceiveNumerisation(): void;
 }

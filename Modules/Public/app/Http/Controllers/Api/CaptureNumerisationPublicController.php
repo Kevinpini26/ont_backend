@@ -3,6 +3,7 @@
 namespace Modules\Public\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
@@ -64,23 +65,36 @@ class CaptureNumerisationPublicController extends Controller
         abort_unless($cible instanceof Courrier || $cible instanceof Stagiaire, 404, 'Ce lien de capture est introuvable ou a expiré.');
         abort_unless($capturePar instanceof User || $capturePar === null, 404, 'Ce lien de capture est introuvable ou a expiré.');
 
+        if ($cible instanceof Courrier) {
+            return DB::transaction(function () use ($request, $cible, $jeton, $capturePar) {
+                $courrier = Courrier::query()->lockForUpdate()->findOrFail($cible->id);
+                $courrier->assertCanReceiveNumerisation();
+
+                $jeton = JetonCaptureNumerisation::query()->lockForUpdate()->findOrFail($jeton->id);
+                abort_unless($jeton->estValide(), 404, 'Ce lien de capture est introuvable ou a expiré.');
+
+                return $this->enregistrerCapture($request, $jeton, $courrier, $capturePar);
+            });
+        }
+
+        return $this->enregistrerCapture($request, $jeton, $cible, $capturePar);
+    }
+
+    private function enregistrerCapture(
+        SoumettreCaptureNumerisationRequest $request,
+        JetonCaptureNumerisation $jeton,
+        Courrier|Stagiaire $cible,
+        ?User $capturePar,
+    ) {
         $chemin = $request->file('fichier')->store('numerisations', 'local');
 
-        $document = $cible instanceof Courrier
-            ? $this->gestionnaire->enregistrerVersion(
-                $cible,
-                $chemin,
-                SourceDocumentNumerise::TELEPHONE,
-                $capturePar,
-                $request->integer('nombre_pages_annonce') ?: null,
-            )
-            : $this->gestionnaire->enregistrerVersion(
-                $cible,
-                $chemin,
-                SourceDocumentNumerise::TELEPHONE,
-                $capturePar,
-                $request->integer('nombre_pages_annonce') ?: null,
-            );
+        $document = $this->gestionnaire->enregistrerVersion(
+            $cible,
+            $chemin,
+            SourceDocumentNumerise::TELEPHONE,
+            $capturePar,
+            $request->integer('nombre_pages_annonce') ?: null,
+        );
 
         if ($cible instanceof Courrier) {
             $cible->update(['numerisation_statut' => NumerisationStatut::NUMERISE]);

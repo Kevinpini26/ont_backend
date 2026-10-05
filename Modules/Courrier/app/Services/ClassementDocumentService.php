@@ -46,7 +46,9 @@ class ClassementDocumentService
             $classement = ClassementDocument::query()->lockForUpdate()->findOrFail($classement->id);
             if ($classement->statut !== ClassementDocumentStatut::CLASSE || ! $this->delegations->utilisateurHabilite($sec2, [Poste::SECRETARIAT_2])) {
                 throw ValidationException::withMessages(['classement' => 'Seul SEC2 peut archiver un document classé.']);
-            } $classement->update(['statut' => ClassementDocumentStatut::ARCHIVE, 'archive_par_id' => $sec2->id, 'archive_at' => now(), 'observation' => $observation ?? $classement->observation]);
+            }
+            Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($classement->courrier_id);
+            $classement->update(['statut' => ClassementDocumentStatut::ARCHIVE, 'archive_par_id' => $sec2->id, 'archive_at' => now(), 'observation' => $observation ?? $classement->observation]);
             $this->audit->enregistrer('classement_document.archive', $classement, $sec2, ['observation' => $observation]);
 
             return $classement->load(['courrier', 'dispatch.decisionnaire', 'classePar', 'archivePar']);

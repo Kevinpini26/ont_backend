@@ -25,6 +25,28 @@ abstract class CourrierTestCase extends TestCase
         return User::factory()->agentCircuitCourrier($poste, $direction)->create();
     }
 
+    protected function archiverCourrierViaEndpoints(Courrier $courrier, Direction $direction): void
+    {
+        $dg = $this->agent(Poste::DG, $direction);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/dispatchs", ['destinations' => [[
+            'type' => 'classement',
+            'instruction' => 'À classer',
+        ]]])->assertOk();
+
+        $dispatch = $courrier->dispatchs()->firstOrFail();
+        $this->receptionnerDispatchSec2($dispatch, $sec2);
+        $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/classer", [
+            'cote' => 'COTE-ARCHIVE-TEST',
+            'emplacement' => 'Archives permanentes',
+        ])->assertOk();
+
+        $classement = $courrier->classement()->firstOrFail();
+        $this->actingAs($sec2)->postJson("/api/v1/classements-documents/{$classement->id}/archiver")->assertOk();
+        $this->assertTrue($courrier->fresh()->estArchive());
+    }
+
     /**
      * Un courrier créé directement via factory à un statut intermédiaire
      * (raccourci de test, sans passer par le circuit réel) n'a aucun

@@ -36,6 +36,8 @@ class GestionnaireDocumentNumerise
         ?int $nombrePagesAnnonce = null,
         string $disque = 'local',
     ): DocumentNumerise {
+        $numerisable->assertCanReceiveNumerisation();
+
         $contenu = Storage::disk($disque)->get($chemin);
         $poidsOctets = Storage::disk($disque)->size($chemin);
         $nombrePagesDetectees = CompteurPagesPdf::compter($contenu);

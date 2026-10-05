@@ -191,6 +191,10 @@ class Stagiaire extends Model implements Numerisable
         return $this->morphMany(DocumentNumerise::class, 'numerisable')->oldest('version');
     }
 
+    public function assertCanReceiveNumerisation(): void
+    {
+    }
+
     public function derniereNumerisation(): ?DocumentNumerise
     {
         return $this->numerisations->last();

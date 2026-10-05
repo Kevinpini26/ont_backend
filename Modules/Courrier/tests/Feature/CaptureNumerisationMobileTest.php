@@ -4,12 +4,18 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\JetonCaptureNumerisation;
 
 /**
@@ -60,6 +66,7 @@ class CaptureNumerisationMobileTest extends CourrierTestCase
     public function test_soumettre_un_scan_cree_la_version_suivante_et_marque_le_courrier_numerise(): void
     {
         Storage::fake('local');
+        Event::fake([JobProcessed::class]);
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
         $courrier = Courrier::factory()->create(['numerisation_statut' => NumerisationStatut::A_NUMERISER]);
@@ -72,6 +79,41 @@ class CaptureNumerisationMobileTest extends CourrierTestCase
         $this->assertSame(1, $reponse->json('document.version'));
         $this->assertSame(NumerisationStatut::NUMERISE->value, $courrier->fresh()->numerisation_statut->value);
         $this->assertCount(1, $courrier->fresh()->numerisations);
+        $this->assertCount(1, Storage::disk('local')->allFiles('numerisations'));
+        $this->assertNotNull($jeton->fresh()->consomme_at);
+        Event::assertDispatched(JobProcessed::class, fn (JobProcessed $event): bool => $event->job->resolveName() === ExtraireTexteDocumentNumeriseJob::class);
+    }
+
+    public function test_un_jeton_valide_refuse_la_capture_dun_courrier_archive_sans_side_effect(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+        $direction = Direction::factory()->create();
+        $agent = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create([
+            'created_by' => $agent->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+            'numerisation_statut' => NumerisationStatut::A_NUMERISER,
+        ]);
+        $jeton = JetonCaptureNumerisation::genererPour($courrier, $agent);
+        $this->archiverCourrierViaEndpoints($courrier, $direction);
+
+        $documentsAvant = DocumentNumerise::query()->count();
+        $fichiersAvant = Storage::disk('local')->allFiles('numerisations');
+        $statutAvant = $courrier->fresh()->numerisation_statut;
+        $this->assertTrue($jeton->fresh()->estValide());
+
+        $response = $this->postJson("/api/v1/public/capture/{$jeton->token}", [
+            'fichier' => UploadedFile::fake()->create('scan.pdf', 200, 'application/pdf'),
+        ]);
+
+        $response->assertUnprocessable()->assertJsonPath('message', 'Un document archivé ne peut plus recevoir de mutation métier.');
+        $this->assertSame($documentsAvant, DocumentNumerise::query()->count());
+        $this->assertSame($fichiersAvant, Storage::disk('local')->allFiles('numerisations'));
+        $this->assertSame($statutAvant, $courrier->fresh()->numerisation_statut);
+        $this->assertTrue($jeton->fresh()->estValide());
+        $this->assertNull($jeton->fresh()->consomme_at);
+        Queue::assertNothingPushed();
     }
 
     public function test_le_jeton_est_a_usage_unique(): void

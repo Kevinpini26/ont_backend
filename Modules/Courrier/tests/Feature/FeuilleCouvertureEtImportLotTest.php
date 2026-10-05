@@ -4,10 +4,16 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Models\Direction;
 
@@ -48,6 +54,7 @@ class FeuilleCouvertureEtImportLotTest extends CourrierTestCase
     public function test_importer_un_segment_par_numero_da_r_cree_une_version_source_copieur(): void
     {
         Storage::fake('local');
+        Event::fake([JobProcessed::class]);
         $direction = Direction::factory()->create();
         $agent = $this->agent(Poste::RECEPTION, $direction);
         $courrier = Courrier::factory()->create([
@@ -63,6 +70,37 @@ class FeuilleCouvertureEtImportLotTest extends CourrierTestCase
         $this->assertSame(1, $reponse->json('document.version'));
         $this->assertSame(NumerisationStatut::NUMERISE->value, $courrier->fresh()->numerisation_statut->value);
         $this->assertSame(SourceDocumentNumerise::COPIEUR, $courrier->fresh()->numerisations->first()->source);
+        $this->assertCount(1, Storage::disk('local')->allFiles('numerisations'));
+        Event::assertDispatched(JobProcessed::class, fn (JobProcessed $event): bool => $event->job->resolveName() === ExtraireTexteDocumentNumeriseJob::class);
+    }
+
+    public function test_importer_lot_sur_courrier_archive_est_refuse_avant_tout_effet(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+        $direction = Direction::factory()->create();
+        $agent = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create([
+            'created_by' => $agent->id,
+            'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
+            'numerisation_statut' => NumerisationStatut::A_NUMERISER,
+        ]);
+        $this->archiverCourrierViaEndpoints($courrier, $direction);
+
+        $documentsAvant = DocumentNumerise::query()->count();
+        $fichiersAvant = Storage::disk('local')->allFiles('numerisations');
+        $statutAvant = $courrier->fresh()->numerisation_statut;
+
+        $response = $this->actingAs($agent)->postJson('/api/v1/courriers/import-lot', [
+            'numero_accuse_reception' => $courrier->numero_accuse_reception,
+            'fichier' => UploadedFile::fake()->create('segment.pdf', 200, 'application/pdf'),
+        ]);
+
+        $response->assertUnprocessable()->assertJsonPath('message', 'Un document archivé ne peut plus recevoir de mutation métier.');
+        $this->assertSame($documentsAvant, DocumentNumerise::query()->count());
+        $this->assertSame($fichiersAvant, Storage::disk('local')->allFiles('numerisations'));
+        $this->assertSame($statutAvant, $courrier->fresh()->numerisation_statut);
+        Queue::assertNothingPushed();
     }
 
     public function test_importer_avec_un_numero_dar_inconnu_est_rejete(): void

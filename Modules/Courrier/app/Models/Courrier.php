@@ -164,11 +164,7 @@ class Courrier extends Model implements Numerisable
         });
 
         static::updating(function (Courrier $courrier): void {
-            if ($courrier->exists && $courrier->estArchive()) {
-                throw ValidationException::withMessages([
-                    'courrier' => 'Un document archivé ne peut plus recevoir de mutation métier.',
-                ]);
-            }
+            $courrier->assertCanReceiveNumerisation();
             foreach (['numero_enregistrement', 'reference_documentaire', 'numero_depart'] as $identite) {
                 $ancienneValeur = $courrier->getOriginal($identite);
                 if ($ancienneValeur !== null && $courrier->isDirty($identite)) {
@@ -470,6 +466,15 @@ class Courrier extends Model implements Numerisable
     public function estArchive(): bool
     {
         return $this->classement()->where('statut', 'archive')->exists();
+    }
+
+    public function assertCanReceiveNumerisation(): void
+    {
+        if ($this->exists && $this->estArchive()) {
+            throw ValidationException::withMessages([
+                'courrier' => 'Un document archivé ne peut plus recevoir de mutation métier.',
+            ]);
+        }
     }
 
     /**
