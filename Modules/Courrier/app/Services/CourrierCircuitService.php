@@ -2011,24 +2011,31 @@ class CourrierCircuitService
      */
     public function enregistrerRemise(Courrier $courrier, User $utilisateur, array $donnees): Courrier
     {
-        if ($courrier->mode_sortie !== null) {
-            throw ValidationException::withMessages(['mode_sortie' => 'Utilisez la confirmation de remise physique du mode de sortie choisi.']);
-        }
-        if ($courrier->statut !== CourrierStatut::ENVOYE) {
-            throw TransitionNonAutoriseeException::sautDetape();
-        }
+        return DB::transaction(function () use ($courrier, $utilisateur, $donnees): Courrier {
+            $courrier = $this->lockCourrierFrais($courrier);
 
-        $courrier->remis_le = now();
-        $courrier->remis_a = $donnees['remis_a'];
-        $courrier->mode_remise = $donnees['mode_remise'];
-        $courrier->decharge_remise_chemin = $donnees['decharge_remise_chemin'] ?? null;
-        $courrier->save();
+            if ($courrier->mode_sortie !== null) {
+                throw ValidationException::withMessages(['mode_sortie' => 'Utilisez la confirmation de remise physique du mode de sortie choisi.']);
+            }
+            if ($courrier->statut !== CourrierStatut::ENVOYE) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+            if ($courrier->remis_le !== null || $courrier->remis_a !== null || $courrier->mode_remise !== null) {
+                throw ValidationException::withMessages(['remise' => 'Une preuve de remise a déjà été enregistrée pour ce courrier legacy.']);
+            }
 
-        $this->audit->enregistrer('courrier.remise_confirmee', $courrier, $utilisateur, [
-            'description' => "Remise confirmée pour le courrier {$courrier->numero_depart}",
-        ]);
+            $courrier->remis_le = now();
+            $courrier->remis_a = $donnees['remis_a'];
+            $courrier->mode_remise = $donnees['mode_remise'];
+            $courrier->decharge_remise_chemin = $donnees['decharge_remise_chemin'] ?? null;
+            $courrier->save();
 
-        return $courrier;
+            $this->audit->enregistrer('courrier.remise_confirmee', $courrier, $utilisateur, [
+                'description' => "Remise confirmée pour le courrier {$courrier->numero_depart}",
+            ]);
+
+            return $courrier;
+        });
     }
 
     public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation

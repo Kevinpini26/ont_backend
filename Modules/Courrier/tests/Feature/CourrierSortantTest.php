@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
@@ -197,6 +198,65 @@ class CourrierSortantTest extends CourrierTestCase
 
         $response->assertJsonPath('data.remis_a', 'Jean Kabila');
         $this->assertNotNull($response->json('data.remis_le'));
+    }
+
+    public function test_une_remise_legacy_deja_confirmee_ne_peut_pas_etre_remplacee(): void
+    {
+        $direction = Direction::factory()->create();
+        $relecteur = User::factory()->responsableDirection($direction)->create();
+        $dg = $this->agent(Poste::DG, $direction);
+        $secretariat2 = $this->agent(Poste::SECRETARIAT_2, $direction);
+
+        $courrier = Courrier::factory()->create([
+            'direction_origine_id' => $direction->id,
+            'direction_destination_id' => $direction->id,
+            'dossier_id' => null,
+            'sens' => 'sortant',
+            'statut' => CourrierStatut::ENVOYE,
+            'mode_sortie' => null,
+            'mode_expedition' => 'poste',
+            'destinataire_externe_nom' => 'Partenaire',
+            'destinataire_externe_email' => 'partenaire@example.test',
+            'numero_depart' => 'LEG-001',
+            'numero_enregistrement' => '2026-00099',
+            'created_by' => $secretariat2->id,
+            'date_envoi' => now(),
+        ]);
+        $courrier->transitions()->create([
+            'statut' => CourrierStatut::ENVOYE,
+            'ancien_statut' => CourrierStatut::SIGNE,
+            'nouveau_statut' => CourrierStatut::ENVOYE,
+            'changed_by_id' => $secretariat2->id,
+            'created_at' => now(),
+        ]);
+
+        $courrier->forceFill([
+            'mode_sortie' => null,
+            'remis_le' => null,
+            'remis_a' => null,
+            'mode_remise' => null,
+            'statut' => CourrierStatut::ENVOYE,
+        ])->saveQuietly();
+
+        $premiere = $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$courrier->id}/enregistrer-remise", [
+            'remis_a' => 'Destinataire initial',
+            'mode_remise' => 'poste',
+        ])->assertOk();
+
+        $premiere->assertJsonPath('data.remis_a', 'Destinataire initial');
+        $premiere->assertJsonPath('data.mode_remise', 'poste');
+        $this->assertNotNull($courrier->fresh()->remis_le);
+
+        $deuxieme = $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$courrier->id}/enregistrer-remise", [
+            'remis_a' => 'Destinataire remplace',
+            'mode_remise' => 'courriel',
+        ]);
+
+        $deuxieme->assertUnprocessable();
+        $this->assertSame('Destinataire initial', $courrier->fresh()->remis_a);
+        $this->assertSame('poste', $courrier->fresh()->mode_remise->value ?? $courrier->fresh()->mode_remise);
+        $this->assertSame(CourrierStatut::ENVOYE, $courrier->fresh()->statut);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'courrier.remise_confirmee')->where('auditable_id', $courrier->id)->count());
     }
 
     public function test_le_fil_de_correspondance_apparait_sur_loriginal(): void

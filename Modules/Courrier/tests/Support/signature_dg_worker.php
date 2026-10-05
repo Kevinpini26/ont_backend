@@ -40,6 +40,11 @@ try {
         $service->envoyerParCourriel($courrier, $acteur);
     } elseif ($action === 'confirmer-remise') {
         $service->confirmerRemisePhysique($courrier, $acteur, $argv[6] ?? 'Récupérant test', null, null);
+    } elseif ($action === 'enregistrer-remise-legacy') {
+        $service->enregistrerRemise($courrier, $acteur, [
+            'remis_a' => $argv[6] ?? 'Récupérant legacy',
+            'mode_remise' => $argv[7] ?? 'poste',
+        ]);
     } elseif ($action === 'decider-classement') {
         app(DispatchCourrierService::class)->decider($courrier, $acteur, [[
             'type' => 'classement',

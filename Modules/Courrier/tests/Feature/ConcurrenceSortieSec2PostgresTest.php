@@ -68,6 +68,35 @@ class ConcurrenceSortieSec2PostgresTest extends CourrierTestCase
         }
     }
 
+    public function test_deux_handoffs_legacy_concurrents_ne_creent_quune_preuve_unique(): void
+    {
+        $this->assertSame('pgsql', config('database.default'));
+        $this->assertSame('ont_testing', config('database.connections.pgsql.database'));
+        [$courrier, , $premier, $second] = $this->courrierSigne();
+        $courrier->update([
+            'statut' => CourrierStatut::ENVOYE,
+            'mode_sortie' => null,
+            'mode_expedition' => 'poste',
+            'date_envoi' => now(),
+            'remis_le' => null,
+            'remis_a' => null,
+            'mode_remise' => null,
+        ]);
+
+        try {
+            $this->concurrenceLegacyRemise($courrier->id, $premier, $second);
+            $courrier->refresh();
+            $this->assertSame(CourrierStatut::ENVOYE, $courrier->statut);
+            $this->assertNotNull($courrier->remis_le);
+            $this->assertContains($courrier->remis_a, ['Destinataire A', 'Destinataire B']);
+            $this->assertContains($courrier->mode_remise->value ?? $courrier->mode_remise, ['poste', 'courriel']);
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'courrier.remise_confirmee')->where('auditable_id', $courrier->id)->count());
+            $this->assertSame(1, DB::table('courriers')->where('id', $courrier->id)->whereNotNull('remis_le')->count());
+        } finally {
+            Storage::disk('local')->delete($courrier->pdf_chemin);
+        }
+    }
+
     public function test_deux_decisions_de_classement_concurrentes_ne_creent_quun_cycle(): void
     {
         $this->assertSame('pgsql', config('database.default'));
@@ -133,6 +162,62 @@ class ConcurrenceSortieSec2PostgresTest extends CourrierTestCase
                     $barriere,
                     (string) ($index + 1),
                     $action,
+                ], base_path(), ['APP_ENV' => 'testing', 'DB_DATABASE' => 'ont_testing']);
+            }
+            foreach ($processus as $process) {
+                $process->setTimeout(30)->start();
+            }
+            $limite = microtime(true) + 10;
+            while ((! file_exists($barriere.'/ready-1') || ! file_exists($barriere.'/ready-2')) && microtime(true) < $limite) {
+                usleep(10_000);
+            }
+            $this->assertFileExists($barriere.'/ready-1');
+            $this->assertFileExists($barriere.'/ready-2');
+            file_put_contents($barriere.'/start', 'go');
+            foreach ($processus as $process) {
+                $process->wait();
+                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+            }
+            $resultats = collect([1, 2])->map(fn (int $numero) => json_decode(
+                (string) file_get_contents($barriere.'/result-'.$numero.'.json'),
+                true,
+                flags: JSON_THROW_ON_ERROR,
+            ));
+            $this->assertSame(['ok', 'refused'], $resultats->pluck('status')->sort()->values()->all(), $resultats->toJson());
+        } finally {
+            foreach ($processus as $process) {
+                if ($process->isRunning()) {
+                    $process->stop();
+                }
+            }
+            foreach (glob($barriere.'/*') ?: [] as $fichier) {
+                unlink($fichier);
+            }
+            rmdir($barriere);
+        }
+    }
+
+    private function concurrenceLegacyRemise(int $courrierId, User $premier, User $second): void
+    {
+        $barriere = sys_get_temp_dir().'/ont-sortie-sec2-legacy-'.bin2hex(random_bytes(6));
+        mkdir($barriere, 0700, true);
+        $processus = [];
+        try {
+            $arguments = [
+                ['Destinataire A', 'poste'],
+                ['Destinataire B', 'courriel'],
+            ];
+            foreach ([$premier, $second] as $index => $acteur) {
+                $processus[] = new Process([
+                    PHP_BINARY,
+                    base_path('Modules/Courrier/tests/Support/signature_dg_worker.php'),
+                    (string) $courrierId,
+                    (string) $acteur->id,
+                    $barriere,
+                    (string) ($index + 1),
+                    'enregistrer-remise-legacy',
+                    $arguments[$index][0],
+                    $arguments[$index][1],
                 ], base_path(), ['APP_ENV' => 'testing', 'DB_DATABASE' => 'ont_testing']);
             }
             foreach ($processus as $process) {
