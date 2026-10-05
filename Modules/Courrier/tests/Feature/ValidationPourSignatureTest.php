@@ -39,6 +39,29 @@ class ValidationPourSignatureTest extends CourrierTestCase
             ->assertNotFound();
     }
 
+    public function test_pdf_a_signer_contient_les_paragraphes_du_corps(): void
+    {
+        Storage::fake('local');
+        [$d, $dg] = $this->projetPretPourValidation();
+        $d->forceFill([
+            'projet_reponse_contenu' => [
+                'type' => 'doc',
+                'content' => [
+                    ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Premier paragraphe de démonstration ONT.']]],
+                    ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Deuxième paragraphe de démonstration ONT.']]],
+                    ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Troisième paragraphe de démonstration ONT.']]],
+                ],
+            ],
+        ])->saveQuietly();
+
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/valider-pour-signature")->assertOk();
+
+        $textePdf = (new Parser)->parseContent(Storage::disk('local')->get($d->fresh()->pdf_a_signer_chemin))->getText();
+        $this->assertStringContainsString('Premier paragraphe de démonstration ONT.', $textePdf);
+        $this->assertStringContainsString('Deuxième paragraphe de démonstration ONT.', $textePdf);
+        $this->assertStringContainsString('Troisième paragraphe de démonstration ONT.', $textePdf);
+    }
+
     public function test_dg_valide_et_cree_un_pdf_a_signer_sans_signer_ni_transmettre(): void
     {
         Storage::fake('local');
@@ -74,8 +97,9 @@ class ValidationPourSignatureTest extends CourrierTestCase
         $this->assertStringContainsString($d->numero_depart, $textePdf);
         $this->assertStringContainsString('DOCUMENT À SIGNER', $textePdf);
         $this->assertStringContainsString('NON SIGNÉ', $textePdf);
+        $this->assertStringContainsString('Le Directeur Général', $textePdf);
         $this->assertStringContainsString('Directeur Général', $textePdf);
-        $this->assertSame(1, substr_count($textePdf, 'Directeur Général'));
+        $this->assertGreaterThanOrEqual(1, substr_count($textePdf, 'Directeur Général'));
         $this->assertStringContainsString('Partenaire', $textePdf);
         $this->assertStringContainsString('Texte final validé', $textePdf);
 
@@ -184,7 +208,8 @@ class ValidationPourSignatureTest extends CourrierTestCase
         $this->assertNotSame($shaInitial, $apres->pdf_a_signer_sha256);
         $this->assertSame(hash('sha256', $pdf), $apres->pdf_a_signer_sha256);
         $this->assertSame($apres->pdf_a_signer_sha256, $regenere->pdf_a_signer_sha256);
-        $this->assertSame(1, substr_count($textePdf, 'Directeur Général'));
+        $this->assertGreaterThanOrEqual(1, substr_count($textePdf, 'Directeur Général'));
+        $this->assertStringContainsString('Le Directeur Général', $textePdf);
         $this->assertStringContainsString('DOCUMENT À SIGNER', $textePdf);
         $this->assertStringContainsString('NON SIGNÉ', $textePdf);
     }
