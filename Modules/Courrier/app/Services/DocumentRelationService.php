@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Models\DocumentRelation;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Models\User;
@@ -19,18 +20,20 @@ class DocumentRelationService
         if ($source->dossier_id === null || $source->dossier_id !== $cible->dossier_id) {
             throw ValidationException::withMessages(['document_cible_id' => 'Les documents reliés doivent appartenir au même dossier.']);
         }
-        $this->dossiers->assertCourrierActifPourNouvelleActivite($source);
-        $this->dossiers->assertCourrierActifPourNouvelleActivite($cible);
-
         if ($source->is($cible)) {
             throw ValidationException::withMessages(['document_cible_id' => 'Un document ne peut pas être relié à lui-même.']);
         }
 
-        if ($this->creeraitCycle($source->id, $cible->id)) {
-            throw ValidationException::withMessages(['document_cible_id' => 'Cette relation créerait un cycle documentaire.']);
-        }
-
         return DB::transaction(function () use ($source, $cible, $type, $acteur) {
+            $dossier = Dossier::query()->lockForUpdate()->findOrFail($source->dossier_id);
+            $this->dossiers->assertActifPourNouvelleActivite($dossier);
+            $this->dossiers->assertCourrierActifPourNouvelleActivite($source);
+            $this->dossiers->assertCourrierActifPourNouvelleActivite($cible);
+
+            if ($this->creeraitCycle($source->id, $cible->id)) {
+                throw ValidationException::withMessages(['document_cible_id' => 'Cette relation créerait un cycle documentaire.']);
+            }
+
             $relation = DocumentRelation::query()->firstOrCreate([
                 'document_source_id' => $source->id,
                 'document_cible_id' => $cible->id,

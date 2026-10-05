@@ -2,8 +2,9 @@
 
 namespace Modules\Courrier\Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Enums\NiveauConfidentialite;
@@ -13,11 +14,12 @@ use Modules\Courrier\Services\DocumentRelationService;
 use Modules\Courrier\Services\DossierWorkflowGuard;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class DossierDocumentaireTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseMigrations;
 
     public function test_creer_un_document_cree_automatiquement_son_dossier(): void
     {
@@ -104,6 +106,94 @@ class DossierDocumentaireTest extends TestCase
 
         $this->expectException(ValidationException::class);
         $service->relier($b, $a, DocumentRelationType::SUITE_DE, null);
+    }
+
+    public function test_deux_relations_concurrentes_ne_peuvent_creer_un_cycle_documentaire(): void
+    {
+        foreach (range(1, 10) as $iteration) {
+            $direction = Direction::factory()->create(['code' => 'DIR-'.$iteration.'-'.bin2hex(random_bytes(4))]);
+            $a = Courrier::factory()->create([
+                'numero_accuse_reception' => 'A-'.$iteration.'-'.bin2hex(random_bytes(4)),
+                'direction_origine_id' => $direction->id,
+                'direction_destination_id' => $direction->id,
+            ]);
+            $b = Courrier::factory()->create([
+                'dossier_id' => $a->dossier_id,
+                'numero_accuse_reception' => 'B-'.$iteration.'-'.bin2hex(random_bytes(4)),
+                'direction_origine_id' => $direction->id,
+                'direction_destination_id' => $direction->id,
+            ]);
+
+            $barriere = sys_get_temp_dir().'/ont-document-relation-cycle-'.$iteration.'-'.uniqid('', true);
+            mkdir($barriere, 0700, true);
+
+            try {
+                $processus = [
+                    new Process([PHP_BINARY, base_path('Modules/Courrier/tests/Support/document_relation_worker.php'), 'a-vers-b', (string) $a->id, (string) $b->id, $barriere, '1'], base_path(), ['APP_ENV' => 'testing', 'DB_DATABASE' => 'ont_testing']),
+                    new Process([PHP_BINARY, base_path('Modules/Courrier/tests/Support/document_relation_worker.php'), 'b-vers-a', (string) $b->id, (string) $a->id, $barriere, '2'], base_path(), ['APP_ENV' => 'testing', 'DB_DATABASE' => 'ont_testing']),
+                ];
+
+                foreach ($processus as $process) {
+                    $process->start();
+                }
+
+                $limite = microtime(true) + 15;
+                while ((! file_exists($barriere.'/ready-1') || ! file_exists($barriere.'/ready-2')) && microtime(true) < $limite) {
+                    usleep(10_000);
+                }
+
+                $this->assertFileExists($barriere.'/ready-1');
+                $this->assertFileExists($barriere.'/ready-2');
+                file_put_contents($barriere.'/start', 'go');
+
+                foreach ($processus as $index => $process) {
+                    $process->wait();
+                    $numero = (string) ($index + 1);
+                    $resultatPath = $barriere.'/result-'.$numero.'.json';
+                    $details = is_file($resultatPath) ? file_get_contents($resultatPath) : 'résultat worker absent';
+                    $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().' '.$details);
+                }
+
+                $resultats = collect([1, 2])
+                    ->map(fn (int $numero) => json_decode((string) file_get_contents($barriere.'/result-'.$numero.'.json'), true, flags: JSON_THROW_ON_ERROR))
+                    ->values()
+                    ->all();
+
+                $this->assertSame(['1', '2'], collect($resultats)->pluck('worker')->sort()->values()->all());
+                $this->assertSame(['testing', 'testing'], collect($resultats)->pluck('app_env')->sort()->values()->all());
+                $this->assertSame(['ont_testing', 'ont_testing'], collect($resultats)->pluck('database')->sort()->values()->all());
+
+                $statuts = collect($resultats)->pluck('status')->values()->all();
+                sort($statuts);
+                $this->assertSame(['ok', 'refused'], $statuts, 'Résultats workers: '.json_encode($resultats, JSON_THROW_ON_ERROR));
+                fwrite(STDOUT, 'Workers relation: '.json_encode($resultats, JSON_THROW_ON_ERROR).PHP_EOL);
+                $this->assertSame(1, DocumentRelation::query()->count());
+                $relation = DocumentRelation::query()->sole();
+                $this->assertContains(
+                    [$relation->document_source_id, $relation->document_cible_id],
+                    [[$a->id, $b->id], [$b->id, $a->id]],
+                );
+                $this->assertSame(1, DB::table('audit_logs')
+                    ->where('action', 'document.relation_creee')
+                    ->where('auditable_id', $relation->id)
+                    ->count());
+                DocumentRelation::query()->delete();
+            } finally {
+                foreach ($processus ?? [] as $process) {
+                    if ($process->isRunning()) {
+                        $process->stop();
+                    }
+                }
+                foreach (glob($barriere.'/*') ?: [] as $fichier) {
+                    if (is_file($fichier)) {
+                        unlink($fichier);
+                    }
+                }
+                if (is_dir($barriere)) {
+                    rmdir($barriere);
+                }
+            }
+        }
     }
 
     public function test_lapi_dossier_ne_retourne_que_les_documents_de_la_direction_autorisee(): void
