@@ -4,6 +4,7 @@ namespace Modules\Kernel\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgAuthorityResolver;
@@ -17,6 +18,10 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'initiales_reference' => $this->when(
+                $request->user()?->role === UserRole::ADMINISTRATEUR,
+                $this->initiales_reference,
+            ),
             'email' => $this->email,
             'role' => $this->role?->value,
             'role_label' => $this->role?->label(),

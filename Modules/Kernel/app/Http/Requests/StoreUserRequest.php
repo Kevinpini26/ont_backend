@@ -12,6 +12,11 @@ class StoreUserRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        if ($this->has('initiales_reference')) {
+            $initiales = $this->input('initiales_reference');
+            $this->merge(['initiales_reference' => is_string($initiales) ? mb_strtoupper(trim($initiales)) : $initiales]);
+        }
+
         if ($this->input('role') === UserRole::RESPONSABLE_DIRECTION->value) {
             $this->merge(['role' => UserRole::DIRECTEUR_DIRECTION->value]);
         }
@@ -29,6 +34,7 @@ class StoreUserRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255'],
+            'initiales_reference' => ['nullable', 'string', 'max:12', 'regex:/\A[A-Z]{1,12}\z/'],
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', PasswordPolicy::regle()],
             'role' => ['required', Rule::enum(UserRole::class)],

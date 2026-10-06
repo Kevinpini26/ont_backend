@@ -12,6 +12,11 @@ class UpdateUserRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        if ($this->has('initiales_reference')) {
+            $initiales = $this->input('initiales_reference');
+            $this->merge(['initiales_reference' => is_string($initiales) ? mb_strtoupper(trim($initiales)) : $initiales]);
+        }
+
         if ($this->input('role') === UserRole::RESPONSABLE_DIRECTION->value) {
             $this->merge(['role' => UserRole::DIRECTEUR_DIRECTION->value]);
         }
@@ -30,6 +35,7 @@ class UpdateUserRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'initiales_reference' => ['sometimes', 'nullable', 'string', 'max:12', 'regex:/\A[A-Z]{1,12}\z/'],
             'email' => ['sometimes', 'required', 'email', Rule::unique('users', 'email')->ignore($user)],
             'password' => ['sometimes', 'required', 'string', PasswordPolicy::regle()],
             'role' => ['sometimes', 'required', Rule::enum(UserRole::class)],
