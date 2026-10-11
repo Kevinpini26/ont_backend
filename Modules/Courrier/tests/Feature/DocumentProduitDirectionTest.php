@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
@@ -62,6 +63,149 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             'objet' => 'Intrusion horizontale',
             'contenu' => $this->contenu('Ne doit pas être sauvegardé.'),
         ])->assertForbidden();
+    }
+
+    public function test_index_filtre_par_origine_avant_pagination_sans_elargir_la_visibilite(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $collaborateur = User::factory()->secretariatDirection($direction)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
+        $autreDirection = Direction::factory()->create();
+        $autreSecretariat = User::factory()->secretariatDirection($autreDirection)->create();
+        $autreDirecteur = User::factory()->directeurDirection($autreDirection)->create();
+        $dg = User::factory()->agentCircuitCourrier(Poste::DG)->create();
+        $dga = User::factory()->agentCircuitCourrier(Poste::DGA)->create();
+        $sec1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1)->create();
+        $sec2 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_2)->create();
+        $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION)->create();
+        $admin = User::factory()->administrateur()->create();
+
+        for ($i = 1; $i <= 21; $i++) {
+            $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+                'objet' => "Document autonome {$i}",
+                'contenu' => $this->contenu("Contenu {$i}."),
+            ])->assertCreated();
+        }
+
+        [, $traitement, $secretariatHistorique, $directeurHistorique] = $this->traitementTermine('retour_a_preparer', $direction);
+        $historiqueId = $this->actingAs($secretariatHistorique)
+            ->postJson("/api/v1/traitements-direction/{$traitement->id}/document-produit", [
+                'objet' => 'Document historique',
+                'contenu' => $this->contenu('Document issu du traitement.'),
+            ])->assertCreated()->json('data.id');
+
+        $sansFiltre = $this->actingAs($secretariat)->getJson('/api/v1/documents-produits-direction')
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('meta.total', 22)
+            ->assertJsonPath('meta.per_page', 20);
+        $pageHistorique = $this->actingAs($secretariat)->getJson('/api/v1/documents-produits-direction?page=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('meta.total', 22);
+        $this->assertSame(
+            1,
+            collect($sansFiltre->json('data'))->merge($pageHistorique->json('data'))
+                ->where('origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value)
+                ->count(),
+        );
+        $this->assertSame(
+            $historiqueId,
+            collect($sansFiltre->json('data'))->merge($pageHistorique->json('data'))
+                ->firstWhere('origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value)['id'],
+        );
+
+        $pageAutonome1 = $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome&page=1')
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 21);
+        $this->assertStringContainsString('origine=autonome', $pageAutonome1->json('links.next'));
+        $pageAutonome2 = $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome&page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.total', 21);
+        $autonomes = collect($pageAutonome1->json('data'))->merge($pageAutonome2->json('data'));
+        $this->assertCount(21, $autonomes);
+        $this->assertSame(
+            [DocumentProduitOrigine::AUTONOME->value],
+            $autonomes->pluck('origine')->unique()->values()->all(),
+        );
+
+        $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=traitement_direction')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $historiqueId)
+            ->assertJsonPath('data.0.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value);
+        $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=inconnue')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('origine');
+
+        foreach ([$collaborateur, $directeur] as $autoriseMemeDirection) {
+            $this->actingAs($autoriseMemeDirection)
+                ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 21)
+                ->assertJsonPath('data.0.origine', DocumentProduitOrigine::AUTONOME->value);
+        }
+        foreach ([$autreSecretariat, $autreDirecteur] as $autreDirectionActeur) {
+            $this->actingAs($autreDirectionActeur)
+                ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+                ->assertOk()
+                ->assertJsonCount(0, 'data')
+                ->assertJsonPath('meta.total', 0);
+        }
+        foreach ([$dg, $dga, $sec1, $sec2, $admin] as $interdit) {
+            $this->actingAs($interdit)
+                ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+                ->assertForbidden();
+        }
+        $this->actingAs($admin)
+            ->getJson('/api/v1/documents-produits-direction?origine=inconnue')
+            ->assertForbidden();
+        $this->actingAs($reception)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.total', 0);
+
+        $this->actingAs($secretariatHistorique)
+            ->postJson("/api/v1/documents-produits-direction/{$historiqueId}/soumettre")
+            ->assertOk();
+        $this->actingAs($directeurHistorique)
+            ->postJson("/api/v1/documents-produits-direction/{$historiqueId}/valider")
+            ->assertOk();
+        $this->actingAs($secretariatHistorique)
+            ->postJson("/api/v1/documents-produits-direction/{$historiqueId}/transmettre-reception")
+            ->assertOk();
+        $this->actingAs($reception)
+            ->postJson("/api/v1/documents-produits-direction/{$historiqueId}/recevoir")
+            ->assertOk();
+        $this->actingAs($reception)
+            ->getJson('/api/v1/documents-produits-direction?origine=traitement_direction')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $historiqueId);
+        $this->actingAs($reception)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.total', 0);
+
+        $this->actingAs($secretariat)
+            ->getJson("/api/v1/documents-produits-direction/{$historiqueId}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $historiqueId)
+            ->assertJsonPath('data.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value);
     }
 
     public function test_document_autonome_est_versionne_corrige_valide_et_garde_prive_jusqua_transmission_centrale(): void

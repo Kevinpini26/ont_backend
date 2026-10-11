@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitAutonomeRequest;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitRequest;
@@ -54,7 +55,17 @@ class DocumentProduitDirectionController extends Controller
             $q->where('direction_id', $request->user()->direction_id);
         }
 
-        return DocumentProduitDirectionResource::collection($q->latest()->paginate(20));
+        $origine = $request->validate([
+            'origine' => ['sometimes', Rule::enum(DocumentProduitOrigine::class)],
+        ])['origine'] ?? null;
+
+        if ($origine !== null) {
+            $q->where('origine', $origine);
+        }
+
+        return DocumentProduitDirectionResource::collection(
+            $q->latest()->paginate(20)->appends($request->query()),
+        );
     }
 
     public function store(CreerDocumentProduitRequest $request, TraitementDirection $traitement)
