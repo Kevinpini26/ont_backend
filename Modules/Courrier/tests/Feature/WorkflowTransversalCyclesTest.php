@@ -43,9 +43,9 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $assistantDga = $this->agent(Poste::ASSISTANT_DGA, $centrale);
         $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
         $secretariatDmc = User::factory()->secretariatDirection($dmc)->create();
-        $directeurDmc = User::factory()->directeurDirection($dmc)->create();
+        $directeurDmc = User::factory()->directeurDirection($dmc)->create(['initiales_reference' => 'DMC']);
         $secretariatDep = User::factory()->secretariatDirection($dep)->create();
-        $directeurDep = User::factory()->directeurDirection($dep)->create();
+        $directeurDep = User::factory()->directeurDirection($dep)->create(['initiales_reference' => 'DEP']);
 
         $numeroAccuseA = $this->post('/api/v1/public/courriers-externes', [
             'objet' => 'Demande de partenariat pour la promotion d’une destination touristique en République Démocratique du Congo',

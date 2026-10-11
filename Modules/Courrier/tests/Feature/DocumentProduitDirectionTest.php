@@ -11,6 +11,7 @@ use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use Carbon\Carbon;
 
 class DocumentProduitDirectionTest extends CourrierTestCase
 {
@@ -79,8 +80,13 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", ['contenu' => $this->contenu('Version corrigée')])->assertOk();
         $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertOk()->assertJsonPath('data.statut', 'valide');
         $reference = $validation->json('data.courrier.reference_documentaire');
-        $this->assertMatchesRegularExpression('/^001\/ONT\/.+\/\d{4}$/', $reference);
+        $this->assertSame(sprintf('001/ABC/%s/ONT/%d', $traitement->direction->code, now()->year), $reference);
         $produit = DocumentProduitDirection::findOrFail($id);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'courrier.reference_documentaire_interne_attribuee',
+            'auditable_id' => $produit->courrier_id,
+            'user_id' => $directeur->id,
+        ]);
         $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", ['contenu' => $this->contenu('Mutation')])->assertForbidden();
         $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/transmettre-reception")->assertOk()->assertJsonPath('data.statut', 'transmis_reception');
         $courrierId = $produit->courrier_id;
@@ -97,27 +103,145 @@ class DocumentProduitDirectionTest extends CourrierTestCase
     }
 
     /** @return array{Courrier, TraitementDirection, User, User, User} */
-    private function traitementTermine(string $decision): array
+    public function test_le_directeur_sans_initiales_ne_peut_pas_attribuer_de_reference(): void
+    {
+        $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
+        [$source, $traitement, $secretariat, $directeur] = $this->traitementTermine('retour_a_preparer', $direction, null);
+        $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
+
+        $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
+            ->assertUnprocessable()->assertJsonValidationErrors('initiales_reference');
+
+        $document = DocumentProduitDirection::findOrFail($id);
+        $this->assertSame('soumis_directeur', $document->statut->value);
+        $this->assertNull($document->courrier->reference_documentaire);
+    }
+
+    public function test_la_reference_reste_celle_de_la_direction_productrice_meme_si_le_destinataire_est_la_dg(): void
+    {
+        $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
+        [, $traitement, $secretariat, $directeur] = $this->traitementTermine('retour_a_preparer', $direction);
+        $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
+        $document = DocumentProduitDirection::findOrFail($id);
+        $courrier = Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id);
+        $courrier->update(['direction_destination_id' => Direction::query()->where('code', 'DG')->value('id')]);
+
+        $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertOk();
+
+        $this->assertSame('001/ABC/DMC/ONT/'.now()->year, $validation->json('data.courrier.reference_documentaire'));
+        $this->assertSame('ABC', $directeur->fresh()->initiales_reference);
+        $this->assertSame('SEC', $secretariat->fresh()->initiales_reference);
+    }
+
+    public function test_une_reference_historique_deja_attribuee_nest_pas_remplacee(): void
+    {
+        $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
+        [, $traitement, $secretariat] = $this->traitementTermine('retour_a_preparer', $direction);
+        $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
+        $document = DocumentProduitDirection::findOrFail($id);
+        $document->courrier->update(['reference_documentaire' => '001/ONT/DMC/2026']);
+
+        $this->actingAs($traitement->directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
+            ->assertUnprocessable()->assertJsonValidationErrors('reference_documentaire');
+
+        $this->assertSame('001/ONT/DMC/2026', $document->courrier->fresh()->reference_documentaire);
+        $this->assertSame('soumis_directeur', $document->fresh()->statut->value);
+    }
+
+    public function test_le_directeur_dune_autre_direction_ne_peut_pas_valider(): void
+    {
+        $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
+        [, $traitement, $secretariat] = $this->traitementTermine('retour_a_preparer', $direction);
+        $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
+        $autreDirection = Direction::query()->where('code', 'DFP')->firstOrFail();
+        $autreDirecteur = User::factory()->directeurDirection($autreDirection)->create(['initiales_reference' => 'XYZ']);
+
+        $this->actingAs($autreDirecteur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertForbidden();
+        $this->assertNull(Courrier::withoutGlobalScopes()->findOrFail(
+            DocumentProduitDirection::findOrFail($id)->courrier_id,
+        )->reference_documentaire);
+    }
+
+    public function test_une_direction_productrice_incoherente_est_refusee(): void
+    {
+        $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
+        [, $traitement, $secretariat, $directeur] = $this->traitementTermine('retour_a_preparer', $direction);
+        $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
+        $document = DocumentProduitDirection::findOrFail($id);
+        Courrier::withoutGlobalScopes()->whereKey($document->courrier_id)->update([
+            'direction_origine_id' => Direction::query()->where('code', 'DFP')->value('id'),
+        ]);
+
+        $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
+            ->assertUnprocessable()->assertJsonValidationErrors('document');
+        $this->assertNull(Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id)->reference_documentaire);
+    }
+
+    public function test_compteur_interne_est_independant_par_direction_et_par_annee(): void
+    {
+        $directionDmc = Direction::query()->where('code', 'DMC')->firstOrFail();
+        $directionDfp = Direction::query()->where('code', 'DFP')->firstOrFail();
+        $this->travelTo(Carbon::parse('2026-06-01 10:00:00'));
+
+        try {
+            $premierDmc = $this->produireEtValider($directionDmc);
+            $deuxiemeDmc = $this->produireEtValider($directionDmc);
+            $premierDfp = $this->produireEtValider($directionDfp);
+            $this->travelTo(Carbon::parse('2027-06-01 10:00:00'));
+            $premierDmc2027 = $this->produireEtValider($directionDmc);
+
+            $this->assertSame('001/ABC/DMC/ONT/2026', $premierDmc);
+            $this->assertSame('002/ABC/DMC/ONT/2026', $deuxiemeDmc);
+            $this->assertSame('001/ABC/DFP/ONT/2026', $premierDfp);
+            $this->assertSame('001/ABC/DMC/ONT/2027', $premierDmc2027);
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    private function traitementTermine(string $decision, ?Direction $direction = null, ?string $initiales = 'ABC'): array
     {
         $centrale = Direction::factory()->create();
-        $direction = Direction::factory()->create();
-        $dg = $this->agent(Poste::DG, $centrale);
+        $direction ??= Direction::factory()->create();
+        $dg = User::query()->where('poste', Poste::DG)->orderBy('id')->first();
+        $dg ??= $this->agent(Poste::DG, $centrale);
         $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
         $reception = $this->agent(Poste::RECEPTION, $centrale);
-        $secretariat = User::factory()->secretariatDirection($direction)->create();
-        $directeur = User::factory()->directeurDirection($direction)->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create(['initiales_reference' => 'SEC']);
+        $directeur = User::query()->where('direction_id', $direction->id)->where('role', UserRole::DIRECTEUR_DIRECTION)->first();
+        $directeur ??= User::factory()->directeurDirection($direction)->create(['initiales_reference' => $initiales]);
         $source = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$source->id}/dispatchs", ['destinations' => [['type' => 'direction', 'direction_id' => $direction->id, 'instruction' => 'Traiter']]])->assertOk();
         $dispatch = $source->dispatchs()->firstOrFail();
         $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         $this->actingAs($secretariat)->postJson("/api/v1/dispatchs/{$dispatch->id}/accuser-reception")->assertOk();
-        $traitement = TraitementDirection::query()->firstOrFail();
+        $traitement = TraitementDirection::query()->where('dispatch_courrier_id', $dispatch->id)->firstOrFail();
         $this->actingAs($secretariat)->postJson("/api/v1/traitements-direction/{$traitement->id}/transmettre-directeur")->assertOk();
         $this->actingAs($directeur)->postJson("/api/v1/traitements-direction/{$traitement->id}/prendre-en-charge")->assertOk();
         $this->actingAs($directeur)->postJson("/api/v1/traitements-direction/{$traitement->id}/decision", ['decision' => $decision])->assertOk();
 
         return [$source, $traitement->fresh(), $secretariat, $directeur, $reception];
+    }
+
+    private function creerEtSoumettreDocument(TraitementDirection $traitement, User $secretariat): int
+    {
+        $id = $this->actingAs($secretariat)->postJson("/api/v1/traitements-direction/{$traitement->id}/document-produit", [
+            'objet' => 'Document produit pour test', 'contenu' => $this->contenu('Contenu du document.'),
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre")->assertOk();
+
+        return $id;
+    }
+
+    private function produireEtValider(Direction $direction): string
+    {
+        [, $traitement, $secretariat, $directeur] = $this->traitementTermine('retour_a_preparer', $direction);
+        $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
+
+        return (string) $this->actingAs($directeur)
+            ->postJson("/api/v1/documents-produits-direction/{$id}/valider")
+            ->assertOk()->json('data.courrier.reference_documentaire');
     }
 
     private function contenu(string $texte): array

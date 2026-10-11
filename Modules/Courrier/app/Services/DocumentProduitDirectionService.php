@@ -19,11 +19,12 @@ use Modules\Courrier\Models\TraitementDirection;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 
 class DocumentProduitDirectionService
 {
-    public function __construct(private readonly NumeroGenerator $numeros, private readonly ReferenceDocumentaireService $references, private readonly DocumentRelationService $relations, private readonly AuditLogger $audit, private readonly DossierWorkflowGuard $dossiers) {}
+    public function __construct(private readonly NumeroGenerator $numeros, private readonly ReferenceDocumentInterneService $references, private readonly DocumentRelationService $relations, private readonly AuditLogger $audit, private readonly DossierWorkflowGuard $dossiers) {}
 
     public function creer(TraitementDirection $traitement, User $secretariat, array $donnees): DocumentProduitDirection
     {
@@ -82,8 +83,23 @@ class DocumentProduitDirectionService
     {
         return DB::transaction(function () use ($document, $directeur) {
             $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
-            $this->verifierDirecteur($document, $directeur);
-            $courrier = $this->references->attribuer(Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id), $directeur);
+            $traitement = TraitementDirection::query()->lockForUpdate()->findOrFail($document->traitement_direction_id);
+            if ($traitement->directeur_id !== $directeur->id) {
+                throw ValidationException::withMessages(['document' => 'Seul le Directeur désigné peut statuer sur ce document.']);
+            }
+            $directeur = User::query()->lockForUpdate()->findOrFail($traitement->directeur_id);
+            $this->verifierDirecteur($document, $directeur, $traitement);
+            $direction = Direction::query()->findOrFail($traitement->direction_id);
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->courrier_id);
+            $source = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->document_source_id);
+            if ($document->direction_id !== $traitement->direction_id
+                || $document->document_source_id !== $traitement->courrier_id
+                || $courrier->direction_origine_id !== $traitement->direction_id
+                || $courrier->dossier_id !== $traitement->dossier_id
+                || $source->dossier_id !== $traitement->dossier_id) {
+                throw ValidationException::withMessages(['document' => 'Le document, son traitement et la direction productrice sont incohérents.']);
+            }
+            $courrier = $this->references->attribuer($courrier, $direction, $directeur);
             $document->update(['statut' => DocumentProduitStatut::VALIDE, 'valide_par_id' => $directeur->id, 'valide_at' => now()]);
             $this->audit->enregistrer('document_direction.valide', $document, $directeur, ['reference_documentaire' => $courrier->reference_documentaire]);
 
@@ -126,9 +142,15 @@ class DocumentProduitDirectionService
         return $this->charger($document->fresh());
     }
 
-    private function verifierDirecteur(DocumentProduitDirection $document, User $directeur): void
+    private function verifierDirecteur(DocumentProduitDirection $document, User $directeur, ?TraitementDirection $traitement = null): void
     {
-        if ($document->statut !== DocumentProduitStatut::SOUMIS_DIRECTEUR || $document->traitement->directeur_id !== $directeur->id || $document->direction_id !== $directeur->direction_id || ! $directeur->role->estDirecteurDirection()) {
+        $traitement ??= TraitementDirection::query()->findOrFail($document->traitement_direction_id);
+        if ($document->statut !== DocumentProduitStatut::SOUMIS_DIRECTEUR
+            || $document->traitement_direction_id !== $traitement->id
+            || $traitement->directeur_id !== $directeur->id
+            || $document->direction_id !== $traitement->direction_id
+            || $document->direction_id !== $directeur->direction_id
+            || ! $directeur->role->estDirecteurDirection()) {
             throw ValidationException::withMessages(['document' => 'Seul le Directeur désigné peut statuer sur ce document.']);
         }
     }

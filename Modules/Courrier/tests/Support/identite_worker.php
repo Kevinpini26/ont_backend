@@ -6,13 +6,20 @@ use Illuminate\Contracts\Console\Kernel;
 use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Services\CourrierCircuitService;
+use Modules\Courrier\Services\DocumentProduitDirectionService;
 use Modules\Courrier\Services\ReferenceDocumentaireService;
 use Modules\Kernel\Models\User;
 
 require dirname(__DIR__, 4).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 4).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
+
+if ($app->environment() !== 'testing' || $app['config']->get('database.connections.pgsql.database') !== 'ont_testing') {
+    fwrite(STDERR, 'Concurrent identity worker refuses any non-ont_testing database.');
+    exit(2);
+}
 
 [$script, $mode, $identifiant, $acteurId, $barriere, $worker] = $argv;
 file_put_contents($barriere.'/ready-'.$worker, 'ready');
@@ -31,6 +38,10 @@ try {
             null,
             'Dépôt public reçu',
         )->numero_enregistrement,
+        'document-interne' => app(DocumentProduitDirectionService::class)->valider(
+            DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+            User::query()->findOrFail((int) $acteurId),
+        )->courrier->reference_documentaire,
         default => app(ReferenceDocumentaireService::class)->attribuer(
             Courrier::withoutGlobalScopes()->findOrFail((int) $identifiant),
             User::query()->findOrFail((int) $acteurId),
