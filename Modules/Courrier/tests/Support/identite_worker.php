@@ -23,7 +23,7 @@ if ($app->environment() !== 'testing' || $app['config']->get('database.connectio
 
 [$script, $mode, $identifiant, $acteurId, $barriere, $worker] = $argv;
 file_put_contents($barriere.'/ready-'.$worker, 'ready');
-$limite = microtime(true) + 20;
+$limite = microtime(true) + 60;
 while (! file_exists($barriere.'/start') && microtime(true) < $limite) {
     usleep(10_000);
 }
@@ -42,6 +42,44 @@ try {
             DocumentProduitDirection::query()->findOrFail((int) $identifiant),
             User::query()->findOrFail((int) $acteurId),
         )->courrier->reference_documentaire,
+        'autonome-concurrent' => $worker === '0'
+            ? app(DocumentProduitDirectionService::class)->modifierBrouillon(
+                DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+                User::query()->findOrFail((int) $acteurId),
+                [
+                    'version_contenu' => 1,
+                    'objet' => 'Sauvegarde concurrente',
+                    'contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Nouvelle version.']]]]],
+                ],
+            )->version_contenu
+            : app(DocumentProduitDirectionService::class)->soumettre(
+                DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+                User::query()->findOrFail((int) $acteurId),
+                ['version_contenu' => 1],
+            )->statut->value,
+        'autonome-sauvegarde' => app(DocumentProduitDirectionService::class)->modifierBrouillon(
+            DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+            User::query()->findOrFail((int) $acteurId),
+            [
+                'version_contenu' => 1,
+                'objet' => "Sauvegarde worker {$worker}",
+                'contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => "Texte worker {$worker}."]]]]],
+            ],
+        )->version_contenu,
+        'autonome-validation' => app(DocumentProduitDirectionService::class)->valider(
+            DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+            User::query()->findOrFail((int) $acteurId),
+        )->courrier->reference_documentaire,
+        'autonome-correction-validation' => $worker === '0'
+            ? app(DocumentProduitDirectionService::class)->demanderCorrection(
+                DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+                User::query()->findOrFail((int) $acteurId),
+                'Correction concurrente.',
+            )->statut->value
+            : app(DocumentProduitDirectionService::class)->valider(
+                DocumentProduitDirection::query()->findOrFail((int) $identifiant),
+                User::query()->findOrFail((int) $acteurId),
+            )->courrier->reference_documentaire,
         default => app(ReferenceDocumentaireService::class)->attribuer(
             Courrier::withoutGlobalScopes()->findOrFail((int) $identifiant),
             User::query()->findOrFail((int) $acteurId),

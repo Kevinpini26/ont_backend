@@ -2,6 +2,7 @@
 
 namespace Modules\Courrier\Policies;
 
+use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Kernel\Enums\Poste;
@@ -21,21 +22,54 @@ class DocumentProduitDirectionPolicy
 
     public function soumettre(User $user, DocumentProduitDirection $document): bool
     {
-        return $user->role === UserRole::SECRETARIAT_DIRECTION && $user->direction_id === $document->direction_id && in_array($document->statut, [DocumentProduitStatut::BROUILLON, DocumentProduitStatut::A_CORRIGER], true);
+        $statuts = $document->origine === DocumentProduitOrigine::AUTONOME
+            ? [DocumentProduitStatut::BROUILLON]
+            : [DocumentProduitStatut::BROUILLON, DocumentProduitStatut::A_CORRIGER];
+
+        return $user->role === UserRole::SECRETARIAT_DIRECTION
+            && $user->direction_id === $document->direction_id
+            && in_array($document->statut, $statuts, true);
+    }
+
+    public function createAutonome(User $user): bool
+    {
+        return $user->role === UserRole::SECRETARIAT_DIRECTION
+            && $user->direction_id !== null;
+    }
+
+    public function modifierBrouillon(User $user, DocumentProduitDirection $document): bool
+    {
+        return $document->origine === DocumentProduitOrigine::AUTONOME
+            && $user->role === UserRole::SECRETARIAT_DIRECTION
+            && $user->direction_id === $document->direction_id
+            && in_array($document->statut, [DocumentProduitStatut::BROUILLON, DocumentProduitStatut::A_CORRIGER], true);
     }
 
     public function statuer(User $user, DocumentProduitDirection $document): bool
     {
-        return $user->id === $document->traitement->directeur_id && $user->direction_id === $document->direction_id && $document->statut === DocumentProduitStatut::SOUMIS_DIRECTEUR;
+        $directeurId = $document->origine === DocumentProduitOrigine::AUTONOME
+            ? $document->directeur_id
+            : $document->traitement?->directeur_id;
+
+        return $directeurId !== null
+            && $user->id === $directeurId
+            && $user->direction_id === $document->direction_id
+            && $user->role->estDirecteurDirection()
+            && $document->statut === DocumentProduitStatut::SOUMIS_DIRECTEUR;
     }
 
     public function transmettreReception(User $user, DocumentProduitDirection $document): bool
     {
-        return $user->role === UserRole::SECRETARIAT_DIRECTION && $user->direction_id === $document->direction_id && $document->statut === DocumentProduitStatut::VALIDE;
+        return $document->origine !== DocumentProduitOrigine::AUTONOME
+            && $user->role === UserRole::SECRETARIAT_DIRECTION
+            && $user->direction_id === $document->direction_id
+            && $document->statut === DocumentProduitStatut::VALIDE;
     }
 
     public function recevoir(User $user, DocumentProduitDirection $document): bool
     {
-        return $user->poste === Poste::RECEPTION && $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION;
+        return $document->origine !== DocumentProduitOrigine::AUTONOME
+            && $user->poste === Poste::RECEPTION
+            && $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION;
     }
 }

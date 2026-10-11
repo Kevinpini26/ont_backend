@@ -2,6 +2,8 @@
 
 namespace Modules\Courrier\Tests\Feature;
 
+use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
@@ -11,11 +13,174 @@ use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
-use Carbon\Carbon;
 
 class DocumentProduitDirectionTest extends CourrierTestCase
 {
     use RefreshDatabase;
+
+    public function test_creation_autonome_cree_un_dossier_et_ne_fabrique_aucun_courrier_source(): void
+    {
+        $direction = Direction::factory()->create(['code' => 'AUT']);
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $collaborateur = User::factory()->secretariatDirection($direction)->create();
+        $autreDirection = Direction::factory()->create();
+        $autreSecretariat = User::factory()->secretariatDirection($autreDirection)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
+
+        $reponse = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Note interne autonome',
+            'contenu' => $this->contenu('Texte initial.'),
+        ])->assertCreated()
+            ->assertJsonPath('data.origine', 'autonome')
+            ->assertJsonPath('data.statut', 'brouillon')
+            ->assertJsonPath('data.directeur_id', $directeur->id)
+            ->assertJsonPath('data.version_contenu', 1);
+
+        $document = DocumentProduitDirection::query()->findOrFail($reponse->json('data.id'));
+        $courrier = Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id);
+        $this->assertNull($document->traitement_direction_id);
+        $this->assertNull($document->document_source_id);
+        $this->assertSame($direction->id, $document->direction_id);
+        $this->assertSame($secretariat->id, $document->cree_par_id);
+        $this->assertNull($courrier->numero_accuse_reception);
+        $this->assertNull($courrier->numero_enregistrement);
+        $this->assertNull($courrier->reference_documentaire);
+        $this->assertSame($secretariat->id, $courrier->created_by);
+        $this->assertSame($secretariat->id, $courrier->dossier->created_by);
+        $this->assertDatabaseCount('courriers', 1);
+        $this->assertDatabaseCount('dossiers', 1);
+        $this->assertDatabaseCount('dispatchs_courrier', 0);
+        $this->assertDatabaseCount('traitements_direction', 0);
+        $this->assertDatabaseCount('document_relations', 0);
+
+        $this->actingAs($collaborateur)->getJson("/api/v1/documents-produits-direction/{$document->id}")
+            ->assertOk()->assertJsonPath('data.id', $document->id);
+        $this->actingAs($collaborateur)->getJson('/api/v1/documents-produits-direction')
+            ->assertOk()->assertJsonPath('data.0.id', $document->id);
+        $this->actingAs($autreSecretariat)->patchJson("/api/v1/documents-produits-direction/{$document->id}/brouillon", [
+            'version_contenu' => 1,
+            'objet' => 'Intrusion horizontale',
+            'contenu' => $this->contenu('Ne doit pas être sauvegardé.'),
+        ])->assertForbidden();
+    }
+
+    public function test_document_autonome_est_versionne_corrige_valide_et_garde_prive_jusqua_transmission_centrale(): void
+    {
+        $direction = Direction::factory()->create(['code' => 'AUT']);
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $collaborateur = User::factory()->secretariatDirection($direction)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
+        $dga = User::factory()->agentCircuitCourrier(Poste::DGA)->create();
+        $dg = User::factory()->agentCircuitCourrier(Poste::DG)->create();
+        $sec2 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_2)->create();
+        $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION)->create();
+        $admin = User::factory()->administrateur()->create();
+
+        $id = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Note confidentielle de direction',
+            'contenu' => $this->contenu('Version initiale.'),
+        ])->assertCreated()->json('data.id');
+        $document = DocumentProduitDirection::query()->findOrFail($id);
+        $courrierId = $document->courrier_id;
+        $dossierId = Courrier::withoutGlobalScopes()->findOrFail($courrierId)->dossier_id;
+
+        foreach ([$dga, $dg, $sec2, $reception, $admin] as $acteurCentral) {
+            $this->actingAs($acteurCentral)->getJson("/api/v1/courriers/{$courrierId}")->assertNotFound();
+            $this->actingAs($acteurCentral)->getJson("/api/v1/dossiers/{$dossierId}")->assertNotFound();
+        }
+        $statistiques = $this->actingAs($dg)->getJson('/api/v1/courriers/statistiques')->assertOk();
+        $this->assertSame(
+            0,
+            collect($statistiques->json('par_statut'))->firstWhere('statut', 'brouillon_direction')['total'],
+        );
+        $this->actingAs($dg)->getJson('/api/v1/courriers/statistiques-dg')
+            ->assertOk()->assertJsonPath('en_attente_decision', 0);
+
+        $this->actingAs($secretariat)->patchJson("/api/v1/documents-produits-direction/{$id}/brouillon", [
+            'version_contenu' => 1,
+            'objet' => 'Note confidentielle révisée',
+            'contenu' => $this->contenu('Version deux.'),
+        ])->assertOk()->assertJsonPath('data.version_contenu', 2);
+
+        $this->actingAs($collaborateur)->patchJson("/api/v1/documents-produits-direction/{$id}/brouillon", [
+            'version_contenu' => 1,
+            'objet' => 'Version périmée',
+            'contenu' => $this->contenu('Ne doit pas écraser la version courante.'),
+        ])->assertStatus(409);
+
+        $this->actingAs($collaborateur)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", [
+            'version_contenu' => 2,
+        ])->assertOk()->assertJsonPath('data.statut', 'soumis_directeur')
+            ->assertJsonPath('data.version_contenu', 2);
+        $this->actingAs($admin)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertForbidden();
+        $autreDirection = Direction::factory()->create();
+        $autreDirecteur = User::factory()->directeurDirection($autreDirection)->create();
+        $this->actingAs($autreDirecteur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertForbidden();
+        $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/demander-correction", [
+            'motif' => 'Préciser la portée de la note.',
+        ])->assertOk()->assertJsonPath('data.statut', 'a_corriger');
+
+        $this->actingAs($collaborateur)->patchJson("/api/v1/documents-produits-direction/{$id}/brouillon", [
+            'version_contenu' => 2,
+            'objet' => 'Note corrigée',
+            'contenu' => $this->contenu('Version corrigée.'),
+        ])->assertOk()->assertJsonPath('data.statut', 'brouillon')
+            ->assertJsonPath('data.version_contenu', 3);
+
+        $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", [
+            'version_contenu' => 3,
+        ])->assertOk();
+        $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
+            ->assertOk()->assertJsonPath('data.statut', 'valide')
+            ->assertJsonPath('data.courrier.reference_documentaire', sprintf('001/ABC/AUT/ONT/%d', now()->year));
+
+        $document->refresh();
+        $courrier = Courrier::withoutGlobalScopes()->findOrFail($courrierId);
+        $this->assertSame(3, $document->version_contenu);
+        $this->assertSame('Note corrigée', $courrier->objet);
+        $this->assertSame('001/ABC/AUT/ONT/'.now()->year, $courrier->reference_documentaire);
+        $this->assertNull($courrier->numero_enregistrement);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'document_direction.correction_demandee',
+            'auditable_id' => $document->id,
+            'user_id' => $directeur->id,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'document_direction.brouillon_modifie',
+            'auditable_id' => $document->id,
+            'user_id' => $collaborateur->id,
+        ]);
+        $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/transmettre-reception")->assertForbidden();
+        $this->actingAs($reception)->postJson("/api/v1/documents-produits-direction/{$id}/recevoir")->assertForbidden();
+        $this->actingAs($dg)->getJson("/api/v1/courriers/{$courrierId}")->assertNotFound();
+    }
+
+    public function test_creation_autonome_refuse_un_directeur_ambigu_et_un_role_non_habilite(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        User::factory()->directeurDirection($direction)->create();
+        User::factory()->directeurDirection($direction)->create();
+
+        $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Ne doit pas être créé',
+            'contenu' => $this->contenu('Texte.'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('directeur');
+        $this->assertDatabaseCount('documents_produits_direction', 0);
+        $this->assertDatabaseCount('courriers', 0);
+        $this->assertDatabaseCount('dossiers', 0);
+
+        $autreDirection = Direction::factory()->create();
+        $agent = User::factory()->agentDfp()->create();
+        $this->actingAs($agent)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Refus',
+            'contenu' => $this->contenu('Texte.'),
+        ])->assertForbidden();
+
+        $autreSecretariat = User::factory()->secretariatDirection($autreDirection)->create();
+        $this->actingAs($autreSecretariat)->getJson('/api/v1/documents-produits-direction')
+            ->assertOk()->assertJsonCount(0, 'data');
+    }
 
     public function test_retour_a_preparer_cree_un_nouveau_courrier_dans_le_meme_dossier_et_une_relation_unique(): void
     {
@@ -33,6 +198,22 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->actingAs($secretariat)->postJson("/api/v1/traitements-direction/{$traitement->id}/document-produit", ['objet' => 'Doublon', 'contenu' => $this->contenu('x')])->assertUnprocessable();
         $this->assertDatabaseCount('courriers', 2);
         $this->assertDatabaseCount('dossiers', 1);
+    }
+
+    public function test_migration_preserve_lorigine_historique_et_refuse_une_origine_incoherente(): void
+    {
+        [, $traitement, $secretariat] = $this->traitementTermine('retour_a_preparer');
+        $id = $this->actingAs($secretariat)->postJson("/api/v1/traitements-direction/{$traitement->id}/document-produit", [
+            'objet' => 'Document historique',
+            'contenu' => $this->contenu('Origine historique préservée.'),
+        ])->assertCreated()->json('data.id');
+        $document = DocumentProduitDirection::query()->findOrFail($id);
+
+        $this->assertSame('traitement_direction', $document->origine->value);
+        $this->assertNotNull($document->traitement_direction_id);
+        $this->assertNotNull($document->document_source_id);
+        $this->expectException(QueryException::class);
+        $document->update(['origine' => 'autonome']);
     }
 
     public function test_creation_est_refusee_avant_decision_compatible_et_acces_horizontal_interdit(): void

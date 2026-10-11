@@ -4,8 +4,10 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Modules\Courrier\Http\Requests\CreerDocumentProduitAutonomeRequest;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\DemanderCorrectionDocumentRequest;
+use Modules\Courrier\Http\Requests\SauvegarderBrouillonDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\SoumettreDocumentProduitRequest;
 use Modules\Courrier\Http\Resources\DocumentProduitDirectionResource;
 use Modules\Courrier\Models\DocumentProduitDirection;
@@ -20,7 +22,7 @@ class DocumentProduitDirectionController extends Controller
 
     public function index(Request $request)
     {
-        $q = DocumentProduitDirection::query()->with(['courrier', 'documentSource', 'direction', 'traitement.directeur']);
+        $q = DocumentProduitDirection::query()->with(['courrier', 'documentSource', 'direction', 'traitement.directeur', 'directeur']);
         if ($request->user()->poste === Poste::RECEPTION) {
             $q->whereIn('statut', ['transmis_reception', 'entre_circuit']);
         } else {
@@ -38,6 +40,25 @@ class DocumentProduitDirectionController extends Controller
     public function store(CreerDocumentProduitRequest $request, TraitementDirection $traitement)
     {
         return new DocumentProduitDirectionResource($this->service->creer($traitement, $request->user(), $request->validated()));
+    }
+
+    public function storeAutonome(CreerDocumentProduitAutonomeRequest $request)
+    {
+        return (new DocumentProduitDirectionResource($this->service->creerAutonome($request->user(), $request->validated())))
+            ->response()
+            ->setStatusCode(201);
+    }
+
+    public function show(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('view', $document);
+
+        return new DocumentProduitDirectionResource($document->load(['courrier', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar']));
+    }
+
+    public function modifierBrouillon(SauvegarderBrouillonDocumentProduitRequest $request, DocumentProduitDirection $document)
+    {
+        return new DocumentProduitDirectionResource($this->service->modifierBrouillon($document, $request->user(), $request->validated()));
     }
 
     public function soumettre(SoumettreDocumentProduitRequest $request, DocumentProduitDirection $document)

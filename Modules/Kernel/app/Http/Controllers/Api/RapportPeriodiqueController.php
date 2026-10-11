@@ -39,7 +39,15 @@ class RapportPeriodiqueController extends Controller
 
         [$debut, $fin, $libellePeriode] = $this->resoudrePeriode($validated);
 
+        $exclureBrouillonsAutonomes = fn ($query) => $query->whereNotExists(fn ($autonomes) => $autonomes
+            ->selectRaw('1')
+            ->from('documents_produits_direction')
+            ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id')
+            ->where('documents_produits_direction.origine', 'autonome')
+            ->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']));
+
         $courriersParDirectionEtStatut = DB::table('courriers')
+            ->tap($exclureBrouillonsAutonomes)
             ->join('directions', 'directions.id', '=', DB::raw('coalesce(courriers.direction_destination_id, courriers.direction_origine_id)'))
             ->whereBetween('courriers.created_at', [$debut, $fin])
             ->select('directions.code as direction_code', 'directions.nom as direction_nom', 'courriers.statut', DB::raw('count(*) as total'))
@@ -50,6 +58,7 @@ class RapportPeriodiqueController extends Controller
 
         $totalCourriers = Courrier::query()
             ->withoutGlobalScopes()
+            ->exclureAutonomesAvantTransmission()
             ->whereBetween('created_at', [$debut, $fin])
             ->count();
 

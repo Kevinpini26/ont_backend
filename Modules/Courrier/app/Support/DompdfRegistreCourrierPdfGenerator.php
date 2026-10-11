@@ -26,6 +26,7 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
         $poste = $user === null ? null : (app(DelegationResolver::class)->posteDelegueAujourdhui($user) ?? $user->poste);
         $courriers = Courrier::query()
             ->when($poste !== Poste::SECRETARIAT_2, fn ($query) => $query->withoutGlobalScopes())
+            ->exclureAutonomesAvantTransmission()
             ->whereNotNull($colonneNumero)
             ->whereBetween($type === 'depart' ? 'date_envoi' : 'created_at', [$debut, $fin])
             ->with(['directionOrigine', 'directionDestination', 'imputations.direction'])

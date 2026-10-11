@@ -239,6 +239,17 @@ class Courrier extends Model implements Numerisable
         ];
     }
 
+    public function scopeExclureAutonomesAvantTransmission(Builder $query): Builder
+    {
+        return $query->whereNotExists(function ($autonomes): void {
+            $autonomes->selectRaw('1')
+                ->from('documents_produits_direction')
+                ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id')
+                ->where('documents_produits_direction.origine', 'autonome')
+                ->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']);
+        });
+    }
+
     public function directionOrigine(): BelongsTo
     {
         return $this->belongsTo(Direction::class, 'direction_origine_id');

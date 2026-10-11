@@ -54,6 +54,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/traitements-direction/{traitement}/prendre-en-charge', [TraitementDirectionController::class, 'prendreEnCharge']);
     Route::post('/traitements-direction/{traitement}/decision', [TraitementDirectionController::class, 'decider']);
     Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
+    Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
+    Route::get('/documents-produits-direction/{document}', [DocumentProduitDirectionController::class, 'show']);
+    Route::patch('/documents-produits-direction/{document}/brouillon', [DocumentProduitDirectionController::class, 'modifierBrouillon']);
     Route::post('/traitements-direction/{traitement}/document-produit', [DocumentProduitDirectionController::class, 'store']);
     Route::post('/documents-produits-direction/{document}/soumettre', [DocumentProduitDirectionController::class, 'soumettre']);
     Route::post('/documents-produits-direction/{document}/demander-correction', [DocumentProduitDirectionController::class, 'correction']);

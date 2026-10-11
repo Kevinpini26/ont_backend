@@ -26,6 +26,10 @@ class CourrierVisibilityService
     /** @param Builder<covariant Courrier> $query */
     public function scopeVisiblePour(Builder $query, User $user): Builder
     {
+        if (! $this->estDirectionProductrice($user)) {
+            $query->exclureAutonomesAvantTransmission();
+        }
+
         if ($this->aVisionInstitutionnelle($user)) {
             return $query;
         }
@@ -78,6 +82,16 @@ class CourrierVisibilityService
         }
 
         return $this->autoriteDg->estAutorite($user);
+    }
+
+    private function estDirectionProductrice(User $user): bool
+    {
+        return $user->direction_id !== null
+            && in_array($user->role, [
+                UserRole::DIRECTEUR_DIRECTION,
+                UserRole::RESPONSABLE_DIRECTION,
+                UserRole::SECRETARIAT_DIRECTION,
+            ], true);
     }
 
     private function posteEffectif(User $user): ?Poste

@@ -39,6 +39,11 @@ class CourrierStatistiqueController extends Controller
         $sec1 = $request->user()->poste === Poste::SECRETARIAT_1 || $poste === Poste::SECRETARIAT_2;
         $visibles = fn () => Courrier::query()->select('courriers.id');
         $courriers = fn () => DB::table('courriers')
+            ->whereNotExists(fn ($autonomes) => $autonomes->selectRaw('1')
+                ->from('documents_produits_direction')
+                ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id')
+                ->where('documents_produits_direction.origine', 'autonome')
+                ->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']))
             ->when($sec1, fn ($query) => $query->whereIn('courriers.id', $visibles()));
 
         $parStatut = $courriers()
@@ -80,6 +85,7 @@ class CourrierStatistiqueController extends Controller
         $delaiAlerteTri = (int) config('courrier.tri.delai_alerte_heures', 4);
         $courriersNonTries = Courrier::query()
             ->when(! $sec1, fn ($query) => $query->withoutGlobalScopes())
+            ->exclureAutonomesAvantTransmission()
             ->where('statut', CourrierStatut::EN_ATTENTE_TRI->value)
             ->whereNull('urgence_triee_at')
             ->with('transitions')
@@ -137,12 +143,15 @@ class CourrierStatistiqueController extends Controller
 
         $enAttenteDecision = Courrier::query()
             ->withoutGlobalScopes()
+            ->exclureAutonomesAvantTransmission()
             ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
             ->count();
         $enPreparationRelecture = Courrier::query()->withoutGlobalScopes()
+            ->exclureAutonomesAvantTransmission()
             ->whereIn('statut', [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
             ->whereNull('relecture_validee_at')->count();
         $aSigner = Courrier::query()->withoutGlobalScopes()
+            ->exclureAutonomesAvantTransmission()
             ->whereIn('statut', [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
             ->whereNotNull('relecture_validee_at')->count();
 
@@ -151,14 +160,14 @@ class CourrierStatistiqueController extends Controller
         // d'alerte générique, indépendant de l'étape précise où ça bloque.
         $enAttenteDepuisLongtemps = CourriersNonTraites::compter(now()->subDays($seuilJours));
 
-        $avisRendus = Courrier::query()->withoutGlobalScopes()->whereBetween('avis_dg_rendu_at', [$periode->debut, $periode->fin])->count();
-        $avisRendusPrecedent = Courrier::query()->withoutGlobalScopes()->whereBetween('avis_dg_rendu_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
+        $avisRendus = Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()->whereBetween('avis_dg_rendu_at', [$periode->debut, $periode->fin])->count();
+        $avisRendusPrecedent = Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()->whereBetween('avis_dg_rendu_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
         // Distingue les courriers reçus traités (avisRendus ci-dessus) des
         // courriers émis à l'initiative de la DG elle-même (voir
         // CourrierCircuitService::initierParDg()).
-        $initiesParDg = Courrier::query()->withoutGlobalScopes()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
-        $initiesParDgPrecedent = Courrier::query()->withoutGlobalScopes()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
+        $initiesParDg = Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debut, $periode->fin])->count();
+        $initiesParDgPrecedent = Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()->where('initie_par_dg', true)->whereBetween('created_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
 
         // Un dossier qui a bouclé au-delà du seuil configuré est un dossier
         // bloqué dans sa boucle de retour : signalé
@@ -168,6 +177,7 @@ class CourrierStatistiqueController extends Controller
         $seuilTours = config('courrier.circuit.tours_avant_alerte', 5);
         $dossiersEnBoucle = Courrier::query()
             ->withoutGlobalScopes()
+            ->exclureAutonomesAvantTransmission()
             ->where('tour', '>', $seuilTours)
             ->get(['id', 'numero_accuse_reception', 'objet', 'tour', 'avis_dg_commentaire'])
             ->map(fn (Courrier $c) => [
@@ -213,7 +223,7 @@ class CourrierStatistiqueController extends Controller
         $periode = new PeriodeStatistique($request->string('periode', '30j')->toString());
         $directionId = $request->user()->direction_id;
         $courriers = fn () => $request->user()->role === UserRole::AGENT_DFP
-            ? Courrier::query()->withoutGlobalScopes()
+            ? Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()
             : Courrier::query();
 
         // La DFP n'a pas de direction_id (voir UserFactory::agentDfp() et
