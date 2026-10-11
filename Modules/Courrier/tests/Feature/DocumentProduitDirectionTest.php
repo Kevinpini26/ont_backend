@@ -72,22 +72,48 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $directeur = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
         $dga = User::factory()->agentCircuitCourrier(Poste::DGA)->create();
         $dg = User::factory()->agentCircuitCourrier(Poste::DG)->create();
+        $sec1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1)->create();
         $sec2 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_2)->create();
         $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION)->create();
         $admin = User::factory()->administrateur()->create();
 
-        $id = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+        $creation = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
             'objet' => 'Note confidentielle de direction',
             'contenu' => $this->contenu('Version initiale.'),
-        ])->assertCreated()->json('data.id');
+        ])->assertCreated();
+        $id = $creation->json('data.id');
+        $creation->assertJsonPath('data.tracabilite.createur.id', $secretariat->id)
+            ->assertJsonPath('data.tracabilite.dernier_editeur.id', $secretariat->id)
+            ->assertJsonPath('data.directeur.id', $directeur->id)
+            ->assertJsonPath('data.historique.0.action', 'document_direction.autonome_cree')
+            ->assertJsonPath('data.historique.0.acteur.id', $secretariat->id)
+            ->assertJsonMissingPath('data.historique.0.meta');
         $document = DocumentProduitDirection::query()->findOrFail($id);
         $courrierId = $document->courrier_id;
         $dossierId = Courrier::withoutGlobalScopes()->findOrFail($courrierId)->dossier_id;
 
-        foreach ([$dga, $dg, $sec2, $reception, $admin] as $acteurCentral) {
+        $autreDirection = Direction::factory()->create();
+        $autreSecretariat = User::factory()->secretariatDirection($autreDirection)->create();
+        $autreDirecteur = User::factory()->directeurDirection($autreDirection)->create();
+        foreach ([$dga, $dg, $sec1, $sec2, $reception, $admin] as $acteurCentral) {
+            $this->actingAs($acteurCentral)->getJson("/api/v1/documents-produits-direction/{$id}")
+                ->assertForbidden()
+                ->assertJsonMissingPath('data.tracabilite')
+                ->assertJsonMissingPath('data.historique');
             $this->actingAs($acteurCentral)->getJson("/api/v1/courriers/{$courrierId}")->assertNotFound();
             $this->actingAs($acteurCentral)->getJson("/api/v1/dossiers/{$dossierId}")->assertNotFound();
         }
+        foreach ([$autreSecretariat, $autreDirecteur] as $acteurAutreDirection) {
+            $this->actingAs($acteurAutreDirection)->getJson("/api/v1/documents-produits-direction/{$id}")
+                ->assertForbidden()
+                ->assertJsonMissingPath('data.tracabilite')
+                ->assertJsonMissingPath('data.historique');
+        }
+        $this->actingAs($collaborateur)->getJson('/api/v1/documents-produits-direction')
+            ->assertOk()
+            ->assertJsonPath('data.0.tracabilite.createur.id', $secretariat->id)
+            ->assertJsonMissingPath('data.0.historique');
+
         $statistiques = $this->actingAs($dg)->getJson('/api/v1/courriers/statistiques')->assertOk();
         $this->assertSame(
             0,
@@ -100,7 +126,8 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             'version_contenu' => 1,
             'objet' => 'Note confidentielle révisée',
             'contenu' => $this->contenu('Version deux.'),
-        ])->assertOk()->assertJsonPath('data.version_contenu', 2);
+        ])->assertOk()->assertJsonPath('data.version_contenu', 2)
+            ->assertJsonPath('data.tracabilite.dernier_editeur.id', $secretariat->id);
 
         $this->actingAs($collaborateur)->patchJson("/api/v1/documents-produits-direction/{$id}/brouillon", [
             'version_contenu' => 1,
@@ -111,14 +138,16 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->actingAs($collaborateur)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", [
             'version_contenu' => 2,
         ])->assertOk()->assertJsonPath('data.statut', 'soumis_directeur')
-            ->assertJsonPath('data.version_contenu', 2);
+            ->assertJsonPath('data.version_contenu', 2)
+            ->assertJsonPath('data.tracabilite.soumis_par.id', $collaborateur->id);
         $this->actingAs($admin)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertForbidden();
-        $autreDirection = Direction::factory()->create();
-        $autreDirecteur = User::factory()->directeurDirection($autreDirection)->create();
         $this->actingAs($autreDirecteur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertForbidden();
         $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/demander-correction", [
             'motif' => 'Préciser la portée de la note.',
-        ])->assertOk()->assertJsonPath('data.statut', 'a_corriger');
+        ])->assertOk()->assertJsonPath('data.statut', 'a_corriger')
+            ->assertJsonPath('data.tracabilite.correction_demandee_par.id', $directeur->id)
+            ->assertJsonPath('data.motif_correction', 'Préciser la portée de la note.')
+            ->assertJsonPath('data.correction_demandee_at', fn ($date) => is_string($date));
 
         $this->actingAs($collaborateur)->patchJson("/api/v1/documents-produits-direction/{$id}/brouillon", [
             'version_contenu' => 2,
@@ -130,9 +159,27 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", [
             'version_contenu' => 3,
         ])->assertOk();
-        $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
+        $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
             ->assertOk()->assertJsonPath('data.statut', 'valide')
-            ->assertJsonPath('data.courrier.reference_documentaire', sprintf('001/ABC/AUT/ONT/%d', now()->year));
+            ->assertJsonPath('data.courrier.reference_documentaire', sprintf('001/ABC/AUT/ONT/%d', now()->year))
+            ->assertJsonPath('data.tracabilite.createur.id', $secretariat->id)
+            ->assertJsonPath('data.tracabilite.dernier_editeur.id', $collaborateur->id)
+            ->assertJsonPath('data.tracabilite.soumis_par.id', $secretariat->id)
+            ->assertJsonPath('data.tracabilite.correction_demandee_par.id', $directeur->id)
+            ->assertJsonPath('data.tracabilite.valide_par.id', $directeur->id)
+            ->assertJsonPath('data.correction_demandee_at', fn ($date) => is_string($date))
+            ->assertJsonMissingPath('data.historique.0.meta')
+            ->assertJsonMissingPath('data.historique.0.description')
+            ->assertDontSee('Version initiale.');
+        $this->assertSame([
+            'document_direction.autonome_cree',
+            'document_direction.brouillon_modifie',
+            'document_direction.soumis',
+            'document_direction.correction_demandee',
+            'document_direction.brouillon_modifie',
+            'document_direction.soumis',
+            'document_direction.valide',
+        ], collect($validation->json('data.historique'))->pluck('action')->all());
 
         $document->refresh();
         $courrier = Courrier::withoutGlobalScopes()->findOrFail($courrierId);
@@ -254,7 +301,10 @@ class DocumentProduitDirectionTest extends CourrierTestCase
     {
         [$source, $traitement, $secretariat, $directeur, $reception] = $this->traitementTermine('retour_a_preparer');
         $admin = User::factory()->administrateur()->create();
-        $id = $this->actingAs($secretariat)->postJson("/api/v1/traitements-direction/{$traitement->id}/document-produit", ['objet' => 'Retour officiel', 'contenu' => $this->contenu('Version 1')])->assertCreated()->json('data.id');
+        $creation = $this->actingAs($secretariat)->postJson("/api/v1/traitements-direction/{$traitement->id}/document-produit", ['objet' => 'Retour officiel', 'contenu' => $this->contenu('Version 1')])
+            ->assertCreated()
+            ->assertJsonMissingPath('data.tracabilite');
+        $id = $creation->json('data.id');
         $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre")->assertOk()->assertJsonPath('data.statut', 'soumis_directeur');
         $this->actingAs($admin)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertForbidden();
         $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/demander-correction", ['motif' => 'Préciser la conclusion.'])->assertOk()->assertJsonPath('data.statut', 'a_corriger');

@@ -4,8 +4,10 @@ namespace Modules\Courrier\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
+use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 
@@ -45,9 +47,29 @@ class DocumentProduitDirection extends Model
         return $this->belongsTo(User::class, 'cree_par_id');
     }
 
+    public function modifiePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'modifie_par_id');
+    }
+
+    public function soumisPar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'soumis_par_id');
+    }
+
+    public function correctionDemandeePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'correction_demandee_par_id');
+    }
+
     public function validePar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'valide_par_id');
+    }
+
+    public function auditLogs(): MorphMany
+    {
+        return $this->morphMany(AuditLog::class, 'sujet', 'auditable_type', 'auditable_id');
     }
 
     public function directeur(): BelongsTo

@@ -4,6 +4,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitAutonomeRequest;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\DemanderCorrectionDocumentRequest;
@@ -18,11 +19,30 @@ use Modules\Kernel\Enums\UserRole;
 
 class DocumentProduitDirectionController extends Controller
 {
+    private const ACTIONS_HISTORIQUE_AUTONOME = [
+        'document_direction.autonome_cree',
+        'document_direction.brouillon_modifie',
+        'document_direction.soumis',
+        'document_direction.correction_demandee',
+        'document_direction.valide',
+    ];
+
     public function __construct(private readonly DocumentProduitDirectionService $service) {}
 
     public function index(Request $request)
     {
-        $q = DocumentProduitDirection::query()->with(['courrier', 'documentSource', 'direction', 'traitement.directeur', 'directeur']);
+        $q = DocumentProduitDirection::query()->with([
+            'courrier',
+            'documentSource',
+            'direction',
+            'traitement.directeur',
+            'directeur',
+            'creePar',
+            'modifiePar',
+            'soumisPar',
+            'correctionDemandeePar',
+            'validePar',
+        ]);
         if ($request->user()->poste === Poste::RECEPTION) {
             $q->whereIn('statut', ['transmis_reception', 'entre_circuit']);
         } else {
@@ -44,7 +64,10 @@ class DocumentProduitDirectionController extends Controller
 
     public function storeAutonome(CreerDocumentProduitAutonomeRequest $request)
     {
-        return (new DocumentProduitDirectionResource($this->service->creerAutonome($request->user(), $request->validated())))
+        return (new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->creerAutonome($request->user(), $request->validated()),
+            true,
+        )))
             ->response()
             ->setStatusCode(201);
     }
@@ -53,29 +76,43 @@ class DocumentProduitDirectionController extends Controller
     {
         $this->authorize('view', $document);
 
-        return new DocumentProduitDirectionResource($document->load(['courrier', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar']));
+        $document->load(['courrier', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar']);
+
+        return new DocumentProduitDirectionResource($this->chargerTracabilite($document, true));
     }
 
     public function modifierBrouillon(SauvegarderBrouillonDocumentProduitRequest $request, DocumentProduitDirection $document)
     {
-        return new DocumentProduitDirectionResource($this->service->modifierBrouillon($document, $request->user(), $request->validated()));
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->modifierBrouillon($document, $request->user(), $request->validated()),
+            true,
+        ));
     }
 
     public function soumettre(SoumettreDocumentProduitRequest $request, DocumentProduitDirection $document)
     {
-        return new DocumentProduitDirectionResource($this->service->soumettre($document, $request->user(), $request->validated()));
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->soumettre($document, $request->user(), $request->validated()),
+            true,
+        ));
     }
 
     public function correction(DemanderCorrectionDocumentRequest $request, DocumentProduitDirection $document)
     {
-        return new DocumentProduitDirectionResource($this->service->demanderCorrection($document, $request->user(), $request->validated('motif')));
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->demanderCorrection($document, $request->user(), $request->validated('motif')),
+            true,
+        ));
     }
 
     public function valider(Request $request, DocumentProduitDirection $document)
     {
         $this->authorize('statuer', $document);
 
-        return new DocumentProduitDirectionResource($this->service->valider($document, $request->user()));
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->valider($document, $request->user()),
+            true,
+        ));
     }
 
     public function transmettreReception(Request $request, DocumentProduitDirection $document)
@@ -90,5 +127,33 @@ class DocumentProduitDirectionController extends Controller
         $this->authorize('recevoir', $document);
 
         return new DocumentProduitDirectionResource($this->service->recevoir($document, $request->user()));
+    }
+
+    private function chargerTracabilite(DocumentProduitDirection $document, bool $avecHistorique): DocumentProduitDirection
+    {
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME) {
+            return $document;
+        }
+
+        $document->load([
+            'creePar',
+            'modifiePar',
+            'directeur',
+            'soumisPar',
+            'correctionDemandeePar',
+            'validePar',
+        ]);
+
+        if ($avecHistorique) {
+            $document->load([
+                'auditLogs' => fn ($query) => $query
+                    ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
+                    ->with('utilisateur')
+                    ->orderBy('created_at')
+                    ->orderBy('id'),
+            ]);
+        }
+
+        return $document;
     }
 }
