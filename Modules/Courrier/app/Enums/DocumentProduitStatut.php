@@ -8,6 +8,7 @@ enum DocumentProduitStatut: string
     case SOUMIS_DIRECTEUR = 'soumis_directeur';
     case A_CORRIGER = 'a_corriger';
     case VALIDE = 'valide';
+    case SCAN_ENREGISTRE = 'scan_enregistre';
     case TRANSMIS_RECEPTION = 'transmis_reception';
     case ENTRE_CIRCUIT = 'entre_circuit';
 
@@ -16,6 +17,7 @@ enum DocumentProduitStatut: string
         return match ($this) {
             self::BROUILLON => 'Brouillon', self::SOUMIS_DIRECTEUR => 'Soumis au Directeur',
             self::A_CORRIGER => 'À corriger', self::VALIDE => 'Validé par le Directeur',
+            self::SCAN_ENREGISTRE => 'Scan officiel enregistré',
             self::TRANSMIS_RECEPTION => 'Transmis à la Réception', self::ENTRE_CIRCUIT => 'Entré dans le circuit central',
         };
     }

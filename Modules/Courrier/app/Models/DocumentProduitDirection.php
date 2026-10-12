@@ -5,6 +5,7 @@ namespace Modules\Courrier\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
@@ -60,6 +61,12 @@ class DocumentProduitDirection extends Model
     public function scanOfficielDocument(): BelongsTo
     {
         return $this->belongsTo(DocumentNumerise::class, 'scan_officiel_document_id');
+    }
+
+    /** @return HasMany<DocumentProduitScanOfficiel, $this> */
+    public function scansOfficiels(): HasMany
+    {
+        return $this->hasMany(DocumentProduitScanOfficiel::class);
     }
 
     public function creePar(): BelongsTo

@@ -390,6 +390,12 @@ class Courrier extends Model implements Numerisable
         return $this->morphMany(DocumentNumerise::class, 'numerisable')->oldest('version');
     }
 
+    /** @return HasMany<DocumentProduitScanOfficiel, $this> */
+    public function scansOfficiels(): HasMany
+    {
+        return $this->hasMany(DocumentProduitScanOfficiel::class);
+    }
+
     public function derniereNumerisation(): ?DocumentNumerise
     {
         return $this->numerisations->last();
