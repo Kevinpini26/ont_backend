@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
 
 class DocumentProduitDirection extends Model
@@ -24,11 +25,11 @@ class DocumentProduitDirection extends Model
 
     protected $table = 'documents_produits_direction';
 
-    protected $fillable = ['origine', 'traitement_direction_id', 'courrier_id', 'document_source_id', 'direction_id', 'directeur_id', 'version_contenu', 'modifie_par_id', 'modifie_at', 'statut', 'cree_par_id', 'cree_at', 'soumis_par_id', 'soumis_at', 'correction_demandee_par_id', 'motif_correction', 'correction_demandee_at', 'valide_par_id', 'valide_at', 'transmis_reception_par_id', 'transmis_reception_at', 'recu_par_id', 'recu_at'];
+    protected $fillable = ['origine', 'traitement_direction_id', 'courrier_id', 'document_source_id', 'direction_id', 'direction_destination_souhaitee_id', 'directeur_id', 'version_contenu', 'modifie_par_id', 'modifie_at', 'statut', 'cree_par_id', 'cree_at', 'soumis_par_id', 'soumis_at', 'correction_demandee_par_id', 'motif_correction', 'correction_demandee_at', 'valide_par_id', 'valide_at', 'transmis_reception_par_id', 'transmis_reception_at', 'recu_par_id', 'recu_at'];
 
     protected function casts(): array
     {
-        return ['origine' => DocumentProduitOrigine::class, 'statut' => DocumentProduitStatut::class, 'version_contenu' => 'integer', 'cree_at' => 'datetime', 'modifie_at' => 'datetime', 'soumis_at' => 'datetime', 'correction_demandee_at' => 'datetime', 'valide_at' => 'datetime', 'transmis_reception_at' => 'datetime', 'recu_at' => 'datetime'];
+        return ['origine' => DocumentProduitOrigine::class, 'statut' => DocumentProduitStatut::class, 'version_contenu' => 'integer', 'pdf_officiel_version_contenu' => 'integer', 'pdf_officiel_genere_at' => 'datetime', 'cree_at' => 'datetime', 'modifie_at' => 'datetime', 'soumis_at' => 'datetime', 'correction_demandee_at' => 'datetime', 'valide_at' => 'datetime', 'transmis_reception_at' => 'datetime', 'recu_at' => 'datetime'];
     }
 
     public function traitement(): BelongsTo
@@ -49,6 +50,16 @@ class DocumentProduitDirection extends Model
     public function direction(): BelongsTo
     {
         return $this->belongsTo(Direction::class);
+    }
+
+    public function directionDestinationSouhaitee(): BelongsTo
+    {
+        return $this->belongsTo(Direction::class, 'direction_destination_souhaitee_id');
+    }
+
+    public function scanOfficielDocument(): BelongsTo
+    {
+        return $this->belongsTo(DocumentNumerise::class, 'scan_officiel_document_id');
     }
 
     public function creePar(): BelongsTo
