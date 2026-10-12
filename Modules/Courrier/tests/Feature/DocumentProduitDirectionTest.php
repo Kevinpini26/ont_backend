@@ -54,10 +54,35 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->assertDatabaseCount('traitements_direction', 0);
         $this->assertDatabaseCount('document_relations', 0);
 
-        $this->actingAs($collaborateur)->getJson("/api/v1/documents-produits-direction/{$document->id}")
-            ->assertOk()->assertJsonPath('data.id', $document->id);
+        $detail = $this->actingAs($collaborateur)->getJson("/api/v1/documents-produits-direction/{$document->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $document->id)
+            ->assertJsonPath('data.courrier.direction_origine.id', $direction->id)
+            ->assertJsonPath('data.courrier.direction_origine.nom', $direction->nom);
+        $this->assertDirectionOrigineMinimale($detail->json('data.courrier'), $direction);
+        $this->assertSame('Note interne autonome', $detail->json('data.courrier.objet'));
+        $this->assertSame($this->contenu('Texte initial.'), $detail->json('data.courrier.contenu'));
+
         $this->actingAs($collaborateur)->getJson('/api/v1/documents-produits-direction')
-            ->assertOk()->assertJsonPath('data.0.id', $document->id);
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $document->id)
+            ->assertJsonPath('data.0.courrier.direction_origine.id', $direction->id)
+            ->assertJsonPath('data.0.courrier.direction_origine.nom', $direction->nom);
+
+        $administrateur = User::factory()->administrateur()->create();
+        $courrierHorsDocument = Courrier::factory()->create([
+            'direction_origine_id' => $direction->id,
+            'created_by' => $administrateur->id,
+        ]);
+        $directionOrigineHorsDocument = $this->actingAs($administrateur)
+            ->getJson("/api/v1/courriers/{$courrierHorsDocument->id}")
+            ->assertOk()
+            ->json('data.direction_origine');
+        $this->assertSame(
+            ['id', 'code', 'nom', 'actif', 'est_operationnelle', 'capacite_max', 'site_id'],
+            array_keys($directionOrigineHorsDocument),
+        );
+
         $this->actingAs($autreSecretariat)->patchJson("/api/v1/documents-produits-direction/{$document->id}/brouillon", [
             'version_contenu' => 1,
             'objet' => 'Intrusion horizontale',
@@ -138,14 +163,28 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             [DocumentProduitOrigine::AUTONOME->value],
             $autonomes->pluck('origine')->unique()->values()->all(),
         );
+        foreach ($autonomes as $documentAutonome) {
+            $this->assertSame($direction->id, $documentAutonome['courrier']['direction_origine']['id']);
+            $this->assertSame($direction->nom, $documentAutonome['courrier']['direction_origine']['nom']);
+            $this->assertDirectionOrigineMinimale($documentAutonome['courrier'], $direction);
+            $this->assertArrayHasKey('objet', $documentAutonome['courrier']);
+            $this->assertArrayHasKey('contenu', $documentAutonome['courrier']);
+        }
+        $this->assertSame($direction->id, $pageAutonome1->json('data.0.courrier.direction_origine.id'));
+        $this->assertSame($direction->nom, $pageAutonome1->json('data.0.courrier.direction_origine.nom'));
 
-        $this->actingAs($secretariat)
+        $historiqueListe = $this->actingAs($secretariat)
             ->getJson('/api/v1/documents-produits-direction?origine=traitement_direction')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.id', $historiqueId)
-            ->assertJsonPath('data.0.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value);
+            ->assertJsonPath('data.0.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value)
+            ->assertJsonPath('data.0.courrier.direction_origine.id', $direction->id)
+            ->assertJsonPath('data.0.courrier.direction_origine.nom', $direction->nom);
+        $this->assertDirectionOrigineMinimale($historiqueListe->json('data.0.courrier'), $direction);
+        $this->assertSame('Document historique', $historiqueListe->json('data.0.courrier.objet'));
+        $this->assertArrayHasKey('contenu', $historiqueListe->json('data.0.courrier'));
         $this->actingAs($secretariat)
             ->getJson('/api/v1/documents-produits-direction?origine=inconnue')
             ->assertUnprocessable()
@@ -215,11 +254,44 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             ->assertJsonCount(0, 'data')
             ->assertJsonPath('meta.total', 0);
 
-        $this->actingAs($secretariat)
+        $historiqueDetail = $this->actingAs($secretariat)
             ->getJson("/api/v1/documents-produits-direction/{$historiqueId}")
             ->assertOk()
             ->assertJsonPath('data.id', $historiqueId)
-            ->assertJsonPath('data.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value);
+            ->assertJsonPath('data.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value)
+            ->assertJsonPath('data.courrier.direction_origine.id', $direction->id)
+            ->assertJsonPath('data.courrier.direction_origine.nom', $direction->nom);
+        $this->assertDirectionOrigineMinimale($historiqueDetail->json('data.courrier'), $direction);
+        $this->assertSame('Document historique', $historiqueDetail->json('data.courrier.objet'));
+        $this->assertArrayHasKey('contenu', $historiqueDetail->json('data.courrier'));
+    }
+
+    public function test_direction_productrice_absente_reste_nulle_dans_les_reponses(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
+        $id = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Document sans direction productrice',
+            'contenu' => $this->contenu('Direction nullable.'),
+        ])->assertCreated()->json('data.id');
+        $document = DocumentProduitDirection::query()->findOrFail($id);
+        Courrier::withoutGlobalScopes()->whereKey($document->courrier_id)->update(['direction_origine_id' => null]);
+
+        $detail = $this->actingAs($secretariat)
+            ->getJson("/api/v1/documents-produits-direction/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.courrier.direction_origine', null);
+        $this->assertArrayHasKey('direction_origine', $detail->json('data.courrier'));
+        $this->assertNull($detail->json('data.courrier.direction_origine'));
+        $this->assertSame('Document sans direction productrice', $detail->json('data.courrier.objet'));
+        $liste = $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonPath('data.0.courrier.direction_origine', null)
+            ->assertJsonPath('meta.total', 1);
+        $this->assertArrayHasKey('direction_origine', $liste->json('data.0.courrier'));
+        $this->assertNull($liste->json('data.0.courrier.direction_origine'));
     }
 
     public function test_visibilite_autonome_directeur_requiert_assignation_et_trace_reelle_de_soumission(): void
@@ -822,5 +894,17 @@ class DocumentProduitDirectionTest extends CourrierTestCase
     private function contenu(string $texte): array
     {
         return ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => $texte]]]]];
+    }
+
+    private function assertDirectionOrigineMinimale(array $courrier, Direction $direction): void
+    {
+        $directionOrigine = $courrier['direction_origine'];
+
+        $this->assertSame(['id', 'nom'], array_keys($directionOrigine));
+        $this->assertSame($direction->id, $directionOrigine['id']);
+        $this->assertSame($direction->nom, $directionOrigine['nom']);
+        foreach (['code', 'actif', 'est_operationnelle', 'capacite_max', 'site_id'] as $champ) {
+            $this->assertArrayNotHasKey($champ, $directionOrigine);
+        }
     }
 }

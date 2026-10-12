@@ -33,7 +33,7 @@ class DocumentProduitDirectionController extends Controller
     public function index(Request $request)
     {
         $q = DocumentProduitDirection::query()->with([
-            'courrier',
+            'courrier.directionOrigine',
             'documentSource',
             'direction',
             'traitement.directeur',
@@ -100,7 +100,7 @@ class DocumentProduitDirectionController extends Controller
     {
         $this->authorize('view', $document);
 
-        $document->load(['courrier', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar']);
+        $document->load(['courrier.directionOrigine', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar']);
 
         return new DocumentProduitDirectionResource($this->chargerTracabilite($document, true));
     }
