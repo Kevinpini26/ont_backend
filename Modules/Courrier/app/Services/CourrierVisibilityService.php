@@ -8,6 +8,7 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
@@ -26,6 +27,13 @@ class CourrierVisibilityService
     /** @param Builder<covariant Courrier> $query */
     public function scopeVisiblePour(Builder $query, User $user): Builder
     {
+        $query->where(function (Builder $visibiliteAutonome) use ($user): void {
+            $visibiliteAutonome
+                ->whereDoesntHave('documentProduitDirection', fn (Builder $document) => $document
+                    ->where('origine', 'autonome'))
+                ->orWhereHas('documentProduitDirection', fn (Builder $document) => DocumentProduitDirection::appliquerVisibilitePour($document, $user));
+        });
+
         if (! $this->estDirectionProductrice($user)) {
             $query->exclureAutonomesAvantTransmission();
         }

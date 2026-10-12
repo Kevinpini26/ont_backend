@@ -63,6 +63,19 @@ class DocumentProduitDirectionController extends Controller
             $q->where('origine', $origine);
         }
 
+        $user = $request->user();
+        if ($user->role->estDirecteurDirection() && $origine !== DocumentProduitOrigine::TRAITEMENT_DIRECTION->value) {
+            if ($origine === null) {
+                $q->where(static fn ($documents) => $documents
+                    ->where('origine', '!=', DocumentProduitOrigine::AUTONOME->value)
+                    ->orWhere(static fn ($autonomes) => $autonomes
+                        ->where('origine', DocumentProduitOrigine::AUTONOME->value)
+                        ->visibleAuDirecteur($user)));
+            } else {
+                $q->visibleAuDirecteur($user);
+            }
+        }
+
         return DocumentProduitDirectionResource::collection(
             $q->latest()->paginate(20)->appends($request->query()),
         );

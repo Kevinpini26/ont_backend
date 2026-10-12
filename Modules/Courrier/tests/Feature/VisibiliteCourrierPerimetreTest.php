@@ -121,6 +121,7 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         ])->assertCreated()->json('data.id');
         $document = DocumentProduitDirection::query()->findOrFail($id);
         $autonome = Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id);
+        $autonome->update(['dossier_id' => $courrierHistorique->dossier_id]);
         $dossierId = $autonome->dossier_id;
 
         $primaryPath = UploadedFile::fake()->create('autonome-prive.pdf', 10, 'application/pdf')->store('courriers', 'local');
@@ -160,7 +161,7 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
             $this->actingAs($acteur)->getJson('/api/v1/courriers?recherche='.urlencode($token))
                 ->assertOk()->assertJsonCount(0, 'data')->assertDontSee($token);
             $this->actingAs($acteur)->getJson("/api/v1/courriers/{$autonome->id}")->assertNotFound();
-            $this->actingAs($acteur)->getJson("/api/v1/dossiers/{$dossierId}")->assertNotFound();
+            $this->actingAs($acteur)->getJson("/api/v1/dossiers/{$dossierId}")->assertDontSee($token);
             $this->actingAs($acteur)->getJson("/api/v1/courriers/{$autonome->id}/relations")->assertNotFound();
             $this->actingAs($acteur)->get("/api/v1/courriers/{$autonome->id}/piece-jointe")->assertNotFound();
             $this->actingAs($acteur)->get("/api/v1/courriers/{$autonome->id}/pieces-jointes/{$piece->id}")->assertNotFound();
@@ -173,7 +174,34 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
             ->assertOk()->assertJsonPath('data.0.id', $courrierHistorique->id);
         $this->actingAs($dg)->getJson("/api/v1/courriers/{$courrierHistorique->id}/relations")
             ->assertOk()->assertJsonCount(0, 'data')->assertDontSee($token);
+        $this->actingAs($directeur)->getJson('/api/v1/courriers?recherche='.urlencode($token))
+            ->assertOk()->assertJsonCount(0, 'data');
+        $this->actingAs($directeur)->getJson("/api/v1/courriers/{$autonome->id}")->assertNotFound();
+        $this->actingAs($directeur)->get("/api/v1/courriers/{$autonome->id}/piece-jointe")->assertNotFound();
+        $this->actingAs($directeur)->getJson("/api/v1/dossiers/{$dossierId}")
+            ->assertOk()->assertDontSee($token);
+        $this->actingAs($directeur)->getJson("/api/v1/courriers/{$courrierHistorique->id}/relations")
+            ->assertOk()->assertDontSee($token);
+
+        $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$document->id}/soumettre", [
+            'version_contenu' => 1,
+        ])->assertOk();
+        $this->actingAs($directeur)->getJson('/api/v1/courriers?recherche='.urlencode($token))
+            ->assertOk()->assertJsonPath('data.0.id', $autonome->id);
+        $this->actingAs($directeur)->getJson("/api/v1/courriers/{$autonome->id}")->assertOk();
         $this->actingAs($directeur)->get("/api/v1/courriers/{$autonome->id}/piece-jointe")->assertOk();
+        $this->actingAs($directeur)->getJson("/api/v1/dossiers/{$dossierId}")
+            ->assertOk()->assertSee($token);
+        $this->actingAs($directeur)->getJson("/api/v1/courriers/{$courrierHistorique->id}/relations")
+            ->assertOk()->assertSee($token);
+        $this->actingAs($autreDirecteur)->getJson("/api/v1/courriers/{$autonome->id}")->assertNotFound();
+        $this->actingAs($dg)->getJson("/api/v1/courriers/{$courrierHistorique->id}/relations")
+            ->assertOk()->assertDontSee($token);
+        $exportApresSoumission = $this->actingAs($admin)->get('/api/v1/courriers/export')->assertOk()->streamedContent();
+        $this->assertStringNotContainsString($token, $exportApresSoumission);
+        foreach ($acteursCentraux as $acteur) {
+            $this->actingAs($acteur)->getJson("/api/v1/courriers/{$autonome->id}")->assertNotFound();
+        }
         $this->actingAs($secretariat)->get("/api/v1/courriers/{$autonome->id}/pieces-jointes/{$piece->id}")->assertOk();
         $this->actingAs($autreSecretariat)->getJson("/api/v1/courriers/{$autonome->id}")->assertNotFound();
         $this->actingAs($autreDirecteur)->getJson('/api/v1/courriers?recherche='.urlencode($token))
@@ -237,6 +265,7 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         ])->assertCreated()->json('data.id');
         $document = DocumentProduitDirection::query()->findOrFail($id);
         $autonome = Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id);
+        $directeurNonAssigne = User::factory()->directeurDirection($direction)->create();
 
         $annexePath = 'courriers/'.$token.'-annexe.pdf';
         $scanPath = 'numerisations/'.$token.'-scan.pdf';
@@ -285,12 +314,27 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
             }
         }
 
-        foreach ([$secretariat, $directeur] as $autorise) {
-            $annexeTelechargee = $this->actingAs($autorise)->get($annexeUrl)->assertOk()->streamedContent();
-            $scanTelecharge = $this->actingAs($autorise)->get($scanUrl)->assertOk()->streamedContent();
-            $this->assertStringContainsString($contenuAnnexe, $annexeTelechargee);
-            $this->assertStringContainsString($contenuScan, $scanTelecharge);
+        $annexeTelechargee = $this->actingAs($secretariat)->get($annexeUrl)->assertOk()->streamedContent();
+        $scanTelecharge = $this->actingAs($secretariat)->get($scanUrl)->assertOk()->streamedContent();
+        $this->assertStringContainsString($contenuAnnexe, $annexeTelechargee);
+        $this->assertStringContainsString($contenuScan, $scanTelecharge);
+
+        $this->actingAs($directeur)->get($annexeUrl)->assertNotFound();
+        $this->actingAs($directeur)->get($scanUrl)->assertNotFound();
+        $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$document->id}/soumettre", [
+            'version_contenu' => 1,
+        ])->assertOk();
+        foreach ($acteursInterdits as $acteur) {
+            $this->actingAs($acteur)->get($annexeUrl)->assertNotFound();
+            $this->actingAs($acteur)->get($scanUrl)->assertNotFound();
         }
+        $this->actingAs($directeurNonAssigne)->getJson("/api/v1/courriers/{$autonome->id}")->assertNotFound();
+        $annexeDirecteur = $this->actingAs($directeur)->get($annexeUrl)->assertOk()->streamedContent();
+        $scanDirecteur = $this->actingAs($directeur)->get($scanUrl)->assertOk()->streamedContent();
+        $this->assertStringContainsString($contenuAnnexe, $annexeDirecteur);
+        $this->assertStringContainsString($contenuScan, $scanDirecteur);
+        $this->actingAs($directeurNonAssigne)->get($annexeUrl)->assertNotFound();
+        $this->actingAs($directeurNonAssigne)->get($scanUrl)->assertNotFound();
 
         $this->actingAs($secretariat)
             ->get("/api/v1/courriers/{$autonome->id}/pieces-jointes/{$autrePiece->id}")
@@ -327,6 +371,42 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         $reponse = $this->actingAs($directeur)->getJson("/api/v1/dossiers/{$c->dossier_id}")
             ->assertOk()->assertJsonCount(1, 'data.documents')->assertJsonPath('data.documents.0.id', $c->id);
         $reponse->assertDontSee('A caché')->assertDontSee('B caché')->assertDontSee('D caché');
+    }
+
+    public function test_liste_courriers_exclut_les_brouillons_autonomes_avant_pagination(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create();
+        $visibles = Courrier::factory()->count(21)->create([
+            'direction_origine_id' => $direction->id,
+            'objet' => 'Courrier historique paginé',
+        ]);
+
+        $documentId = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Brouillon autonome privé',
+            'contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'secret']]]]],
+        ])->assertCreated()->json('data.id');
+        $brouillon = DocumentProduitDirection::query()->findOrFail($documentId);
+
+        $page1 = $this->actingAs($directeur)->getJson('/api/v1/courriers')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 21)
+            ->assertJsonCount(20, 'data');
+        $this->assertNotNull($page1->json('links.next'));
+        $this->assertFalse(collect($page1->json('data'))->contains(
+            'id',
+            $brouillon->courrier_id,
+        ));
+
+        $page2 = $this->actingAs($directeur)->getJson('/api/v1/courriers?page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 21)
+            ->assertJsonCount(1, 'data');
+        $this->assertSame(
+            $visibles->pluck('id')->sort()->values()->all(),
+            collect([...$page1->json('data'), ...$page2->json('data')])->pluck('id')->sort()->values()->all(),
+        );
     }
 
     public function test_document_direction_devient_visible_apres_dispatch_execute_uniquement(): void

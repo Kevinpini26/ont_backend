@@ -13,6 +13,10 @@ class DocumentProduitDirectionPolicy
 {
     public function view(User $user, DocumentProduitDirection $document): bool
     {
+        if ($document->origine === DocumentProduitOrigine::AUTONOME) {
+            return $document->estVisiblePour($user);
+        }
+
         if ($user->poste === Poste::RECEPTION && in_array($document->statut, [DocumentProduitStatut::TRANSMIS_RECEPTION, DocumentProduitStatut::ENTRE_CIRCUIT], true)) {
             return true;
         }

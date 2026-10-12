@@ -81,11 +81,13 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION)->create();
         $admin = User::factory()->administrateur()->create();
 
+        $premierBrouillonId = null;
         for ($i = 1; $i <= 21; $i++) {
-            $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            $id = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
                 'objet' => "Document autonome {$i}",
                 'contenu' => $this->contenu("Contenu {$i}."),
-            ])->assertCreated();
+            ])->assertCreated()->json('data.id');
+            $premierBrouillonId ??= $id;
         }
 
         [, $traitement, $secretariatHistorique, $directeurHistorique] = $this->traitementTermine('retour_a_preparer', $direction);
@@ -149,13 +151,25 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('origine');
 
-        foreach ([$collaborateur, $directeur] as $autoriseMemeDirection) {
-            $this->actingAs($autoriseMemeDirection)
-                ->getJson('/api/v1/documents-produits-direction?origine=autonome')
-                ->assertOk()
-                ->assertJsonPath('meta.total', 21)
-                ->assertJsonPath('data.0.origine', DocumentProduitOrigine::AUTONOME->value);
-        }
+        $this->actingAs($collaborateur)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 21)
+            ->assertJsonPath('data.0.origine', DocumentProduitOrigine::AUTONOME->value);
+        $this->actingAs($directeur)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.total', 0);
+        $this->actingAs($directeur)
+            ->getJson("/api/v1/documents-produits-direction/{$premierBrouillonId}")
+            ->assertForbidden()
+            ->assertJsonMissingPath('data.courrier');
+        $this->actingAs($directeur)
+            ->getJson('/api/v1/documents-produits-direction')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $historiqueId);
         foreach ([$autreSecretariat, $autreDirecteur] as $autreDirectionActeur) {
             $this->actingAs($autreDirectionActeur)
                 ->getJson('/api/v1/documents-produits-direction?origine=autonome')
@@ -206,6 +220,192 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             ->assertOk()
             ->assertJsonPath('data.id', $historiqueId)
             ->assertJsonPath('data.origine', DocumentProduitOrigine::TRAITEMENT_DIRECTION->value);
+    }
+
+    public function test_visibilite_autonome_directeur_requiert_assignation_et_trace_reelle_de_soumission(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
+        $autreDirection = Direction::factory()->create();
+        $autreSecretariat = User::factory()->secretariatDirection($autreDirection)->create();
+        $autreDirecteur = User::factory()->directeurDirection($autreDirection)->create(['initiales_reference' => 'XYZ']);
+
+        $creer = function (User $acteur, string $objet): int {
+            return $this->actingAs($acteur)->postJson('/api/v1/documents-produits-direction/autonomes', [
+                'objet' => $objet,
+                'contenu' => $this->contenu($objet),
+            ])->assertCreated()->json('data.id');
+        };
+        $soumettre = function (int $id, User $acteur): void {
+            $this->actingAs($acteur)
+                ->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", ['version_contenu' => 1])
+                ->assertOk()->assertJsonPath('data.statut', 'soumis_directeur');
+        };
+
+        $soumis = $creer($secretariat, 'Soumis');
+        $soumettre($soumis, $secretariat);
+        $documentSoumis = DocumentProduitDirection::query()->findOrFail($soumis);
+        $documentSoumis->auditLogs()->where('action', 'document_direction.soumis')->delete();
+        $this->actingAs($directeur)
+            ->getJson("/api/v1/courriers/{$documentSoumis->courrier_id}")
+            ->assertOk();
+
+        $aCorriger = $creer($secretariat, 'À corriger');
+        $soumettre($aCorriger, $secretariat);
+        $this->actingAs($directeur)
+            ->postJson("/api/v1/documents-produits-direction/{$aCorriger}/demander-correction", ['motif' => 'Préciser le contenu.'])
+            ->assertOk()->assertJsonPath('data.statut', 'a_corriger');
+
+        $reBrouillon = $creer($secretariat, 'Revenu en brouillon');
+        $soumettre($reBrouillon, $secretariat);
+        $this->actingAs($directeur)
+            ->postJson("/api/v1/documents-produits-direction/{$reBrouillon}/demander-correction", ['motif' => 'Compléter le document.'])
+            ->assertOk();
+        $this->actingAs($secretariat)
+            ->patchJson("/api/v1/documents-produits-direction/{$reBrouillon}/brouillon", [
+                'version_contenu' => 1,
+                'objet' => 'Brouillon corrigé',
+                'contenu' => $this->contenu('Version corrigée.'),
+            ])->assertOk()->assertJsonPath('data.statut', 'brouillon')
+            ->assertJsonPath('data.version_contenu', 2);
+
+        $valide = $creer($secretariat, 'Validé');
+        $soumettre($valide, $secretariat);
+        $this->actingAs($directeur)
+            ->postJson("/api/v1/documents-produits-direction/{$valide}/valider")
+            ->assertOk()->assertJsonPath('data.statut', 'valide');
+
+        $jamaisSoumis = $creer($secretariat, 'Jamais soumis');
+        $statutIncoherent = $creer($secretariat, 'Statut soumis sans trace');
+        DocumentProduitDirection::query()->findOrFail($statutIncoherent)->update([
+            'statut' => 'soumis_directeur',
+        ]);
+
+        $affecteAutre = $creer($secretariat, 'Affectation modifiée');
+        $soumettre($affecteAutre, $secretariat);
+        $directeurNonAssigne = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'DEF']);
+        DocumentProduitDirection::query()->findOrFail($affecteAutre)->update([
+            'directeur_id' => $directeurNonAssigne->id,
+        ]);
+
+        $autreDirectionDoc = $creer($autreSecretariat, 'Autre direction');
+        $soumettre($autreDirectionDoc, $autreSecretariat);
+
+        $listeDirecteur = $this->actingAs($directeur)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 4);
+        $this->assertEqualsCanonicalizing(
+            [$soumis, $aCorriger, $reBrouillon, $valide],
+            collect($listeDirecteur->json('data'))->pluck('id')->all(),
+        );
+
+        foreach ([$soumis, $aCorriger, $reBrouillon, $valide] as $visibleId) {
+            $this->actingAs($directeur)
+                ->getJson("/api/v1/documents-produits-direction/{$visibleId}")
+                ->assertOk()->assertJsonPath('data.id', $visibleId);
+        }
+        foreach ([$jamaisSoumis, $statutIncoherent, $affecteAutre, $autreDirectionDoc] as $invisibleId) {
+            $this->actingAs($directeur)
+                ->getJson("/api/v1/documents-produits-direction/{$invisibleId}")
+                ->assertForbidden()
+                ->assertJsonMissingPath('data.courrier');
+        }
+
+        $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 7);
+        $this->actingAs($directeurNonAssigne)
+            ->getJson("/api/v1/documents-produits-direction/{$affecteAutre}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $affecteAutre);
+        $this->actingAs($autreDirecteur)
+            ->getJson("/api/v1/documents-produits-direction/{$autreDirectionDoc}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $autreDirectionDoc);
+    }
+
+    public function test_filtrage_directeur_est_applique_avant_pagination_et_preserve_les_liens(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $directeur = User::factory()->directeurDirection($direction)->create(['initiales_reference' => 'ABC']);
+        $idsSoumis = [];
+        $idsBrouillon = [];
+
+        for ($i = 1; $i <= 23; $i++) {
+            $id = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+                'objet' => "Document {$i}",
+                'contenu' => $this->contenu("Contenu {$i}."),
+            ])->assertCreated()->json('data.id');
+
+            if ($i <= 21) {
+                $this->actingAs($secretariat)
+                    ->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", ['version_contenu' => 1])
+                    ->assertOk();
+                $idsSoumis[] = $id;
+            } else {
+                $idsBrouillon[] = $id;
+            }
+        }
+
+        $premierePage = $this->actingAs($directeur)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome&page=1')
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 21);
+        $this->assertStringContainsString('origine=autonome', $premierePage->json('links.next'));
+        $this->assertStringContainsString('page=2', $premierePage->json('links.next'));
+
+        $secondePage = $this->actingAs($directeur)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome&page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.total', 21);
+        $this->assertEqualsCanonicalizing(
+            $idsSoumis,
+            collect($premierePage->json('data'))->merge($secondePage->json('data'))->pluck('id')->all(),
+        );
+
+        $this->actingAs($secretariat)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 23);
+        foreach ($idsBrouillon as $id) {
+            $this->actingAs($directeur)
+                ->getJson("/api/v1/documents-produits-direction/{$id}")
+                ->assertForbidden();
+        }
+    }
+
+    public function test_responsable_historique_peut_consulter_son_document_autonome_soumis(): void
+    {
+        $direction = Direction::factory()->create();
+        $secretariat = User::factory()->secretariatDirection($direction)->create();
+        $responsable = User::factory()->responsableDirection($direction)->create([
+            'role' => UserRole::RESPONSABLE_DIRECTION,
+        ]);
+        $id = $this->actingAs($secretariat)->postJson('/api/v1/documents-produits-direction/autonomes', [
+            'objet' => 'Document du rôle historique',
+            'contenu' => $this->contenu('Contenu soumis.'),
+        ])->assertCreated()->assertJsonPath('data.directeur_id', $responsable->id)->json('data.id');
+
+        $this->actingAs($secretariat)
+            ->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", ['version_contenu' => 1])
+            ->assertOk();
+
+        $this->actingAs($responsable)
+            ->getJson('/api/v1/documents-produits-direction?origine=autonome')
+            ->assertOk()->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $id);
+        $this->actingAs($responsable)
+            ->getJson("/api/v1/documents-produits-direction/{$id}")
+            ->assertOk()->assertJsonPath('data.id', $id);
     }
 
     public function test_document_autonome_est_versionne_corrige_valide_et_garde_prive_jusqua_transmission_centrale(): void
