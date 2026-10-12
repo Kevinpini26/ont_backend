@@ -27,8 +27,16 @@ class DocumentProduitDirectionPolicy
     public function downloadPdfOfficiel(User $user, DocumentProduitDirection $document): bool
     {
         return $document->origine === DocumentProduitOrigine::AUTONOME
-            && $document->statut === DocumentProduitStatut::VALIDE
+            && in_array($document->statut, [DocumentProduitStatut::VALIDE, DocumentProduitStatut::SCAN_ENREGISTRE], true)
             && $document->estVisiblePour($user);
+    }
+
+    public function deposerScanOfficiel(User $user, DocumentProduitDirection $document): bool
+    {
+        return $document->origine === DocumentProduitOrigine::AUTONOME
+            && in_array($document->statut, [DocumentProduitStatut::VALIDE, DocumentProduitStatut::SCAN_ENREGISTRE], true)
+            && $user->role === UserRole::SECRETARIAT_DIRECTION
+            && $user->direction_id === $document->direction_id;
     }
 
     public function soumettre(User $user, DocumentProduitDirection $document): bool

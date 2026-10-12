@@ -3,21 +3,29 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Mockery;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Courrier\Support\TipTapHtmlRenderer;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CompteurPagesPdf;
 use RuntimeException;
 use Smalot\PdfParser\Parser;
 
@@ -493,6 +501,241 @@ class DocumentProduitPdfOfficielTest extends CourrierTestCase
         $disque->assertExists($chemin);
     }
 
+    public function test_seul_le_secretariat_producteur_peut_deposer_le_scan_officiel(): void
+    {
+        [$document, , $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $direction = Direction::query()->findOrFail($document->direction_id);
+        $autreDirection = Direction::factory()->create();
+        $acteursRefuses = [
+            User::factory()->directeurDirection($direction)->create(),
+            User::factory()->administrateur()->create(),
+            User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create(),
+            User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1, $direction)->create(),
+            User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_2, $direction)->create(),
+            User::factory()->agentCircuitCourrier(Poste::DG, $direction)->create(),
+            User::factory()->agentCircuitCourrier(Poste::DGA, $direction)->create(),
+            User::factory()->secretariatDirection($autreDirection)->create(),
+        ];
+        $contenuPdf = Storage::disk('local')->get($document->fresh()->pdf_officiel_chemin);
+
+        foreach ($acteursRefuses as $acteur) {
+            $this->actingAs($acteur)
+                ->post("/api/v1/documents-produits-direction/{$document->id}/scan-officiel", [
+                    'scan' => $this->fichierPdf($contenuPdf),
+                    'attestation_confirmee' => 'true',
+                    'idempotency_key' => (string) Str::uuid(),
+                ], ['Accept' => 'application/json'])
+                ->assertNotFound();
+        }
+
+        $this->assertDatabaseCount('document_produit_scans_officiels', 0);
+        $this->assertSame(DocumentProduitStatut::VALIDE, $document->fresh()->statut);
+    }
+
+    public function test_depot_cree_un_scan_actif_atteste_et_ne_modifie_pas_le_pdf_original_ni_le_courrier(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $document->refresh();
+        $courrier = $document->courrier()->withoutGlobalScopes()->firstOrFail();
+        $pdfOriginal = Storage::disk('local')->get($document->pdf_officiel_chemin);
+        $reference = $courrier->reference_documentaire;
+        $statutCourrier = $courrier->statut;
+        $idempotencyKey = (string) Str::uuid();
+
+        $reponse = $this->actingAs($secretariat)
+            ->post("/api/v1/documents-produits-direction/{$document->id}/scan-officiel", [
+                'scan' => $this->fichierPdf($pdfOriginal),
+                'attestation_confirmee' => 'true',
+                'idempotency_key' => $idempotencyKey,
+            ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('data.document_produit_direction_id', $document->id)
+            ->assertJsonPath('data.courrier_id', $courrier->id)
+            ->assertJsonPath('data.version', 1)
+            ->assertJsonPath('data.depose_par_id', $secretariat->id)
+            ->assertJsonPath('data.attestation_confirmee', true)
+            ->assertJsonPath('data.attestation_version', DocumentProduitScanOfficielService::ATTESTATION_VERSION)
+            ->assertJsonPath('data.attestation_texte', DocumentProduitScanOfficielService::ATTESTATION_TEXTE_V1)
+            ->assertJsonMissingPath('data.chemin');
+
+        $scan = DocumentProduitScanOfficiel::query()->with('documentNumerise')->findOrFail($reponse->json('data.id'));
+        $numerisation = $scan->documentNumerise;
+        $this->assertSame($courrier->id, $numerisation->numerisable_id);
+        $this->assertSame($courrier->getMorphClass(), $numerisation->numerisable_type);
+        $this->assertSame(SourceDocumentNumerise::TELEVERSEMENT, $numerisation->source);
+        $this->assertSame(hash('sha256', Storage::disk('local')->get($numerisation->chemin)), $numerisation->sha256);
+        Storage::disk('local')->assertExists($numerisation->chemin);
+        $this->assertSame($pdfOriginal, Storage::disk('local')->get($document->pdf_officiel_chemin));
+        $this->assertSame($reference, $courrier->fresh()->reference_documentaire);
+        $this->assertSame($statutCourrier, $courrier->fresh()->statut);
+        $this->assertSame($numerisation->id, $document->fresh()->scan_officiel_document_id);
+        $this->assertSame(DocumentProduitStatut::SCAN_ENREGISTRE, $document->fresh()->statut);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'document_direction.scan_officiel_depose',
+            'user_id' => $secretariat->id,
+            'auditable_id' => $document->id,
+        ]);
+    }
+
+    public function test_depot_est_idempotent_et_rejette_les_cles_ou_empreintes_differentes(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $contenuPdf = Storage::disk('local')->get($document->fresh()->pdf_officiel_chemin);
+        $idempotencyKey = (string) Str::uuid();
+
+        $premiereReponse = $this->deposerScan($document, $secretariat, $contenuPdf, $idempotencyKey)
+            ->assertCreated();
+        $scanId = $premiereReponse->json('data.id');
+        $cheminStocke = DocumentNumerise::query()->findOrFail($premiereReponse->json('data.document_numerise_id'))->chemin;
+        $fichiersAvantRejeu = Storage::disk('local')->allFiles("documents-internes/scans-officiels/{$document->id}");
+
+        $this->deposerScan($document, $secretariat, $contenuPdf, $idempotencyKey)
+            ->assertOk()
+            ->assertJsonPath('data.id', $scanId);
+        $this->assertSame($fichiersAvantRejeu, Storage::disk('local')->allFiles("documents-internes/scans-officiels/{$document->id}"));
+        $this->assertDatabaseCount('document_produit_scans_officiels', 1);
+
+        [$autreDocument, , $autreDirecteur] = $this->preparerDocument();
+        $this->validerDocument($autreDocument, $autreDirecteur);
+        $autrePdf = Storage::disk('local')->get($autreDocument->fresh()->pdf_officiel_chemin);
+        $this->deposerScan($document, $secretariat, $autrePdf, $idempotencyKey)->assertConflict();
+        $this->deposerScan($document, $secretariat, $contenuPdf, (string) Str::uuid())->assertConflict();
+
+        Storage::disk('local')->assertExists($cheminStocke);
+        $this->assertDatabaseCount('document_produit_scans_officiels', 1);
+    }
+
+    public function test_depot_refuse_une_attestation_absente_un_pdf_invalide_et_un_document_non_valide(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+
+        $this->actingAs($secretariat)
+            ->post("/api/v1/documents-produits-direction/{$document->id}/scan-officiel", [
+                'scan' => $this->fichierPdf('%PDF-invalid'),
+                'idempotency_key' => (string) Str::uuid(),
+            ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('attestation_confirmee');
+
+        $this->actingAs($secretariat)
+            ->post("/api/v1/documents-produits-direction/{$document->id}/scan-officiel", [
+                'scan' => UploadedFile::fake()->createWithContent('scan.pdf', 'not a pdf'),
+                'attestation_confirmee' => 'true',
+                'idempotency_key' => (string) Str::uuid(),
+            ], ['Accept' => 'application/json'])
+            ->assertUnprocessable();
+
+        [$documentNonValide, $secretariatNonValide] = $this->preparerDocument();
+        $this->actingAs($secretariatNonValide)
+            ->post("/api/v1/documents-produits-direction/{$documentNonValide->id}/scan-officiel", [
+                'scan' => $this->fichierPdf('%PDF-invalid'),
+                'attestation_confirmee' => 'true',
+                'idempotency_key' => (string) Str::uuid(),
+            ], ['Accept' => 'application/json'])
+            ->assertNotFound();
+        $this->assertDatabaseCount('document_produit_scans_officiels', 0);
+        $this->assertSame(DocumentProduitStatut::VALIDE, $document->fresh()->statut);
+        $this->assertSame(DocumentProduitStatut::SOUMIS_DIRECTEUR, $documentNonValide->fresh()->statut);
+    }
+
+    public function test_depot_refuse_un_pdf_officiel_absent_ou_corrompu(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $document->refresh();
+        $pdfOriginal = Storage::disk('local')->get($document->pdf_officiel_chemin);
+
+        Storage::disk('local')->delete($document->pdf_officiel_chemin);
+        $this->deposerScan(
+            $document,
+            $secretariat,
+            $pdfOriginal,
+            (string) Str::uuid(),
+        )->assertUnprocessable();
+
+        Storage::disk('local')->put($document->pdf_officiel_chemin, $pdfOriginal);
+        Storage::disk('local')->put($document->pdf_officiel_chemin, '%PDF-corrompu');
+
+        $this->deposerScan(
+            $document,
+            $secretariat,
+            $pdfOriginal,
+            (string) Str::uuid(),
+        )->assertUnprocessable();
+
+        $this->assertSame(DocumentProduitStatut::VALIDE, $document->fresh()->statut);
+        $this->assertDatabaseCount('document_produit_scans_officiels', 0);
+        $this->assertNotSame('%PDF-corrompu', $pdfOriginal);
+    }
+
+    public function test_depot_refuse_un_scan_sous_le_seuil_de_qualite_configure(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $pdf = Storage::disk('local')->get($document->fresh()->pdf_officiel_chemin);
+        $this->assertNotNull(CompteurPagesPdf::compter($pdf));
+        $seuilInitial = config('kernel.numerisation.seuil_octets_par_page');
+        config(['kernel.numerisation.seuil_octets_par_page' => strlen($pdf) + 1]);
+
+        try {
+            $this->deposerScan($document, $secretariat, $pdf)
+                ->assertUnprocessable()
+                ->assertJsonPath('message', 'Le fichier semble illisible (poids par page trop faible). Merci de reprendre la capture, si possible sans désactiver le noir et blanc.');
+        } finally {
+            config(['kernel.numerisation.seuil_octets_par_page' => $seuilInitial]);
+        }
+
+        $this->assertSame(DocumentProduitStatut::VALIDE, $document->fresh()->statut);
+        $this->assertNull($document->fresh()->scan_officiel_document_id);
+        $this->assertDatabaseCount('document_produit_scans_officiels', 0);
+    }
+
+    public function test_echec_de_stockage_refuse_le_depot_sans_mutation_metier(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $contenuPdf = Storage::disk('local')->get($document->fresh()->pdf_officiel_chemin);
+        $disque = Mockery::mock(Storage::disk('local'))->makePartial();
+        $disque->shouldReceive('put')->once()->andReturnFalse();
+        Storage::set('local', $disque);
+
+        $this->deposerScan($document, $secretariat, $contenuPdf)->assertServiceUnavailable();
+
+        $this->assertSame(DocumentProduitStatut::VALIDE, $document->fresh()->statut);
+        $this->assertNull($document->fresh()->scan_officiel_document_id);
+        $this->assertDatabaseCount('document_produit_scans_officiels', 0);
+    }
+
+    public function test_echec_transactionnel_apres_promotion_conserve_le_fichier_et_ne_valide_pas_le_depot(): void
+    {
+        [$document, $secretariat, $directeur] = $this->preparerDocument();
+        $this->validerDocument($document, $directeur);
+        $contenuPdf = Storage::disk('local')->get($document->fresh()->pdf_officiel_chemin);
+        $audit = Mockery::mock(AuditLogger::class);
+        $audit->shouldReceive('enregistrer')
+            ->once()
+            ->withArgs(fn (string $action): bool => $action === 'document_direction.scan_officiel_depose')
+            ->andThrow(new RuntimeException('Échec de transaction simulé.'));
+        $this->app->instance(AuditLogger::class, $audit);
+
+        $this->deposerScan($document, $secretariat, $contenuPdf)->assertServiceUnavailable()
+            ->assertJsonPath(
+                'message',
+                'Le résultat du dépôt est incertain. Vérifiez-le avec la même clé d’idempotence avant toute nouvelle tentative.',
+            );
+
+        $fichiers = Storage::disk('local')->allFiles("documents-internes/scans-officiels/{$document->id}");
+        $this->assertCount(1, $fichiers);
+        Storage::disk('local')->assertExists($fichiers[0]);
+        $this->assertSame(DocumentProduitStatut::VALIDE, $document->fresh()->statut);
+        $this->assertNull($document->fresh()->scan_officiel_document_id);
+        $this->assertDatabaseCount('document_produit_scans_officiels', 0);
+    }
+
     private function preparerDocument(?array $contenu = null): array
     {
         $direction = Direction::factory()->create();
@@ -523,5 +766,31 @@ class DocumentProduitPdfOfficielTest extends CourrierTestCase
             ->assertOk();
 
         return [$document->fresh(), $secretariat, $directeur];
+    }
+
+    private function validerDocument(DocumentProduitDirection $document, User $directeur): void
+    {
+        $this->actingAs($directeur)
+            ->postJson("/api/v1/documents-produits-direction/{$document->id}/valider")
+            ->assertOk();
+    }
+
+    private function deposerScan(
+        DocumentProduitDirection $document,
+        User $secretariat,
+        string $contenuPdf,
+        ?string $idempotencyKey = null,
+    ): TestResponse {
+        return $this->actingAs($secretariat)
+            ->post("/api/v1/documents-produits-direction/{$document->id}/scan-officiel", [
+                'scan' => $this->fichierPdf($contenuPdf),
+                'attestation_confirmee' => 'true',
+                'idempotency_key' => $idempotencyKey ?? (string) Str::uuid(),
+            ], ['Accept' => 'application/json']);
+    }
+
+    private function fichierPdf(string $contenu): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent('scan.pdf', $contenu);
     }
 }

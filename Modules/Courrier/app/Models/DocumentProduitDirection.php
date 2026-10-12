@@ -22,6 +22,7 @@ class DocumentProduitDirection extends Model
         DocumentProduitStatut::SOUMIS_DIRECTEUR,
         DocumentProduitStatut::A_CORRIGER,
         DocumentProduitStatut::VALIDE,
+        DocumentProduitStatut::SCAN_ENREGISTRE,
     ];
 
     protected $table = 'documents_produits_direction';

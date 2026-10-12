@@ -3,18 +3,21 @@
 namespace Modules\Courrier\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitAutonomeRequest;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\DemanderCorrectionDocumentRequest;
+use Modules\Courrier\Http\Requests\DeposerScanOfficielRequest;
 use Modules\Courrier\Http\Requests\SauvegarderBrouillonDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\SoumettreDocumentProduitRequest;
 use Modules\Courrier\Http\Resources\DocumentProduitDirectionResource;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
 use Modules\Courrier\Services\DocumentProduitDirectionService;
+use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 
@@ -26,9 +29,13 @@ class DocumentProduitDirectionController extends Controller
         'document_direction.soumis',
         'document_direction.correction_demandee',
         'document_direction.valide',
+        'document_direction.scan_officiel_depose',
     ];
 
-    public function __construct(private readonly DocumentProduitDirectionService $service) {}
+    public function __construct(
+        private readonly DocumentProduitDirectionService $service,
+        private readonly DocumentProduitScanOfficielService $serviceScanOfficiel,
+    ) {}
 
     public function index(Request $request)
     {
@@ -110,6 +117,36 @@ class DocumentProduitDirectionController extends Controller
         abort_unless($request->user()->can('downloadPdfOfficiel', $document), 404);
 
         return $this->service->telechargerPdfOfficiel($document);
+    }
+
+    public function deposerScanOfficiel(DeposerScanOfficielRequest $request, DocumentProduitDirection $document): JsonResponse
+    {
+        $resultat = $this->serviceScanOfficiel->deposer(
+            $document,
+            $request->user(),
+            $request->file('scan'),
+            $request->validated('idempotency_key'),
+        );
+
+        $scan = $resultat['scan'];
+
+        return response()->json([
+            'data' => [
+                'id' => $scan->id,
+                'document_produit_direction_id' => $scan->document_produit_direction_id,
+                'courrier_id' => $scan->courrier_id,
+                'document_numerise_id' => $scan->document_numerise_id,
+                'version' => $scan->version,
+                'sha256' => $scan->documentNumerise->sha256,
+                'depose_par_id' => $scan->depose_par_id,
+                'attestation_confirmee' => $scan->attestation_confirmee,
+                'attestation_version' => $scan->attestation_version,
+                'attestation_texte' => DocumentProduitScanOfficielService::ATTESTATION_TEXTE_V1,
+                'atteste_at' => $scan->atteste_at,
+                'est_actif' => $scan->est_actif,
+                'created_at' => $scan->created_at,
+            ],
+        ], $resultat['created'] ? 201 : 200);
     }
 
     public function modifierBrouillon(SauvegarderBrouillonDocumentProduitRequest $request, DocumentProduitDirection $document)
