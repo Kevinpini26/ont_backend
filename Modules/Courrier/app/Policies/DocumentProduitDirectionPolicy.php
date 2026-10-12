@@ -24,6 +24,13 @@ class DocumentProduitDirectionPolicy
         return $user->direction_id === $document->direction_id && in_array($user->role, [UserRole::SECRETARIAT_DIRECTION, UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION], true);
     }
 
+    public function downloadPdfOfficiel(User $user, DocumentProduitDirection $document): bool
+    {
+        return $document->origine === DocumentProduitOrigine::AUTONOME
+            && $document->statut === DocumentProduitStatut::VALIDE
+            && $document->estVisiblePour($user);
+    }
+
     public function soumettre(User $user, DocumentProduitDirection $document): bool
     {
         $statuts = $document->origine === DocumentProduitOrigine::AUTONOME

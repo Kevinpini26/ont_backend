@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Console\GenererRegistreCourrierCommand;
+use Modules\Courrier\Console\ReconcilerPdfOfficielDocumentAutonomeCommand;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
 use Modules\Courrier\Contracts\BordereauLotPdfGenerator;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
@@ -56,6 +57,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
         RelancerAvisDgEnAttenteCommand::class,
         AnonymiserCandidaturesNonRetenuesCommand::class,
         GenererRegistreCourrierCommand::class,
+        ReconcilerPdfOfficielDocumentAutonomeCommand::class,
     ];
 
     /**
@@ -100,5 +102,6 @@ class CourrierServiceProvider extends ModuleServiceProvider
     {
         $schedule->command(RelancerAvisDgEnAttenteCommand::class)->hourly();
         $schedule->command(AnonymiserCandidaturesNonRetenuesCommand::class)->daily();
+        $schedule->command(ReconcilerPdfOfficielDocumentAutonomeCommand::class)->dailyAt('02:00')->withoutOverlapping();
     }
 }

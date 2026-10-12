@@ -3,6 +3,9 @@
 namespace Modules\Courrier\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Enums\CourrierStatut;
@@ -17,11 +20,16 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Support\TipTapHtmlRenderer;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class DocumentProduitDirectionService
 {
@@ -32,6 +40,8 @@ class DocumentProduitDirectionService
         private readonly AuditLogger $audit,
         private readonly DossierWorkflowGuard $dossiers,
         private readonly DirecteurDirectionResolver $directeurs,
+        private readonly PdfGenerationService $pdf,
+        private readonly TipTapHtmlRenderer $renduTipTap,
     ) {}
 
     public function creer(TraitementDirection $traitement, User $secretariat, array $donnees): DocumentProduitDirection
@@ -200,53 +210,213 @@ class DocumentProduitDirectionService
 
     public function valider(DocumentProduitDirection $document, User $directeur): DocumentProduitDirection
     {
-        return DB::transaction(function () use ($document, $directeur) {
-            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
-            if ($document->origine === DocumentProduitOrigine::AUTONOME) {
-                $this->verifierDirecteur($document, $directeur);
-                $direction = Direction::query()->lockForUpdate()->findOrFail($document->direction_id);
+        $cheminTemporaire = null;
+        $cheminFinal = null;
+        $transactionPretACommit = false;
+
+        try {
+            return DB::transaction(function () use ($document, $directeur, &$cheminTemporaire, &$cheminFinal, &$transactionPretACommit) {
+                $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+                if ($document->origine === DocumentProduitOrigine::AUTONOME) {
+                    $this->verifierDirecteur($document, $directeur);
+                    $direction = Direction::query()->lockForUpdate()->findOrFail($document->direction_id);
+                    $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->courrier_id);
+                    if ($document->traitement_direction_id !== null
+                        || $document->document_source_id !== null
+                        || $document->directeur_id !== $directeur->id
+                        || $courrier->direction_origine_id !== $document->direction_id
+                        || $courrier->dossier_id === null
+                        || $courrier->reference_documentaire !== null) {
+                        throw ValidationException::withMessages(['document' => 'Le document autonome et sa direction productrice sont incohérents.']);
+                    }
+
+                    if (! is_array($courrier->contenu)) {
+                        throw ValidationException::withMessages([
+                            'contenu' => 'Le contenu TipTap du document autonome est invalide.',
+                        ]);
+                    }
+
+                    $corpsHtml = $this->renduTipTap->renderOfficial($courrier->contenu);
+                    $courrier = $this->references->attribuer($courrier, $direction, $directeur);
+                    $contenuPdf = $this->pdf->genererDepuisVue('courrier::document-produit-autonome-officiel', [
+                        'objet' => $courrier->objet,
+                        'corpsHtml' => $corpsHtml,
+                        'direction' => $direction->nom,
+                        'reference' => $courrier->reference_documentaire,
+                        'logoOntDataUri' => $this->logoOntDataUri(),
+                    ]);
+                    $empreinte = $this->validerContenuPdf($contenuPdf);
+                    $cheminTemporaire = 'documents-internes/officiels/.staging/'.Str::uuid().'.pdf';
+                    $cheminFinal = sprintf(
+                        'documents-internes/officiels/%d/%d-%s.pdf',
+                        $document->id,
+                        $document->version_contenu,
+                        $empreinte,
+                    );
+                    $this->stockerEtPromouvoirPdf($contenuPdf, $empreinte, $cheminTemporaire, $cheminFinal);
+
+                    $document->pdf_officiel_chemin = $cheminFinal;
+                    $document->pdf_officiel_sha256 = $empreinte;
+                    $document->pdf_officiel_version_contenu = $document->version_contenu;
+                    $document->pdf_officiel_genere_at = now();
+                    $document->statut = DocumentProduitStatut::VALIDE;
+                    $document->valide_par_id = $directeur->id;
+                    $document->valide_at = now();
+                    $document->save();
+                    $this->audit->enregistrer('document_direction.valide', $document, $directeur, [
+                        'reference_documentaire' => $courrier->reference_documentaire,
+                        'origine' => DocumentProduitOrigine::AUTONOME->value,
+                        'version_contenu' => $document->version_contenu,
+                        'pdf_officiel_sha256' => $empreinte,
+                    ]);
+
+                    $transactionPretACommit = true;
+
+                    return $this->charger($document);
+                }
+
+                $traitement = TraitementDirection::query()->lockForUpdate()->findOrFail($document->traitement_direction_id);
+                if ($traitement->directeur_id !== $directeur->id) {
+                    throw ValidationException::withMessages(['document' => 'Seul le Directeur désigné peut statuer sur ce document.']);
+                }
+                $directeur = User::query()->lockForUpdate()->findOrFail($traitement->directeur_id);
+                $this->verifierDirecteur($document, $directeur, $traitement);
+                $direction = Direction::query()->findOrFail($traitement->direction_id);
                 $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->courrier_id);
-                if ($document->traitement_direction_id !== null
-                    || $document->document_source_id !== null
-                    || $document->directeur_id !== $directeur->id
-                    || $courrier->direction_origine_id !== $document->direction_id
-                    || $courrier->dossier_id === null
-                    || $courrier->reference_documentaire !== null) {
-                    throw ValidationException::withMessages(['document' => 'Le document autonome et sa direction productrice sont incohérents.']);
+                $source = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->document_source_id);
+                if ($document->direction_id !== $traitement->direction_id
+                    || $document->document_source_id !== $traitement->courrier_id
+                    || $courrier->direction_origine_id !== $traitement->direction_id
+                    || $courrier->dossier_id !== $traitement->dossier_id
+                    || $source->dossier_id !== $traitement->dossier_id) {
+                    throw ValidationException::withMessages(['document' => 'Le document, son traitement et la direction productrice sont incohérents.']);
                 }
                 $courrier = $this->references->attribuer($courrier, $direction, $directeur);
                 $document->update(['statut' => DocumentProduitStatut::VALIDE, 'valide_par_id' => $directeur->id, 'valide_at' => now()]);
                 $this->audit->enregistrer('document_direction.valide', $document, $directeur, [
                     'reference_documentaire' => $courrier->reference_documentaire,
-                    'origine' => DocumentProduitOrigine::AUTONOME->value,
-                    'version_contenu' => $document->version_contenu,
                 ]);
 
+                $transactionPretACommit = true;
+
                 return $this->charger($document);
+            });
+        } catch (Throwable $exception) {
+            if ($cheminTemporaire !== null && ! $transactionPretACommit) {
+                $this->compenserFichiersPdf($cheminTemporaire, $cheminFinal);
+            } elseif ($transactionPretACommit && $cheminFinal !== null) {
+                Log::warning('Résultat de commit incertain pour le PDF officiel; fichier conservé pour réconciliation.', [
+                    'document_id' => $document->id,
+                    'chemin' => $cheminFinal,
+                    'exception' => $exception,
+                ]);
             }
 
-            $traitement = TraitementDirection::query()->lockForUpdate()->findOrFail($document->traitement_direction_id);
-            if ($traitement->directeur_id !== $directeur->id) {
-                throw ValidationException::withMessages(['document' => 'Seul le Directeur désigné peut statuer sur ce document.']);
-            }
-            $directeur = User::query()->lockForUpdate()->findOrFail($traitement->directeur_id);
-            $this->verifierDirecteur($document, $directeur, $traitement);
-            $direction = Direction::query()->findOrFail($traitement->direction_id);
-            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->courrier_id);
-            $source = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->document_source_id);
-            if ($document->direction_id !== $traitement->direction_id
-                || $document->document_source_id !== $traitement->courrier_id
-                || $courrier->direction_origine_id !== $traitement->direction_id
-                || $courrier->dossier_id !== $traitement->dossier_id
-                || $source->dossier_id !== $traitement->dossier_id) {
-                throw ValidationException::withMessages(['document' => 'Le document, son traitement et la direction productrice sont incohérents.']);
-            }
-            $courrier = $this->references->attribuer($courrier, $direction, $directeur);
-            $document->update(['statut' => DocumentProduitStatut::VALIDE, 'valide_par_id' => $directeur->id, 'valide_at' => now()]);
-            $this->audit->enregistrer('document_direction.valide', $document, $directeur, ['reference_documentaire' => $courrier->reference_documentaire]);
+            throw $exception;
+        }
+    }
 
-            return $this->charger($document);
-        });
+    public function telechargerPdfOfficiel(DocumentProduitDirection $document): StreamedResponse
+    {
+        $chemin = $document->pdf_officiel_chemin;
+        $sha256 = $document->pdf_officiel_sha256;
+        $prefixeAttendu = "documents-internes/officiels/{$document->id}/";
+
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::VALIDE
+            || $document->pdf_officiel_version_contenu !== $document->version_contenu
+            || ! is_string($chemin)
+            || ! str_starts_with($chemin, $prefixeAttendu)
+            || str_contains($chemin, '..')
+            || ! is_string($sha256)
+            || preg_match('/\A[a-f0-9]{64}\z/', $sha256) !== 1
+            || ! Storage::disk('local')->exists($chemin)) {
+            abort(404);
+        }
+
+        $contenu = Storage::disk('local')->get($chemin);
+        if (! is_string($contenu)
+            || ! hash_equals($sha256, hash('sha256', $contenu))
+            || ! str_starts_with($contenu, '%PDF-')) {
+            Log::critical('Intégrité du PDF officiel de document autonome compromise.', ['document_id' => $document->id]);
+            abort(404);
+        }
+
+        return response()->streamDownload(
+            static function () use ($contenu): void {
+                echo $contenu;
+            },
+            "document-interne-{$document->id}.pdf",
+            ['Content-Type' => 'application/pdf'],
+        );
+    }
+
+    private function validerContenuPdf(string $contenu): string
+    {
+        if (! str_starts_with($contenu, '%PDF-') || ! str_contains($contenu, '%%EOF')) {
+            throw new RuntimeException('Le moteur PDF a produit un contenu incomplet ou invalide.');
+        }
+
+        return hash('sha256', $contenu);
+    }
+
+    private function stockerEtPromouvoirPdf(string $contenu, string $empreinte, string $temporaire, string $final): void
+    {
+        $disque = Storage::disk('local');
+        if ($disque->exists($temporaire) || $disque->exists($final)) {
+            throw new RuntimeException('Un chemin de stockage PDF officiel existe déjà.');
+        }
+        if (! $disque->put($temporaire, $contenu)) {
+            throw new RuntimeException('Impossible d’écrire le PDF officiel temporaire.');
+        }
+
+        $contenuTemporaire = $disque->get($temporaire);
+        if (! hash_equals($empreinte, hash('sha256', $contenuTemporaire))
+            || ! hash_equals($empreinte, hash('sha256', $contenu))) {
+            throw new RuntimeException('Le PDF temporaire ne correspond pas à son empreinte SHA-256.');
+        }
+        if (! $disque->move($temporaire, $final)) {
+            throw new RuntimeException('Impossible de promouvoir le PDF officiel vers son emplacement privé.');
+        }
+
+        $contenuFinal = $disque->get($final);
+        if (! hash_equals($empreinte, hash('sha256', $contenuFinal))
+            || ! str_starts_with($contenuFinal, '%PDF-')) {
+            throw new RuntimeException('Le PDF promu ne correspond pas à son empreinte ou à son format.');
+        }
+    }
+
+    private function compenserFichiersPdf(string $temporaire, ?string $final): void
+    {
+        $disque = Storage::disk('local');
+
+        foreach (array_filter([$temporaire, $final]) as $chemin) {
+            try {
+                if ($disque->exists($chemin) && ! $disque->delete($chemin)) {
+                    throw new RuntimeException("Impossible de supprimer le fichier PDF temporaire {$chemin}.");
+                }
+            } catch (Throwable $exception) {
+                Log::critical('Échec de compensation du stockage PDF officiel; une réconciliation est requise.', [
+                    'chemin' => $chemin,
+                    'exception' => $exception,
+                ]);
+            }
+        }
+    }
+
+    private function logoOntDataUri(): string
+    {
+        $logoPath = base_path('Modules/Courrier/resources/ONT.png');
+        if (! is_file($logoPath)) {
+            throw new RuntimeException('Le logo institutionnel requis pour le PDF officiel est absent.');
+        }
+
+        $contenu = file_get_contents($logoPath);
+        if ($contenu === false) {
+            throw new RuntimeException('Le logo institutionnel ne peut pas être lu.');
+        }
+
+        return 'data:image/png;base64,'.base64_encode($contenu);
     }
 
     public function transmettreReception(DocumentProduitDirection $document, User $secretariat): DocumentProduitDirection

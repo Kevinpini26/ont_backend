@@ -105,6 +105,13 @@ class DocumentProduitDirectionController extends Controller
         return new DocumentProduitDirectionResource($this->chargerTracabilite($document, true));
     }
 
+    public function telechargerPdfOfficiel(Request $request, DocumentProduitDirection $document)
+    {
+        abort_unless($request->user()->can('downloadPdfOfficiel', $document), 404);
+
+        return $this->service->telechargerPdfOfficiel($document);
+    }
+
     public function modifierBrouillon(SauvegarderBrouillonDocumentProduitRequest $request, DocumentProduitDirection $document)
     {
         return new DocumentProduitDirectionResource($this->chargerTracabilite(
