@@ -73,6 +73,28 @@ class DispatchCourrierAutonomePolicyTest extends TestCase
         self::assertFalse($policy->executer($sec2, $dispatch));
     }
 
+    public function test_only_the_destination_secretariat_can_acknowledge_an_executed_dispatch_once(): void
+    {
+        $delegations = Mockery::mock(DelegationResolver::class);
+        $policy = new DispatchCourrierPolicy($delegations);
+        $dispatch = $this->dispatchAutonome();
+        $dispatch->statut = DispatchStatut::EXECUTE;
+        $destination = $this->user(11, UserRole::SECRETARIAT_DIRECTION, null, 2);
+        $autreDirection = $this->user(12, UserRole::SECRETARIAT_DIRECTION, null, 3);
+        $autreRole = $this->user(13, UserRole::AGENT_CIRCUIT_COURRIER, Poste::SECRETARIAT_2, 2);
+
+        self::assertTrue($policy->accuserReception($destination, $dispatch));
+        self::assertFalse($policy->accuserReception($autreDirection, $dispatch));
+        self::assertFalse($policy->accuserReception($autreRole, $dispatch));
+
+        $dispatch->accuse_reception_at = now();
+        self::assertFalse($policy->accuserReception($destination, $dispatch));
+
+        $dispatch->accuse_reception_at = null;
+        $dispatch->statut = DispatchStatut::EN_ATTENTE;
+        self::assertFalse($policy->accuserReception($destination, $dispatch));
+    }
+
     private function dispatchAutonome(): DispatchCourrier
     {
         $document = (new DocumentProduitDirection)->forceFill([
