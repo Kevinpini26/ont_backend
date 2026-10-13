@@ -21,6 +21,9 @@ class DocumentProduitDirectionResource extends JsonResource
             'id' => $this->id, 'origine' => $this->origine?->value, 'traitement_direction_id' => $this->traitement_direction_id, 'courrier_id' => $this->courrier_id,
             'document_source_id' => $this->document_source_id, 'direction_id' => $this->direction_id,
             'directeur_id' => $this->directeur_id, 'directeur' => $this->whenLoaded('directeur', fn ($directeur) => $directeur === null ? null : ['id' => $directeur->id, 'name' => $directeur->name]),
+            'direction' => $this->whenLoaded('direction', fn ($direction) => $direction === null ? null : ['id' => $direction->id, 'nom' => $direction->nom]),
+            'direction_destination_souhaitee' => $this->whenLoaded('directionDestinationSouhaitee', fn ($direction) => $direction === null ? null : ['id' => $direction->id, 'nom' => $direction->nom]),
+            'scan_officiel_version' => $this->whenLoaded('scansOfficiels', fn () => $this->scansOfficiels->first()?->version),
             'version_contenu' => $this->version_contenu, 'modifie_at' => $this->modifie_at,
             'statut' => $this->statut?->value, 'statut_label' => $this->statut?->label(),
             'courrier' => $this->whenLoaded('courrier', function (?Courrier $courrier) use ($request): ?array {
@@ -42,6 +45,7 @@ class DocumentProduitDirectionResource extends JsonResource
             'motif_correction' => $this->motif_correction, 'cree_at' => $this->cree_at, 'soumis_at' => $this->soumis_at,
             'valide_at' => $this->valide_at, 'transmis_reception_at' => $this->transmis_reception_at, 'recu_at' => $this->recu_at,
             'transmis_reception_par' => $this->whenLoaded('transmisReceptionPar', fn ($acteur) => $acteur === null ? null : ['id' => $acteur->id, 'name' => $acteur->name]),
+            'recu_par' => $this->whenLoaded('recuPar', fn ($acteur) => $acteur === null ? null : ['id' => $acteur->id, 'name' => $acteur->name]),
             'correction_demandee_at' => $this->when($estAutonome, $this->correction_demandee_at),
             'tracabilite' => $this->when($estAutonome, fn () => [
                 'createur' => $this->acteurCharge('creePar'),

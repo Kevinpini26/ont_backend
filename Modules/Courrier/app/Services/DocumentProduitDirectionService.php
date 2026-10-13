@@ -226,10 +226,21 @@ class DocumentProduitDirectionService
                     if ($document->traitement_direction_id !== null
                         || $document->document_source_id !== null
                         || $document->directeur_id !== $directeur->id
-                        || $courrier->direction_origine_id !== $document->direction_id
-                        || $courrier->dossier_id === null
-                        || $courrier->reference_documentaire !== null) {
+                        || $courrier->direction_origine_id !== $document->direction_id) {
                         throw ValidationException::withMessages(['document' => 'Le document autonome et sa direction productrice sont incohérents.']);
+                    }
+
+                    if ($courrier->reference_documentaire === null) {
+                        $courrier = $this->references->attribuer($courrier, $direction, $directeur);
+                    } elseif ($document->transmis_reception_par_id === null
+                        || $document->transmis_reception_at === null
+                        || $document->correction_demandee_at === null
+                        || $document->pdf_officiel_version_contenu === null
+                        || $document->version_contenu <= $document->pdf_officiel_version_contenu
+                        || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1) {
+                        throw ValidationException::withMessages([
+                            'document' => 'La référence documentaire existante ne peut pas être remplacée et cette nouvelle validation ne possède pas une correction recevable.',
+                        ]);
                     }
 
                     if (! is_array($courrier->contenu)) {
@@ -239,7 +250,6 @@ class DocumentProduitDirectionService
                     }
 
                     $corpsHtml = $this->renduTipTap->renderOfficial($courrier->contenu);
-                    $courrier = $this->references->attribuer($courrier, $direction, $directeur);
                     $contenuPdf = $this->pdf->genererDepuisVue('courrier::document-produit-autonome-officiel', [
                         'objet' => $courrier->objet,
                         'corpsHtml' => $corpsHtml,
@@ -444,9 +454,7 @@ class DocumentProduitDirectionService
             $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
             $secretariat = User::query()->lockForUpdate()->findOrFail($secretariat->id);
 
-            if ($document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
-                || $document->transmis_reception_par_id !== null
-                || $document->transmis_reception_at !== null) {
+            if ($document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION) {
                 throw new ConflictHttpException('Ce document a déjà été transmis à la Réception.');
             }
 
@@ -461,6 +469,17 @@ class DocumentProduitDirectionService
                 || $secretariat->direction_id !== $document->direction_id) {
                 throw ValidationException::withMessages([
                     'document' => 'Seul le secrétariat producteur peut transmettre un document autonome avec scan officiel enregistré.',
+                ]);
+            }
+
+            $premiereTransmission = $document->transmis_reception_par_id === null
+                && $document->transmis_reception_at === null;
+            $retransmissionApresCorrection = $document->transmis_reception_par_id !== null
+                && $document->transmis_reception_at !== null
+                && $document->correction_demandee_at !== null;
+            if (! $premiereTransmission && ! $retransmissionApresCorrection) {
+                throw ValidationException::withMessages([
+                    'document' => 'Les métadonnées de transmission ne permettent pas de transmettre ce document.',
                 ]);
             }
 
@@ -497,6 +516,128 @@ class DocumentProduitDirectionService
 
             return $this->charger($document);
         });
+    }
+
+    public function accepterAutonomeReception(DocumentProduitDirection $document, User $agent): DocumentProduitDirection
+    {
+        return DB::transaction(function () use ($document, $agent) {
+            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+            $agent = User::query()->lockForUpdate()->findOrFail($agent->id);
+
+            if ($document->origine !== DocumentProduitOrigine::AUTONOME
+                || $document->statut !== DocumentProduitStatut::TRANSMIS_RECEPTION
+                || $document->transmis_reception_par_id === null
+                || $document->transmis_reception_at === null
+                || $document->scan_officiel_document_id === null
+                || $document->recu_par_id !== null
+                || $document->recu_at !== null
+                || $agent->role !== UserRole::AGENT_CIRCUIT_COURRIER
+                || $agent->poste !== Poste::RECEPTION) {
+                throw new ConflictHttpException('Ce document ne peut plus être accepté par la Réception.');
+            }
+
+            $courrier = Courrier::withoutGlobalScopes()
+                ->lockForUpdate()
+                ->findOrFail($document->courrier_id);
+
+            if ($courrier->direction_origine_id !== $document->direction_id
+                || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
+                || $courrier->reference_documentaire === null
+                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || $courrier->numero_enregistrement !== null
+                || $courrier->transitions()->exists()
+                || $courrier->dispatchs()->exists()) {
+                throw ValidationException::withMessages([
+                    'document' => 'Le Courrier autonome ne satisfait plus les conditions d’acceptation.',
+                ]);
+            }
+
+            $this->scansOfficiels->verifierPourAcceptation($document);
+
+            $numeroEnregistrement = $this->numeros->genererNumeroEnregistrement();
+            $dateReception = now();
+            $courrier->numero_enregistrement = $numeroEnregistrement;
+            $courrier->statut = CourrierStatut::RECU;
+            $courrier->save();
+
+            CourrierTransition::query()->create([
+                'courrier_id' => $courrier->id,
+                'statut' => CourrierStatut::RECU,
+                'nouveau_statut' => CourrierStatut::RECU,
+                'tour' => $courrier->tour,
+                'changed_by_id' => $agent->id,
+                'expediteur_poste' => Poste::RECEPTION->value,
+                'destinataire_poste' => Poste::SECRETARIAT_1->value,
+                'created_at' => $dateReception,
+            ]);
+
+            $document->update([
+                'statut' => DocumentProduitStatut::ENTRE_CIRCUIT,
+                'recu_par_id' => $agent->id,
+                'recu_at' => $dateReception,
+            ]);
+            $this->audit->enregistrer('document_direction.autonome_accepte_reception', $document, $agent, [
+                'courrier_id' => $courrier->id,
+                'numero_enregistrement' => $numeroEnregistrement,
+                'reference_documentaire' => $courrier->reference_documentaire,
+                'etape_suivante' => Poste::SECRETARIAT_1->value,
+                'prise_en_charge_sec1' => false,
+            ]);
+
+            return $this->charger($document->fresh());
+        }, attempts: 1);
+    }
+
+    public function demanderCorrectionAutonomeReception(
+        DocumentProduitDirection $document,
+        User $agent,
+        string $motif,
+    ): DocumentProduitDirection {
+        return DB::transaction(function () use ($document, $agent, $motif) {
+            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+            $agent = User::query()->lockForUpdate()->findOrFail($agent->id);
+
+            if ($document->origine !== DocumentProduitOrigine::AUTONOME
+                || $document->statut !== DocumentProduitStatut::TRANSMIS_RECEPTION
+                || $document->transmis_reception_par_id === null
+                || $document->transmis_reception_at === null
+                || $document->recu_par_id !== null
+                || $document->recu_at !== null
+                || $agent->role !== UserRole::AGENT_CIRCUIT_COURRIER
+                || $agent->poste !== Poste::RECEPTION
+                || trim($motif) === '') {
+                throw new ConflictHttpException('Ce document ne peut plus faire l’objet d’une demande de correction.');
+            }
+
+            $courrier = Courrier::withoutGlobalScopes()
+                ->lockForUpdate()
+                ->findOrFail($document->courrier_id);
+
+            if ($courrier->direction_origine_id !== $document->direction_id
+                || $courrier->numero_enregistrement !== null
+                || $courrier->transitions()->exists()
+                || $courrier->dispatchs()->exists()) {
+                throw ValidationException::withMessages([
+                    'document' => 'Le Courrier autonome ne satisfait plus les conditions de demande de correction.',
+                ]);
+            }
+
+            $dateCorrection = now();
+            $document->update([
+                'statut' => DocumentProduitStatut::A_CORRIGER,
+                'correction_demandee_par_id' => $agent->id,
+                'motif_correction' => trim($motif),
+                'correction_demandee_at' => $dateCorrection,
+            ]);
+            $this->audit->enregistrer('document_direction.autonome_correction_demandee_reception', $document, $agent, [
+                'motif' => trim($motif),
+                'courrier_id' => $courrier->id,
+                'reference_documentaire' => $courrier->reference_documentaire,
+                'correction_demandee_at' => $dateCorrection->toIso8601String(),
+            ]);
+
+            return $this->charger($document->fresh());
+        }, attempts: 1);
     }
 
     public function recevoir(DocumentProduitDirection $document, User $reception): DocumentProduitDirection

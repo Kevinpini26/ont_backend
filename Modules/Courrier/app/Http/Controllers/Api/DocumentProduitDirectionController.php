@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitAutonomeRequest;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\DemanderCorrectionDocumentRequest;
+use Modules\Courrier\Http\Requests\DemanderCorrectionReceptionDocumentRequest;
 use Modules\Courrier\Http\Requests\DeposerScanOfficielRequest;
 use Modules\Courrier\Http\Requests\SauvegarderBrouillonDocumentProduitRequest;
 use Modules\Courrier\Http\Requests\SoumettreDocumentProduitRequest;
@@ -32,6 +33,8 @@ class DocumentProduitDirectionController extends Controller
         'document_direction.valide',
         'document_direction.scan_officiel_depose',
         'document_direction.autonome_transmis_reception',
+        'document_direction.autonome_accepte_reception',
+        'document_direction.autonome_correction_demandee_reception',
     ];
 
     public function __construct(
@@ -45,6 +48,7 @@ class DocumentProduitDirectionController extends Controller
             'courrier.directionOrigine',
             'documentSource',
             'direction',
+            'directionDestinationSouhaitee',
             'traitement.directeur',
             'directeur',
             'creePar',
@@ -53,6 +57,7 @@ class DocumentProduitDirectionController extends Controller
             'correctionDemandeePar',
             'validePar',
             'transmisReceptionPar',
+            'recuPar',
         ]);
         if ($request->user()->poste === Poste::RECEPTION) {
             $q->where('origine', '!=', DocumentProduitOrigine::AUTONOME->value)
@@ -113,18 +118,21 @@ class DocumentProduitDirectionController extends Controller
                 ->whereNull('numero_enregistrement'))
             ->whereHas('scansOfficiels', fn ($scans) => $scans
                 ->whereColumn('document_numerise_id', 'documents_produits_direction.scan_officiel_document_id')
-                ->where('version', 1)
                 ->where('est_actif', true)
                 ->where('attestation_confirmee', true)
                 ->whereNotNull('atteste_at'))
             ->with([
                 'courrier.directionOrigine',
                 'direction',
+                'directionDestinationSouhaitee',
                 'directeur',
                 'creePar',
                 'soumisPar',
+                'correctionDemandeePar',
                 'validePar',
                 'transmisReceptionPar',
+                'recuPar',
+                'scansOfficiels' => fn ($scans) => $scans->where('est_actif', true)->with('deposePar'),
                 'auditLogs' => fn ($audits) => $audits
                     ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
                     ->with('utilisateur')
@@ -134,6 +142,23 @@ class DocumentProduitDirectionController extends Controller
             ->latest('transmis_reception_at');
 
         return DocumentProduitDirectionResource::collection($query->paginate(20));
+    }
+
+    public function etatControleReception(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('consulterControleAutonomeReception', $document);
+
+        $document->load([
+            'courrier.directionOrigine',
+            'direction',
+            'directionDestinationSouhaitee',
+            'directeur',
+            'correctionDemandeePar',
+            'transmisReceptionPar',
+            'recuPar',
+        ]);
+
+        return new DocumentProduitDirectionResource($this->chargerTracabilite($document, true));
     }
 
     public function store(CreerDocumentProduitRequest $request, TraitementDirection $traitement)
@@ -155,7 +180,7 @@ class DocumentProduitDirectionController extends Controller
     {
         $this->authorize('view', $document);
 
-        $document->load(['courrier.directionOrigine', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar', 'transmisReceptionPar']);
+        $document->load(['courrier.directionOrigine', 'documentSource', 'direction', 'directionDestinationSouhaitee', 'traitement.directeur', 'directeur', 'creePar', 'validePar', 'transmisReceptionPar', 'recuPar']);
 
         return new DocumentProduitDirectionResource($this->chargerTracabilite($document, true));
     }
@@ -263,6 +288,30 @@ class DocumentProduitDirectionController extends Controller
         return new DocumentProduitDirectionResource($this->service->recevoir($document, $request->user()));
     }
 
+    public function accepterReceptionAutonome(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('accepterAutonomeReception', $document);
+
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->accepterAutonomeReception($document, $request->user()),
+            true,
+        ));
+    }
+
+    public function demanderCorrectionReceptionAutonome(
+        DemanderCorrectionReceptionDocumentRequest $request,
+        DocumentProduitDirection $document,
+    ) {
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(
+            $this->service->demanderCorrectionAutonomeReception(
+                $document,
+                $request->user(),
+                $request->validated('motif'),
+            ),
+            true,
+        ));
+    }
+
     private function chargerTracabilite(DocumentProduitDirection $document, bool $avecHistorique): DocumentProduitDirection
     {
         if ($document->origine !== DocumentProduitOrigine::AUTONOME) {
@@ -277,6 +326,8 @@ class DocumentProduitDirectionController extends Controller
             'correctionDemandeePar',
             'validePar',
             'transmisReceptionPar',
+            'recuPar',
+            'directionDestinationSouhaitee',
         ]);
 
         if ($avecHistorique) {

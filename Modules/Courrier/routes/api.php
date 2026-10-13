@@ -56,6 +56,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/documents-produits-direction/transmis-reception/autonomes', [DocumentProduitDirectionController::class, 'autonomesTransmisReception']);
     Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
     Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
+    Route::get('/documents-produits-direction/{document}/controle-reception', [DocumentProduitDirectionController::class, 'etatControleReception']);
     Route::get('/documents-produits-direction/{document}', [DocumentProduitDirectionController::class, 'show']);
     Route::get('/documents-produits-direction/{document}/pdf-officiel', [DocumentProduitDirectionController::class, 'telechargerPdfOfficiel']);
     Route::get('/documents-produits-direction/{document}/scan-officiel', [DocumentProduitDirectionController::class, 'consulterScanOfficiel']);
@@ -66,6 +67,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/documents-produits-direction/{document}/demander-correction', [DocumentProduitDirectionController::class, 'correction']);
     Route::post('/documents-produits-direction/{document}/valider', [DocumentProduitDirectionController::class, 'valider']);
     Route::post('/documents-produits-direction/{document}/transmettre-reception', [DocumentProduitDirectionController::class, 'transmettreReception']);
+    Route::post('/documents-produits-direction/{document}/accepter-reception', [DocumentProduitDirectionController::class, 'accepterReceptionAutonome']);
+    Route::post('/documents-produits-direction/{document}/demander-correction-reception', [DocumentProduitDirectionController::class, 'demanderCorrectionReceptionAutonome']);
     Route::post('/documents-produits-direction/{document}/recevoir', [DocumentProduitDirectionController::class, 'recevoir']);
     Route::get('/classements-documents', [ClassementDocumentController::class, 'index']);
     Route::post('/dispatchs/{dispatch}/classer', [ClassementDocumentController::class, 'classer']);

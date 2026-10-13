@@ -58,6 +58,7 @@ class DocumentProduitDirectionPolicy
                 DocumentProduitStatut::TRANSMIS_RECEPTION,
             ], true)
             || $document->scan_officiel_document_id === null
+            || (($document->transmis_reception_par_id === null) !== ($document->transmis_reception_at === null))
             || $user->direction_id !== $document->direction_id) {
             return false;
         }
@@ -117,8 +118,10 @@ class DocumentProduitDirectionPolicy
                 && $user->direction_id === $document->direction_id
                 && $document->statut === DocumentProduitStatut::SCAN_ENREGISTRE
                 && $document->scan_officiel_document_id !== null
-                && $document->transmis_reception_par_id === null
-                && $document->transmis_reception_at === null
+                && (($document->transmis_reception_par_id === null && $document->transmis_reception_at === null)
+                    || ($document->transmis_reception_par_id !== null
+                        && $document->transmis_reception_at !== null
+                        && $document->correction_demandee_at !== null))
                 && $document->recu_par_id === null
                 && $document->recu_at === null;
         }
@@ -133,5 +136,42 @@ class DocumentProduitDirectionPolicy
         return $document->origine !== DocumentProduitOrigine::AUTONOME
             && $user->poste === Poste::RECEPTION
             && $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION;
+    }
+
+    public function accepterAutonomeReception(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->controlerAutonomeReception($user, $document);
+    }
+
+    public function demanderCorrectionAutonomeReception(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->controlerAutonomeReception($user, $document);
+    }
+
+    public function consulterControleAutonomeReception(User $user, DocumentProduitDirection $document): bool
+    {
+        return $user->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $user->poste === Poste::RECEPTION
+            && $document->origine === DocumentProduitOrigine::AUTONOME
+            && in_array($document->statut, [
+                DocumentProduitStatut::TRANSMIS_RECEPTION,
+                DocumentProduitStatut::A_CORRIGER,
+                DocumentProduitStatut::ENTRE_CIRCUIT,
+            ], true)
+            && $document->transmis_reception_par_id !== null
+            && $document->transmis_reception_at !== null;
+    }
+
+    private function controlerAutonomeReception(User $user, DocumentProduitDirection $document): bool
+    {
+        return $user->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $user->poste === Poste::RECEPTION
+            && $document->origine === DocumentProduitOrigine::AUTONOME
+            && $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
+            && $document->transmis_reception_par_id !== null
+            && $document->transmis_reception_at !== null
+            && $document->scan_officiel_document_id !== null
+            && $document->recu_par_id === null
+            && $document->recu_at === null;
     }
 }

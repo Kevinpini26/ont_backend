@@ -66,6 +66,47 @@ class DocumentProduitDirectionTransmissionPolicyTest extends TestCase
         self::assertFalse($policy->recevoir($reception, $this->document(DocumentProduitStatut::TRANSMIS_RECEPTION)));
     }
 
+    public function test_seule_la_reception_peut_accepter_ou_demander_une_correction_d_un_document_transmis(): void
+    {
+        $policy = new DocumentProduitDirectionPolicy;
+        $transmis = $this->document(DocumentProduitStatut::TRANSMIS_RECEPTION, [
+            'transmis_reception_par_id' => 10,
+            'transmis_reception_at' => '2026-10-13T12:00:00+00:00',
+        ]);
+        $reception = $this->reception();
+
+        self::assertTrue($policy->accepterAutonomeReception($reception, $transmis));
+        self::assertTrue($policy->demanderCorrectionAutonomeReception($reception, $transmis));
+        self::assertFalse($policy->accepterAutonomeReception($this->secretariat(3), $transmis));
+        self::assertFalse($policy->demanderCorrectionAutonomeReception($this->secretariat(3), $transmis));
+        self::assertFalse($policy->accepterAutonomeReception($this->reception(Poste::SECRETARIAT_1), $transmis));
+
+        $correctionDemandee = $this->document(DocumentProduitStatut::A_CORRIGER, [
+            'transmis_reception_par_id' => 10,
+            'transmis_reception_at' => '2026-10-13T12:00:00+00:00',
+            'correction_demandee_at' => '2026-10-13T13:00:00+00:00',
+        ]);
+        self::assertFalse($policy->accepterAutonomeReception($reception, $correctionDemandee));
+        self::assertFalse($policy->demanderCorrectionAutonomeReception($reception, $correctionDemandee));
+        self::assertTrue($policy->consulterControleAutonomeReception($reception, $correctionDemandee));
+    }
+
+    public function test_le_secretariat_peut_retransmettre_uniquement_apres_revalidation_et_nouveau_scan(): void
+    {
+        $policy = new DocumentProduitDirectionPolicy;
+        $corrige = $this->document(DocumentProduitStatut::SCAN_ENREGISTRE, [
+            'transmis_reception_par_id' => 10,
+            'transmis_reception_at' => '2026-10-13T12:00:00+00:00',
+            'correction_demandee_at' => '2026-10-13T13:00:00+00:00',
+        ]);
+
+        self::assertTrue($policy->transmettreReception($this->secretariat(3), $corrige));
+        self::assertFalse($policy->transmettreReception($this->secretariat(4), $corrige));
+        self::assertFalse($policy->transmettreReception($this->secretariat(3), $this->document(DocumentProduitStatut::SCAN_ENREGISTRE, [
+            'transmis_reception_par_id' => 10,
+        ])));
+    }
+
     private function document(DocumentProduitStatut $statut, array $overrides = []): DocumentProduitDirection
     {
         $document = new DocumentProduitDirection;
@@ -91,12 +132,12 @@ class DocumentProduitDirectionTransmissionPolicyTest extends TestCase
         return $user;
     }
 
-    private function reception(): User
+    private function reception(Poste $poste = Poste::RECEPTION): User
     {
         $user = new User;
         $user->forceFill([
             'role' => UserRole::AGENT_CIRCUIT_COURRIER,
-            'poste' => Poste::RECEPTION,
+            'poste' => $poste,
             'direction_id' => null,
         ]);
 

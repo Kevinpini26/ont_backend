@@ -92,10 +92,22 @@ class DocumentProduitScanOfficielService
                     return ['scan' => $scanParCle->load('documentNumerise'), 'created' => false];
                 }
 
-                if (DocumentProduitScanOfficiel::query()
+                $scansExistants = DocumentProduitScanOfficiel::query()
                     ->where('document_produit_direction_id', $document->id)
-                    ->exists()) {
-                    throw new ConflictHttpException('Un scan officiel initial est déjà enregistré pour ce document.');
+                    ->lockForUpdate()
+                    ->orderBy('version')
+                    ->get();
+                $versionScan = ((int) $scansExistants->max('version')) + 1;
+
+                if ($scansExistants->isNotEmpty()
+                    && ($document->transmis_reception_par_id === null
+                        || $document->transmis_reception_at === null
+                        || $document->correction_demandee_at === null
+                        || $document->recu_par_id !== null
+                        || $document->recu_at !== null
+                        || $scansExistants->where('est_actif', true)->count() !== 1
+                        || (int) $scansExistants->firstWhere('est_actif', true)?->document_numerise_id !== (int) $document->scan_officiel_document_id)) {
+                    throw new ConflictHttpException('Un nouveau scan ne peut être déposé qu’après une correction et une nouvelle validation du Directeur.');
                 }
 
                 $this->verifierPreconditions($document, $courrier);
@@ -121,11 +133,18 @@ class DocumentProduitScanOfficielService
                     'capture_par_id' => $deposant->id,
                 ]);
 
+                if ($scansExistants->isNotEmpty()) {
+                    DocumentProduitScanOfficiel::query()
+                        ->where('document_produit_direction_id', $document->id)
+                        ->where('est_actif', true)
+                        ->update(['est_actif' => false, 'updated_at' => now()]);
+                }
+
                 $scan = DocumentProduitScanOfficiel::query()->forceCreate([
                     'document_produit_direction_id' => $document->id,
                     'courrier_id' => $courrier->id,
                     'document_numerise_id' => $documentNumerise->id,
-                    'version' => 1,
+                    'version' => $versionScan,
                     'idempotency_key' => $idempotencyKey,
                     'empreinte_requete' => $empreinteRequete,
                     'depose_par_id' => $deposant->id,
@@ -144,7 +163,7 @@ class DocumentProduitScanOfficielService
                     'courrier_id' => $courrier->id,
                     'depose_par_id' => $deposant->id,
                     'atteste_at' => $dateAttestation->toIso8601String(),
-                    'version' => 1,
+                    'version' => $versionScan,
                     'sha256' => $documentNumerise->sha256,
                     'attestation_version' => self::ATTESTATION_VERSION,
                 ]);
@@ -184,8 +203,10 @@ class DocumentProduitScanOfficielService
                 && $document->transmis_reception_par_id !== null
                 && $document->transmis_reception_at !== null
             : $document->statut === DocumentProduitStatut::SCAN_ENREGISTRE
-                && $document->transmis_reception_par_id === null
-                && $document->transmis_reception_at === null;
+                && (($document->transmis_reception_par_id === null && $document->transmis_reception_at === null)
+                    || ($document->transmis_reception_par_id !== null
+                        && $document->transmis_reception_at !== null
+                        && $document->correction_demandee_at !== null));
 
         if ($document->origine !== DocumentProduitOrigine::AUTONOME
             || ! $étatAttendu
@@ -200,7 +221,7 @@ class DocumentProduitScanOfficielService
         if ($courrier === null
             || $courrier->direction_origine_id !== $document->direction_id
             || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
-            || ($transmisReception && (
+            || (($transmisReception || $document->transmis_reception_at !== null) && (
                 $courrier->reference_documentaire === null
                 || trim($courrier->reference_documentaire) === ''
                 || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
@@ -218,7 +239,7 @@ class DocumentProduitScanOfficielService
             ->first();
 
         if ($scan === null
-            || (int) $scan->version !== 1
+            || (int) $scan->version < 1
             || ! $scan->attestation_confirmee
             || $scan->atteste_at === null
             || (int) $scan->attestation_version !== self::ATTESTATION_VERSION
@@ -228,13 +249,18 @@ class DocumentProduitScanOfficielService
             abort(404);
         }
 
-        if (DocumentProduitScanOfficiel::query()
+        $nombreScans = DocumentProduitScanOfficiel::query()
+            ->where('document_produit_direction_id', $document->id)
+            ->count();
+        $versionMaximale = DocumentProduitScanOfficiel::query()
+            ->where('document_produit_direction_id', $document->id)
+            ->max('version');
+        $nombreScansActifs = DocumentProduitScanOfficiel::query()
             ->where('document_produit_direction_id', $document->id)
             ->where('est_actif', true)
-            ->count() !== 1
-            || DocumentProduitScanOfficiel::query()
-                ->where('document_produit_direction_id', $document->id)
-                ->count() !== 1) {
+            ->count();
+
+        if ($nombreScansActifs !== 1 || (int) $versionMaximale !== (int) $scan->version || $nombreScans !== (int) $versionMaximale) {
             abort(404);
         }
 
@@ -321,14 +347,28 @@ class DocumentProduitScanOfficielService
     {
         if ($document->origine !== DocumentProduitOrigine::AUTONOME
             || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
-            || $document->transmis_reception_par_id !== null
-            || $document->transmis_reception_at !== null
+            || (($document->transmis_reception_par_id === null) !== ($document->transmis_reception_at === null))
+            || ($document->transmis_reception_par_id !== null && $document->correction_demandee_at === null)
             || $document->recu_par_id !== null
             || $document->recu_at !== null) {
             throw ValidationException::withMessages(['document' => 'Le document n’est pas dans un état cohérent pour la transmission.']);
         }
 
         $this->consulter($document);
+    }
+
+    public function verifierPourAcceptation(DocumentProduitDirection $document): void
+    {
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::TRANSMIS_RECEPTION
+            || $document->transmis_reception_par_id === null
+            || $document->transmis_reception_at === null
+            || $document->recu_par_id !== null
+            || $document->recu_at !== null) {
+            throw ValidationException::withMessages(['document' => 'Le document n’est pas en attente de contrôle par la Réception.']);
+        }
+
+        $this->consulterTransmisReception($document);
     }
 
     public function consulterTransmisReception(DocumentProduitDirection $document): StreamedResponse
@@ -381,8 +421,10 @@ class DocumentProduitScanOfficielService
             || $courrier->numero_enregistrement !== null
             || $courrier->transitions()->exists()
             || $courrier->dispatchs()->exists()
-            || $document->transmis_reception_par_id !== null
-            || $document->transmis_reception_at !== null
+            || (($document->transmis_reception_par_id === null) !== ($document->transmis_reception_at === null))
+            || ($document->transmis_reception_par_id !== null
+                && ($document->correction_demandee_at === null
+                    || $document->version_contenu <= (int) $document->pdf_officiel_version_contenu))
             || $document->recu_par_id !== null
             || $document->recu_at !== null
             || ! Storage::disk('local')->exists($cheminPdf)) {
