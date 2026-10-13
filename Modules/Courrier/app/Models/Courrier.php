@@ -460,6 +460,7 @@ class Courrier extends Model implements Numerisable
         return $this->hasOne(InstructionCourrierDg::class, 'courrier_id');
     }
 
+    /** @return HasMany<DispatchCourrier, $this> */
     public function dispatchs(): HasMany
     {
         return $this->hasMany(DispatchCourrier::class);

@@ -8,12 +8,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Kernel\Contracts\AuditLogger;
@@ -207,19 +209,37 @@ class DocumentProduitScanOfficielService
         return $this->consulterSelonEtat($document, 'dg');
     }
 
+    public function consulterAutonomeSec2(DispatchCourrier $dispatch): StreamedResponse
+    {
+        $document = DocumentProduitDirection::query()
+            ->where('courrier_id', $dispatch->courrier_id)
+            ->firstOrFail();
+
+        return $this->consulterSelonEtat($document, 'sec2', $dispatch);
+    }
+
     public function verifierPourDg(DocumentProduitDirection $document): void
     {
         $this->consulterSelonEtat($document, 'dg');
     }
 
-    private function consulterSelonEtat(DocumentProduitDirection $document, string $contexte): StreamedResponse
+    public function verifierPourSec2(DispatchCourrier $dispatch): void
     {
+        $this->consulterAutonomeSec2($dispatch);
+    }
+
+    private function consulterSelonEtat(
+        DocumentProduitDirection $document,
+        string $contexte,
+        ?DispatchCourrier $dispatchSec2 = null,
+    ): StreamedResponse {
         $document->refresh();
 
         $transmisReception = $contexte === 'reception';
         $accepteSec1 = $contexte === 'sec1';
         $attenteDg = $contexte === 'dg';
-        $étatAttendu = ($accepteSec1 || $attenteDg)
+        $autonomeSec2 = $contexte === 'sec2';
+        $étatAttendu = ($accepteSec1 || $attenteDg || $autonomeSec2)
             ? $document->statut === DocumentProduitStatut::ENTRE_CIRCUIT
                 && $document->transmis_reception_par_id !== null
                 && $document->transmis_reception_at !== null
@@ -245,7 +265,38 @@ class DocumentProduitScanOfficielService
 
         $courrier = Courrier::withoutGlobalScopes()->findOrFail($document->courrier_id);
         $dispatchDg = $attenteDg ? $courrier->dispatchs()->with('direction')->first() : null;
-        $dispatchCompatible = $attenteDg
+        $dispatchCompatible = $autonomeSec2
+            ? $dispatchSec2 !== null
+                && $dispatchSec2->courrier_id === $courrier->id
+                && $dispatchSec2->dossier_id === null
+                && $courrier->dossier_id === null
+                && $dispatchSec2->type_destination === DispatchTypeDestination::DIRECTION
+                && $dispatchSec2->direction_id === $courrier->direction_destination_id
+                && $dispatchSec2->decisionnaire_id !== null
+                && in_array($dispatchSec2->decisionnaire_poste, [Poste::DG, Poste::DGA], true)
+                && $dispatchSec2->autorite_poste === Poste::DG
+                && $dispatchSec2->decide_at !== null
+                && $courrier->avis_dg_rendu_par_id === $dispatchSec2->decisionnaire_id
+                && $courrier->avis_dg_rendu_at !== null
+                && $courrier->avis_dg === AvisDg::FAVORABLE
+                && $courrier->direction_origine_id === $document->direction_id
+                && $courrier->dispatchs()->count() === 1
+                && $courrier->transitions()
+                    ->where('nouveau_statut', CourrierStatut::EN_DISPATCH->value)
+                    ->where('destinataire_poste', Poste::SECRETARIAT_2->value)
+                    ->where('changed_by_id', $dispatchSec2->decisionnaire_id)
+                    ->exists()
+                && $courrier->transitions()
+                    ->where('nouveau_statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
+                    ->where('destinataire_poste', Poste::DG->value)
+                    ->exists()
+                && (($dispatchSec2->statut === DispatchStatut::EN_ATTENTE
+                    && $courrier->statut === CourrierStatut::EN_DISPATCH)
+                    || ($dispatchSec2->statut === DispatchStatut::EXECUTE
+                        && $dispatchSec2->execute_par_id !== null
+                        && $dispatchSec2->execute_at !== null
+                        && $courrier->statut === CourrierStatut::DISPATCH_EXECUTE))
+            : ($attenteDg
             ? ($dispatchDg === null
                 ? $courrier->statut === CourrierStatut::EN_ATTENTE_AVIS_DG
                 : $courrier->statut === CourrierStatut::EN_DISPATCH
@@ -253,22 +304,24 @@ class DocumentProduitScanOfficielService
                     && $dispatchDg->type_destination === DispatchTypeDestination::DIRECTION
                     && $dispatchDg->dossier_id === null
                     && $dispatchDg->direction_id === $courrier->direction_destination_id)
-            : ! $courrier->dispatchs()->exists();
+            : ! $courrier->dispatchs()->exists());
         if ($courrier->direction_origine_id !== $document->direction_id
-            || ($attenteDg
-                ? ! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_DISPATCH], true)
+            || ($attenteDg || $autonomeSec2
+                ? ! in_array($courrier->statut, $autonomeSec2
+                    ? [CourrierStatut::EN_DISPATCH, CourrierStatut::DISPATCH_EXECUTE]
+                    : [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_DISPATCH], true)
                 : ($accepteSec1
                 ? ! in_array($courrier->statut, [CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_AVIS_DG], true)
                 : $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION))
-            || (($transmisReception || $accepteSec1 || $attenteDg || $document->transmis_reception_at !== null) && (
+            || (($transmisReception || $accepteSec1 || $attenteDg || $autonomeSec2 || $document->transmis_reception_at !== null) && (
                 $courrier->reference_documentaire === null
                 || trim($courrier->reference_documentaire) === ''
                 || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
             ))
-            || (($accepteSec1 || $attenteDg)
+            || (($accepteSec1 || $attenteDg || $autonomeSec2)
                 ? $courrier->numero_enregistrement === null || trim($courrier->numero_enregistrement) === ''
                 : $courrier->numero_enregistrement !== null)
-            || ($attenteDg
+            || ($attenteDg || $autonomeSec2
                 ? ! $courrier->transitions()->where('nouveau_statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
                     ->where('destinataire_poste', Poste::DG->value)->exists()
                 : ($accepteSec1
@@ -281,7 +334,7 @@ class DocumentProduitScanOfficielService
             abort(404);
         }
 
-        $étapeScanAttendue = ($accepteSec1 || $attenteDg)
+        $étapeScanAttendue = ($accepteSec1 || $attenteDg || $autonomeSec2)
             ? CourrierStatut::BROUILLON_DIRECTION->value
             : $courrier->statut->value;
         $scan = DocumentProduitScanOfficiel::query()
@@ -337,7 +390,7 @@ class DocumentProduitScanOfficielService
             || (int) $numerisation->nombre_pages < 1
             || $numerisation->qualite !== QualiteDocumentNumerise::BONNE
             || User::query()->whereKey($scan->depose_par_id)->doesntExist()
-            || (($transmisReception || $accepteSec1 || $attenteDg) && User::query()->whereKey($document->transmis_reception_par_id)->doesntExist())
+            || (($transmisReception || $accepteSec1 || $attenteDg || $autonomeSec2) && User::query()->whereKey($document->transmis_reception_par_id)->doesntExist())
             || ($accepteSec1 && User::query()->whereKey($document->recu_par_id)->doesntExist())
             || ! Storage::disk('local')->exists($numerisation->chemin)) {
             abort(404);

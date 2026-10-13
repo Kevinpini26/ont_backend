@@ -5,7 +5,10 @@ namespace Modules\Courrier\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
+use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Kernel\Http\Resources\UserResource;
 
@@ -23,7 +26,25 @@ class DispatchCourrierResource extends JsonResource
                 'id' => $this->courrier->id,
                 'objet' => $this->courrier->objet,
                 'numero_enregistrement' => $this->courrier->numero_enregistrement,
+                'reference_documentaire' => $this->courrier->reference_documentaire,
+                'direction_origine' => $this->courrier->relationLoaded('directionOrigine')
+                    ? $this->courrier->directionOrigine?->nom
+                    : null,
+                'direction_destination' => $this->courrier->relationLoaded('directionDestination')
+                    ? $this->courrier->directionDestination?->nom
+                    : null,
             ]),
+            'document_autonome' => $this->when(
+                $this->relationLoaded('courrier')
+                && $this->courrier !== null
+                && $this->courrier->relationLoaded('documentProduitDirection')
+                && $this->courrier->documentProduitDirection?->origine === DocumentProduitOrigine::AUTONOME,
+                fn () => [
+                    'document_id' => $this->courrier->documentProduitDirection->id,
+                    'scan_officiel_disponible' => $this->courrier->documentProduitDirection->scan_officiel_document_id !== null,
+                    'prise_en_charge_sec2' => $this->transitionSec2Accusee(),
+                ],
+            ),
             'type_destination' => $this->type_destination?->value,
             'type_destination_label' => $this->type_destination?->label(),
             'direction' => new DirectionResource($this->whenLoaded('direction')),
@@ -45,6 +66,31 @@ class DispatchCourrierResource extends JsonResource
             'peut_accuser_reception' => $request->user() !== null
                 && Gate::forUser($request->user())->allows('accuserReception', $this->resource),
             'traitement_direction' => new TraitementDirectionResource($this->whenLoaded('traitementDirection')),
+        ];
+    }
+
+    private function transitionSec2Accusee(): ?array
+    {
+        if (! $this->courrier->relationLoaded('transitions')) {
+            return null;
+        }
+
+        $transition = $this->courrier->transitions
+            ->filter(fn ($transition) => $transition->nouveau_statut === CourrierStatut::EN_DISPATCH
+                && $transition->destinataire_poste === Poste::SECRETARIAT_2->value)
+            ->last();
+
+        if ($transition === null || $transition->accuse_reception_at === null) {
+            return null;
+        }
+
+        $acteur = $transition->relationLoaded('accuseReceptionPar')
+            ? $transition->accuseReceptionPar
+            : null;
+
+        return [
+            'acteur' => $acteur?->name,
+            'date' => $transition->accuse_reception_at,
         ];
     }
 }

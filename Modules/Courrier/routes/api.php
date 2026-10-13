@@ -47,6 +47,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers', [CourrierController::class, 'index']);
     Route::get('/dispatchs/centre', [DispatchCourrierController::class, 'centre']);
     Route::get('/dispatchs/boite-direction', [DispatchCourrierController::class, 'boiteDirection']);
+    Route::get('/dispatchs/{dispatch}', [DispatchCourrierController::class, 'show']);
+    Route::get('/dispatchs/{dispatch}/scan-officiel', [DispatchCourrierController::class, 'consulterScanAutonome']);
     Route::post('/dispatchs/{dispatch}/executer', [DispatchCourrierController::class, 'executer']);
     Route::post('/dispatchs/{dispatch}/accuser-reception', [DispatchCourrierController::class, 'accuserReception']);
     Route::get('/traitements-direction', [TraitementDirectionController::class, 'index']);

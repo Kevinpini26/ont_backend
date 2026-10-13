@@ -541,6 +541,14 @@ class CourrierCircuitService
                 throw TransitionNonAutoriseeException::sautDetape();
             }
 
+            if ($courrier->dossier_id === null) {
+                $dispatchs = $courrier->dispatchs()->lockForUpdate()->get();
+                if ($dispatchs->count() !== 1) {
+                    throw TransitionNonAutoriseeException::sautDetape();
+                }
+                $this->scansOfficiels->verifierPourSec2($dispatchs->sole());
+            }
+
             if ($bordereau->accuse_reception_at !== null) {
                 throw TransitionNonAutoriseeException::dechargeDejaDonnee();
             }

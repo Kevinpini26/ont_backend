@@ -4,15 +4,20 @@ namespace Modules\Courrier\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DecisionDirection;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
+use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\TraitementDirectionStatut;
+use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\TraitementDirection;
 use Modules\Courrier\Notifications\TraitementDirectionNotification;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
 
@@ -23,14 +28,37 @@ class TraitementDirectionService
         private readonly NotificationService $notifications,
         private readonly DossierWorkflowGuard $dossiers,
         private readonly DirecteurDirectionResolver $directeurs,
+        private readonly DocumentProduitScanOfficielService $scansOfficiels,
     ) {}
 
     public function creerDepuisReception(DispatchCourrier $dispatch, User $secretariat): TraitementDirection
     {
-        $this->dossiers->assertActifPourNouvelleActivite($dispatch->dossier_id);
+        $courrier = Courrier::withoutGlobalScopes()->findOrFail($dispatch->courrier_id);
+        if ($dispatch->dossier_id === null) {
+            $document = $courrier->documentProduitDirection;
+            if ($document === null
+                || $dispatch->statut !== DispatchStatut::EXECUTE
+                || $courrier->statut !== CourrierStatut::DISPATCH_EXECUTE
+                || $dispatch->decisionnaire_poste === null
+                || ! in_array($dispatch->decisionnaire_poste, [Poste::DG, Poste::DGA], true)
+                || $dispatch->autorite_poste !== Poste::DG
+                || $document->origine !== DocumentProduitOrigine::AUTONOME
+                || $document->statut !== DocumentProduitStatut::ENTRE_CIRCUIT
+                || $document->traitement_direction_id !== null
+                || $document->document_source_id !== null) {
+                throw ValidationException::withMessages(['dispatch' => 'Seul un document autonome valablement transmis peut ouvrir un traitement sans dossier.']);
+            }
+            $this->scansOfficiels->verifierPourSec2($dispatch);
+        } else {
+            $this->dossiers->assertActifPourNouvelleActivite($dispatch->dossier_id);
+            if ($dispatch->dossier_id !== $courrier->dossier_id) {
+                throw ValidationException::withMessages(['dispatch' => 'Le dossier du dispatch ne correspond pas au courrier.']);
+            }
+        }
         if ($dispatch->type_destination !== DispatchTypeDestination::DIRECTION || $dispatch->statut !== DispatchStatut::EXECUTE
             || $dispatch->accuse_reception_at === null || $dispatch->direction_id !== $secretariat->direction_id
-            || $secretariat->role !== UserRole::SECRETARIAT_DIRECTION) {
+            || $secretariat->role !== UserRole::SECRETARIAT_DIRECTION
+            || $dispatch->dossier_id !== $courrier->dossier_id) {
             throw ValidationException::withMessages(['dispatch' => 'Ce dispatch ne peut pas ouvrir un traitement directionnel.']);
         }
 

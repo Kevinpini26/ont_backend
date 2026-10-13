@@ -292,6 +292,9 @@ class DispatchCourrierService
             || $dispatch->cycle !== (int) $courrier->dispatchs()->max('cycle')) {
             throw ValidationException::withMessages(['dispatch' => 'Ce dispatch ne peut pas être exécuté : état, dossier ou cycle incompatible.']);
         }
+        if ($dispatch->dossier_id === null) {
+            $this->scansOfficiels->verifierPourSec2($dispatch);
+        }
         if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT && $courrier->mode_sortie !== null && ! $courrier->estSortieCompletee()) {
             throw ValidationException::withMessages(['dispatch' => 'Le courrier ne peut pas être classé tant que sa sortie explicite n’est pas entièrement terminée.']);
         }
@@ -417,7 +420,15 @@ class DispatchCourrierService
         return DB::transaction(function () use ($dispatch, $acteur) {
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($dispatch->courrier_id);
             $dispatch = DispatchCourrier::query()->lockForUpdate()->findOrFail($dispatch->id);
-            $this->dossiers->assertActifPourNouvelleActivite($dispatch->dossier_id);
+            if ($dispatch->dossier_id === null) {
+                if ($dispatch->type_destination !== DispatchTypeDestination::DIRECTION
+                    || $dispatch->statut !== DispatchStatut::EXECUTE) {
+                    throw ValidationException::withMessages(['dispatch' => 'Seul un dispatch autonome transmis peut être réceptionné sans dossier.']);
+                }
+                $this->scansOfficiels->verifierPourSec2($dispatch);
+            } else {
+                $this->dossiers->assertActifPourNouvelleActivite($dispatch->dossier_id);
+            }
 
             if ($dispatch->type_destination === DispatchTypeDestination::CLASSEMENT) {
                 if ($dispatch->statut !== DispatchStatut::EN_ATTENTE
@@ -431,7 +442,8 @@ class DispatchCourrierService
                 }
             } elseif ($dispatch->type_destination !== DispatchTypeDestination::DIRECTION || $dispatch->statut !== DispatchStatut::EXECUTE
                 || $dispatch->accuse_reception_at !== null || $acteur->role !== UserRole::SECRETARIAT_DIRECTION
-                || $acteur->direction_id !== $dispatch->direction_id) {
+                || $acteur->direction_id !== $dispatch->direction_id
+                || $dispatch->dossier_id !== $courrier->dossier_id) {
                 throw ValidationException::withMessages(['dispatch' => 'La réception de ce dispatch ne peut pas être confirmée.']);
             }
             $dispatch->update(['accuse_reception_par_id' => $acteur->id, 'accuse_reception_at' => now()]);
