@@ -172,14 +172,25 @@ class DocumentProduitScanOfficielService
 
     public function consulter(DocumentProduitDirection $document): StreamedResponse
     {
+        return $this->consulterSelonEtat($document, false);
+    }
+
+    private function consulterSelonEtat(DocumentProduitDirection $document, bool $transmisReception): StreamedResponse
+    {
         $document->refresh();
 
+        $étatAttendu = $transmisReception
+            ? $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
+                && $document->transmis_reception_par_id !== null
+                && $document->transmis_reception_at !== null
+            : $document->statut === DocumentProduitStatut::SCAN_ENREGISTRE
+                && $document->transmis_reception_par_id === null
+                && $document->transmis_reception_at === null;
+
         if ($document->origine !== DocumentProduitOrigine::AUTONOME
-            || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
+            || ! $étatAttendu
             || ! is_numeric($document->scan_officiel_document_id)
             || $document->courrier_id === null
-            || $document->transmis_reception_par_id !== null
-            || $document->transmis_reception_at !== null
             || $document->recu_par_id !== null
             || $document->recu_at !== null) {
             abort(404);
@@ -189,6 +200,11 @@ class DocumentProduitScanOfficielService
         if ($courrier === null
             || $courrier->direction_origine_id !== $document->direction_id
             || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
+            || ($transmisReception && (
+                $courrier->reference_documentaire === null
+                || trim($courrier->reference_documentaire) === ''
+                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            ))
             || $courrier->numero_enregistrement !== null
             || $courrier->transitions()->exists()
             || $courrier->dispatchs()->exists()) {
@@ -243,6 +259,7 @@ class DocumentProduitScanOfficielService
             || (int) $numerisation->nombre_pages < 1
             || $numerisation->qualite !== QualiteDocumentNumerise::BONNE
             || User::query()->whereKey($scan->depose_par_id)->doesntExist()
+            || ($transmisReception && User::query()->whereKey($document->transmis_reception_par_id)->doesntExist())
             || ! Storage::disk('local')->exists($numerisation->chemin)) {
             abort(404);
         }
@@ -281,6 +298,11 @@ class DocumentProduitScanOfficielService
             abort(404);
         }
 
+        return $this->reponseScanPrive($document->id, $contenu);
+    }
+
+    private function reponseScanPrive(int $documentId, string $contenu): StreamedResponse
+    {
         return response()->stream(
             static function () use ($contenu): void {
                 echo $contenu;
@@ -288,11 +310,30 @@ class DocumentProduitScanOfficielService
             200,
             [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => "inline; filename=\"scan-officiel-{$document->id}.pdf\"",
+                'Content-Disposition' => "inline; filename=\"scan-officiel-{$documentId}.pdf\"",
                 'Cache-Control' => 'private, no-store',
                 'X-Content-Type-Options' => 'nosniff',
             ],
         );
+    }
+
+    public function verifierPourTransmission(DocumentProduitDirection $document): void
+    {
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
+            || $document->transmis_reception_par_id !== null
+            || $document->transmis_reception_at !== null
+            || $document->recu_par_id !== null
+            || $document->recu_at !== null) {
+            throw ValidationException::withMessages(['document' => 'Le document n’est pas dans un état cohérent pour la transmission.']);
+        }
+
+        $this->consulter($document);
+    }
+
+    public function consulterTransmisReception(DocumentProduitDirection $document): StreamedResponse
+    {
+        return $this->consulterSelonEtat($document, true);
     }
 
     private function verifierAutorisationSousVerrou(DocumentProduitDirection $document, User $deposant): void

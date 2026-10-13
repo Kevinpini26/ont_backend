@@ -41,6 +41,7 @@ class DocumentProduitDirectionResource extends JsonResource
             'document_source' => $this->whenLoaded('documentSource', fn ($source) => $source === null ? null : ['id' => $source->id, 'objet' => $source->objet, 'numero_enregistrement' => $source->numero_enregistrement]),
             'motif_correction' => $this->motif_correction, 'cree_at' => $this->cree_at, 'soumis_at' => $this->soumis_at,
             'valide_at' => $this->valide_at, 'transmis_reception_at' => $this->transmis_reception_at, 'recu_at' => $this->recu_at,
+            'transmis_reception_par' => $this->whenLoaded('transmisReceptionPar', fn ($acteur) => $acteur === null ? null : ['id' => $acteur->id, 'name' => $acteur->name]),
             'correction_demandee_at' => $this->when($estAutonome, $this->correction_demandee_at),
             'tracabilite' => $this->when($estAutonome, fn () => [
                 'createur' => $this->acteurCharge('creePar'),

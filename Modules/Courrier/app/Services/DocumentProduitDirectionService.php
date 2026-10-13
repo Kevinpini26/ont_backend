@@ -29,6 +29,7 @@ use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
 
 class DocumentProduitDirectionService
@@ -42,6 +43,7 @@ class DocumentProduitDirectionService
         private readonly DirecteurDirectionResolver $directeurs,
         private readonly PdfGenerationService $pdf,
         private readonly TipTapHtmlRenderer $renduTipTap,
+        private readonly DocumentProduitScanOfficielService $scansOfficiels,
     ) {}
 
     public function creer(TraitementDirection $traitement, User $secretariat, array $donnees): DocumentProduitDirection
@@ -431,6 +433,67 @@ class DocumentProduitDirectionService
             }
             $document->update(['statut' => DocumentProduitStatut::TRANSMIS_RECEPTION, 'transmis_reception_par_id' => $secretariat->id, 'transmis_reception_at' => now()]);
             $this->audit->enregistrer('document_direction.transmis_reception', $document, $secretariat);
+
+            return $this->charger($document);
+        });
+    }
+
+    public function transmettreAutonomeReception(DocumentProduitDirection $document, User $secretariat): DocumentProduitDirection
+    {
+        return DB::transaction(function () use ($document, $secretariat) {
+            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+            $secretariat = User::query()->lockForUpdate()->findOrFail($secretariat->id);
+
+            if ($document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
+                || $document->transmis_reception_par_id !== null
+                || $document->transmis_reception_at !== null) {
+                throw new ConflictHttpException('Ce document a déjà été transmis à la Réception.');
+            }
+
+            if ($document->origine !== DocumentProduitOrigine::AUTONOME
+                || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
+                || $document->traitement_direction_id !== null
+                || $document->document_source_id !== null
+                || $document->courrier_id === null
+                || $document->recu_par_id !== null
+                || $document->recu_at !== null
+                || $secretariat->role !== UserRole::SECRETARIAT_DIRECTION
+                || $secretariat->direction_id !== $document->direction_id) {
+                throw ValidationException::withMessages([
+                    'document' => 'Seul le secrétariat producteur peut transmettre un document autonome avec scan officiel enregistré.',
+                ]);
+            }
+
+            $courrier = Courrier::withoutGlobalScopes()
+                ->lockForUpdate()
+                ->findOrFail($document->courrier_id);
+
+            if ($courrier->direction_origine_id !== $document->direction_id
+                || $courrier->reference_documentaire === null
+                || trim($courrier->reference_documentaire) === ''
+                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
+                || $courrier->numero_enregistrement !== null
+                || $courrier->transitions()->exists()
+                || $courrier->dispatchs()->exists()) {
+                throw ValidationException::withMessages([
+                    'document' => 'Le Courrier autonome ne possède pas une référence documentaire valide ou ne satisfait pas les conditions de transmission.',
+                ]);
+            }
+
+            $this->scansOfficiels->verifierPourTransmission($document);
+
+            $transmisAt = now();
+            $document->update([
+                'statut' => DocumentProduitStatut::TRANSMIS_RECEPTION,
+                'transmis_reception_par_id' => $secretariat->id,
+                'transmis_reception_at' => $transmisAt,
+            ]);
+            $this->audit->enregistrer('document_direction.autonome_transmis_reception', $document, $secretariat, [
+                'courrier_id' => $courrier->id,
+                'reference_documentaire' => $courrier->reference_documentaire,
+                'transmis_reception_at' => $transmisAt->toIso8601String(),
+            ]);
 
             return $this->charger($document);
         });

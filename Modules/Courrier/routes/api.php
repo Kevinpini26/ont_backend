@@ -53,6 +53,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/traitements-direction/{traitement}/transmettre-directeur', [TraitementDirectionController::class, 'transmettreDirecteur']);
     Route::post('/traitements-direction/{traitement}/prendre-en-charge', [TraitementDirectionController::class, 'prendreEnCharge']);
     Route::post('/traitements-direction/{traitement}/decision', [TraitementDirectionController::class, 'decider']);
+    Route::get('/documents-produits-direction/transmis-reception/autonomes', [DocumentProduitDirectionController::class, 'autonomesTransmisReception']);
     Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
     Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
     Route::get('/documents-produits-direction/{document}', [DocumentProduitDirectionController::class, 'show']);

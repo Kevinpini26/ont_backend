@@ -41,8 +41,22 @@ class DocumentProduitDirectionPolicy
 
     public function consulterScanOfficiel(User $user, DocumentProduitDirection $document): bool
     {
+        if ($user->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $user->poste === Poste::RECEPTION) {
+            return $document->origine === DocumentProduitOrigine::AUTONOME
+                && $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
+                && $document->scan_officiel_document_id !== null
+                && $document->transmis_reception_par_id !== null
+                && $document->transmis_reception_at !== null
+                && $document->recu_par_id === null
+                && $document->recu_at === null;
+        }
+
         if ($document->origine !== DocumentProduitOrigine::AUTONOME
-            || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
+            || ! in_array($document->statut, [
+                DocumentProduitStatut::SCAN_ENREGISTRE,
+                DocumentProduitStatut::TRANSMIS_RECEPTION,
+            ], true)
             || $document->scan_officiel_document_id === null
             || $user->direction_id !== $document->direction_id) {
             return false;
@@ -98,8 +112,18 @@ class DocumentProduitDirectionPolicy
 
     public function transmettreReception(User $user, DocumentProduitDirection $document): bool
     {
-        return $document->origine !== DocumentProduitOrigine::AUTONOME
-            && $user->role === UserRole::SECRETARIAT_DIRECTION
+        if ($document->origine === DocumentProduitOrigine::AUTONOME) {
+            return $user->role === UserRole::SECRETARIAT_DIRECTION
+                && $user->direction_id === $document->direction_id
+                && $document->statut === DocumentProduitStatut::SCAN_ENREGISTRE
+                && $document->scan_officiel_document_id !== null
+                && $document->transmis_reception_par_id === null
+                && $document->transmis_reception_at === null
+                && $document->recu_par_id === null
+                && $document->recu_at === null;
+        }
+
+        return $user->role === UserRole::SECRETARIAT_DIRECTION
             && $user->direction_id === $document->direction_id
             && $document->statut === DocumentProduitStatut::VALIDE;
     }

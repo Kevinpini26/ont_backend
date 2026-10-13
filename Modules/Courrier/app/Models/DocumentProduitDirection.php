@@ -95,6 +95,11 @@ class DocumentProduitDirection extends Model
         return $this->belongsTo(User::class, 'valide_par_id');
     }
 
+    public function transmisReceptionPar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'transmis_reception_par_id');
+    }
+
     public function auditLogs(): MorphMany
     {
         return $this->morphMany(AuditLog::class, 'sujet', 'auditable_type', 'auditable_id');

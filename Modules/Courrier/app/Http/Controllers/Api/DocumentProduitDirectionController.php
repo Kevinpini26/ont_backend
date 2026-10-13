@@ -31,6 +31,7 @@ class DocumentProduitDirectionController extends Controller
         'document_direction.correction_demandee',
         'document_direction.valide',
         'document_direction.scan_officiel_depose',
+        'document_direction.autonome_transmis_reception',
     ];
 
     public function __construct(
@@ -51,9 +52,11 @@ class DocumentProduitDirectionController extends Controller
             'soumisPar',
             'correctionDemandeePar',
             'validePar',
+            'transmisReceptionPar',
         ]);
         if ($request->user()->poste === Poste::RECEPTION) {
-            $q->whereIn('statut', ['transmis_reception', 'entre_circuit']);
+            $q->where('origine', '!=', DocumentProduitOrigine::AUTONOME->value)
+                ->whereIn('statut', ['transmis_reception', 'entre_circuit']);
         } else {
             abort_unless(
                 $request->user()->direction_id !== null
@@ -89,6 +92,50 @@ class DocumentProduitDirectionController extends Controller
         );
     }
 
+    public function autonomesTransmisReception(Request $request)
+    {
+        abort_unless(
+            $request->user()->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $request->user()->poste === Poste::RECEPTION,
+            403,
+        );
+
+        $query = DocumentProduitDirection::query()
+            ->where('origine', DocumentProduitOrigine::AUTONOME)
+            ->where('statut', 'transmis_reception')
+            ->whereNotNull('transmis_reception_par_id')
+            ->whereNotNull('transmis_reception_at')
+            ->whereNull('recu_par_id')
+            ->whereNull('recu_at')
+            ->whereNotNull('scan_officiel_document_id')
+            ->whereHas('courrier', fn ($courriers) => $courriers
+                ->whereNotNull('reference_documentaire')
+                ->whereNull('numero_enregistrement'))
+            ->whereHas('scansOfficiels', fn ($scans) => $scans
+                ->whereColumn('document_numerise_id', 'documents_produits_direction.scan_officiel_document_id')
+                ->where('version', 1)
+                ->where('est_actif', true)
+                ->where('attestation_confirmee', true)
+                ->whereNotNull('atteste_at'))
+            ->with([
+                'courrier.directionOrigine',
+                'direction',
+                'directeur',
+                'creePar',
+                'soumisPar',
+                'validePar',
+                'transmisReceptionPar',
+                'auditLogs' => fn ($audits) => $audits
+                    ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
+                    ->with('utilisateur')
+                    ->orderBy('created_at')
+                    ->orderBy('id'),
+            ])
+            ->latest('transmis_reception_at');
+
+        return DocumentProduitDirectionResource::collection($query->paginate(20));
+    }
+
     public function store(CreerDocumentProduitRequest $request, TraitementDirection $traitement)
     {
         return new DocumentProduitDirectionResource($this->service->creer($traitement, $request->user(), $request->validated()));
@@ -108,7 +155,7 @@ class DocumentProduitDirectionController extends Controller
     {
         $this->authorize('view', $document);
 
-        $document->load(['courrier.directionOrigine', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar']);
+        $document->load(['courrier.directionOrigine', 'documentSource', 'direction', 'traitement.directeur', 'directeur', 'creePar', 'validePar', 'transmisReceptionPar']);
 
         return new DocumentProduitDirectionResource($this->chargerTracabilite($document, true));
     }
@@ -122,6 +169,13 @@ class DocumentProduitDirectionController extends Controller
 
     public function consulterScanOfficiel(Request $request, DocumentProduitDirection $document): StreamedResponse
     {
+        $user = $request->user();
+        if ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::RECEPTION) {
+            abort_unless($user->can('consulterScanOfficiel', $document), 404);
+
+            return $this->serviceScanOfficiel->consulterTransmisReception($document);
+        }
+
         abort_unless($request->user()->can('consulterScanOfficiel', $document), 404);
 
         return $this->serviceScanOfficiel->consulter($document);
@@ -195,7 +249,11 @@ class DocumentProduitDirectionController extends Controller
     {
         $this->authorize('transmettreReception', $document);
 
-        return new DocumentProduitDirectionResource($this->service->transmettreReception($document, $request->user()));
+        $transmis = $document->origine === DocumentProduitOrigine::AUTONOME
+            ? $this->service->transmettreAutonomeReception($document, $request->user())
+            : $this->service->transmettreReception($document, $request->user());
+
+        return new DocumentProduitDirectionResource($this->chargerTracabilite($transmis, true));
     }
 
     public function recevoir(Request $request, DocumentProduitDirection $document)
@@ -218,6 +276,7 @@ class DocumentProduitDirectionController extends Controller
             'soumisPar',
             'correctionDemandeePar',
             'validePar',
+            'transmisReceptionPar',
         ]);
 
         if ($avecHistorique) {
