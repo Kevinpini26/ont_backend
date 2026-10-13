@@ -17,6 +17,8 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
+use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Enums\MentionImputation;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
@@ -39,8 +41,8 @@ use Modules\Courrier\Models\BordereauLot;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Courrier\Models\CourrierTransition;
-use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Models\EmpruntOriginal;
 use Modules\Courrier\Models\InstructionCourrierDg;
 use Modules\Courrier\Models\MissionDocumentaire;
@@ -58,6 +60,7 @@ use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgAuthorityResolver;
 use Modules\Kernel\Support\DgDisponibilite;
 use Modules\Kernel\Support\EmpreinteFichier;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
 
 /**
@@ -79,6 +82,7 @@ class CourrierCircuitService
         private readonly DispatchCourrierService $dispatchs,
         private readonly DossierWorkflowGuard $dossiers,
         private readonly DgAuthorityResolver $autoriteDg,
+        private readonly DocumentProduitScanOfficielService $scansOfficiels,
     ) {}
 
     public function creer(User $auteur, array $donnees, bool $numerisationImpossible = false): Courrier
@@ -579,6 +583,122 @@ class CourrierCircuitService
 
             return $courrier;
         });
+    }
+
+    public function prendreEnChargeAutonomeSec1(DocumentProduitDirection $document, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($document, $utilisateur) {
+            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+            $utilisateur = User::query()->lockForUpdate()->findOrFail($utilisateur->id);
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->courrier_id);
+
+            $this->assertAutonomeAccepteSec1($document, $courrier, $utilisateur, CourrierStatut::RECU);
+            $this->scansOfficiels->verifierPourSec1($document);
+
+            $transition = CourrierTransition::query()
+                ->where('courrier_id', $courrier->id)
+                ->orderByDesc('id')
+                ->first();
+            if ($transition === null
+                || $transition->nouveau_statut !== CourrierStatut::RECU
+                || $transition->destinataire_poste !== Poste::SECRETARIAT_1->value) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+            if ($transition->accuse_reception_at !== null) {
+                throw new ConflictHttpException('Le document a déjà été pris en charge par SEC1.');
+            }
+
+            $courrier = $this->accuserReception($courrier, $utilisateur);
+            $this->audit->enregistrer('document_direction.autonome_pris_en_charge_sec1', $document, $utilisateur, [
+                'courrier_id' => $courrier->id,
+                'numero_enregistrement' => $courrier->numero_enregistrement,
+                'prise_en_charge_at' => now()->toIso8601String(),
+            ]);
+
+            return $courrier;
+        });
+    }
+
+    public function transmettreAutonomeDgDepuisSec1(DocumentProduitDirection $document, User $utilisateur): Courrier
+    {
+        return DB::transaction(function () use ($document, $utilisateur) {
+            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+            $utilisateur = User::query()->lockForUpdate()->findOrFail($utilisateur->id);
+            $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($document->courrier_id);
+
+            $this->assertAutonomeAccepteSec1($document, $courrier, $utilisateur, CourrierStatut::RECU);
+            $this->scansOfficiels->verifierPourSec1($document);
+
+            $transition = CourrierTransition::query()
+                ->where('courrier_id', $courrier->id)
+                ->orderByDesc('id')
+                ->first();
+            if ($transition === null
+                || $transition->nouveau_statut !== CourrierStatut::RECU
+                || $transition->destinataire_poste !== Poste::SECRETARIAT_1->value) {
+                throw TransitionNonAutoriseeException::sautDetape();
+            }
+            if ($transition->accuse_reception_at === null) {
+                throw ValidationException::withMessages([
+                    'document' => 'SEC1 doit d’abord accuser réception du document avant de le transmettre à la DG.',
+                ]);
+            }
+            if ($courrier->enTransit()) {
+                throw TransitionNonAutoriseeException::dechargeNonDonnee();
+            }
+
+            $courrier->necessite_avis_dg = true;
+            $courrier->statut = CourrierStatut::EN_ATTENTE_AVIS_DG;
+            $courrier->save();
+            $this->tracerTransition($courrier, $utilisateur);
+
+            $dateTransmission = now();
+            $this->audit->enregistrer('courrier.transmis_dg', $courrier, $utilisateur, [
+                'depuis' => CourrierStatut::RECU->value,
+                'document_autonome' => true,
+            ]);
+            $this->audit->enregistrer('document_direction.autonome_transmis_dg_sec1', $document, $utilisateur, [
+                'courrier_id' => $courrier->id,
+                'numero_enregistrement' => $courrier->numero_enregistrement,
+                'reference_documentaire' => $courrier->reference_documentaire,
+                'transmis_dg_at' => $dateTransmission->toIso8601String(),
+            ]);
+            $this->notifierDgApresCommit($courrier);
+
+            return $courrier;
+        });
+    }
+
+    private function assertAutonomeAccepteSec1(
+        DocumentProduitDirection $document,
+        Courrier $courrier,
+        User $utilisateur,
+        CourrierStatut $statutAttendu,
+    ): void {
+        if ($utilisateur->role !== UserRole::AGENT_CIRCUIT_COURRIER
+            || ! $this->delegations->utilisateurHabilite($utilisateur, [Poste::SECRETARIAT_1])) {
+            throw TransitionNonAutoriseeException::posteNonHabilite();
+        }
+
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::ENTRE_CIRCUIT
+            || $document->traitement_direction_id !== null
+            || $document->document_source_id !== null
+            || $document->courrier_id !== $courrier->id
+            || $document->transmis_reception_par_id === null
+            || $document->transmis_reception_at === null
+            || $document->recu_par_id === null
+            || $document->recu_at === null
+            || $document->scan_officiel_document_id === null
+            || $courrier->direction_origine_id !== $document->direction_id
+            || $courrier->statut !== $statutAttendu
+            || $courrier->numero_enregistrement === null
+            || trim($courrier->numero_enregistrement) === ''
+            || ! is_string($courrier->reference_documentaire)
+            || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            || $courrier->dispatchs()->exists()) {
+            throw new ConflictHttpException('Le document autonome n’est plus dans un état cohérent pour une action de SEC1.');
+        }
     }
 
     /**

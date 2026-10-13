@@ -54,9 +54,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/traitements-direction/{traitement}/prendre-en-charge', [TraitementDirectionController::class, 'prendreEnCharge']);
     Route::post('/traitements-direction/{traitement}/decision', [TraitementDirectionController::class, 'decider']);
     Route::get('/documents-produits-direction/transmis-reception/autonomes', [DocumentProduitDirectionController::class, 'autonomesTransmisReception']);
+    Route::get('/documents-produits-direction/autonomes-sec1', [DocumentProduitDirectionController::class, 'autonomesAcceptesSec1']);
     Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
     Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
     Route::get('/documents-produits-direction/{document}/controle-reception', [DocumentProduitDirectionController::class, 'etatControleReception']);
+    Route::get('/documents-produits-direction/{document}/controle-sec1', [DocumentProduitDirectionController::class, 'etatSec1']);
     Route::get('/documents-produits-direction/{document}', [DocumentProduitDirectionController::class, 'show']);
     Route::get('/documents-produits-direction/{document}/pdf-officiel', [DocumentProduitDirectionController::class, 'telechargerPdfOfficiel']);
     Route::get('/documents-produits-direction/{document}/scan-officiel', [DocumentProduitDirectionController::class, 'consulterScanOfficiel']);
@@ -69,6 +71,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/documents-produits-direction/{document}/transmettre-reception', [DocumentProduitDirectionController::class, 'transmettreReception']);
     Route::post('/documents-produits-direction/{document}/accepter-reception', [DocumentProduitDirectionController::class, 'accepterReceptionAutonome']);
     Route::post('/documents-produits-direction/{document}/demander-correction-reception', [DocumentProduitDirectionController::class, 'demanderCorrectionReceptionAutonome']);
+    Route::post('/documents-produits-direction/{document}/prendre-en-charge-sec1', [DocumentProduitDirectionController::class, 'prendreEnChargeAutonomeSec1']);
+    Route::post('/documents-produits-direction/{document}/transmettre-dg-sec1', [DocumentProduitDirectionController::class, 'transmettreAutonomeDgDepuisSec1']);
     Route::post('/documents-produits-direction/{document}/recevoir', [DocumentProduitDirectionController::class, 'recevoir']);
     Route::get('/classements-documents', [ClassementDocumentController::class, 'index']);
     Route::post('/dispatchs/{dispatch}/classer', [ClassementDocumentController::class, 'classer']);

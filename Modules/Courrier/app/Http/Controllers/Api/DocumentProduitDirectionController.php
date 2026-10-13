@@ -17,6 +17,7 @@ use Modules\Courrier\Http\Requests\SoumettreDocumentProduitRequest;
 use Modules\Courrier\Http\Resources\DocumentProduitDirectionResource;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\DocumentProduitDirectionService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Kernel\Enums\Poste;
@@ -35,11 +36,14 @@ class DocumentProduitDirectionController extends Controller
         'document_direction.autonome_transmis_reception',
         'document_direction.autonome_accepte_reception',
         'document_direction.autonome_correction_demandee_reception',
+        'document_direction.autonome_pris_en_charge_sec1',
+        'document_direction.autonome_transmis_dg_sec1',
     ];
 
     public function __construct(
         private readonly DocumentProduitDirectionService $service,
         private readonly DocumentProduitScanOfficielService $serviceScanOfficiel,
+        private readonly CourrierCircuitService $circuit,
     ) {}
 
     public function index(Request $request)
@@ -144,6 +148,71 @@ class DocumentProduitDirectionController extends Controller
         return DocumentProduitDirectionResource::collection($query->paginate(20));
     }
 
+    public function autonomesAcceptesSec1(Request $request)
+    {
+        $this->authorize('consulterFileAutonomesSec1', DocumentProduitDirection::class);
+
+        $query = DocumentProduitDirection::query()
+            ->where('origine', DocumentProduitOrigine::AUTONOME)
+            ->where('statut', 'entre_circuit')
+            ->whereNotNull('transmis_reception_par_id')
+            ->whereNotNull('transmis_reception_at')
+            ->whereNotNull('recu_par_id')
+            ->whereNotNull('recu_at')
+            ->whereNotNull('scan_officiel_document_id')
+            ->whereHas('courrier', fn ($courriers) => $courriers
+                ->whereIn('statut', ['recu', 'en_attente_avis_dg'])
+                ->whereNotNull('reference_documentaire')
+                ->whereNotNull('numero_enregistrement'))
+            ->whereHas('scansOfficiels', fn ($scans) => $scans
+                ->whereColumn('document_numerise_id', 'documents_produits_direction.scan_officiel_document_id')
+                ->where('est_actif', true)
+                ->where('attestation_confirmee', true)
+                ->whereNotNull('atteste_at'))
+            ->with([
+                'courrier.directionOrigine',
+                'courrier.transitions.auteur',
+                'courrier.transitions.accuseReceptionPar',
+                'direction',
+                'directionDestinationSouhaitee',
+                'directeur',
+                'transmisReceptionPar',
+                'recuPar',
+                'scansOfficiels' => fn ($scans) => $scans->where('est_actif', true)->with('deposePar'),
+                'auditLogs' => fn ($audits) => $audits
+                    ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
+                    ->with('utilisateur')
+                    ->orderBy('created_at')
+                    ->orderBy('id'),
+            ])
+            ->latest('recu_at');
+
+        return DocumentProduitDirectionResource::collection($query->paginate(20));
+    }
+
+    public function etatSec1(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('consulterAutonomeSec1', $document);
+
+        return new DocumentProduitDirectionResource($this->chargerAutonomeSec1($document));
+    }
+
+    public function prendreEnChargeAutonomeSec1(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('prendreEnChargeAutonomeSec1', $document);
+        $this->circuit->prendreEnChargeAutonomeSec1($document, $request->user());
+
+        return new DocumentProduitDirectionResource($this->chargerAutonomeSec1($document));
+    }
+
+    public function transmettreAutonomeDgDepuisSec1(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('transmettreAutonomeSec1', $document);
+        $this->circuit->transmettreAutonomeDgDepuisSec1($document, $request->user());
+
+        return new DocumentProduitDirectionResource($this->chargerAutonomeSec1($document));
+    }
+
     public function etatControleReception(Request $request, DocumentProduitDirection $document)
     {
         $this->authorize('consulterControleAutonomeReception', $document);
@@ -189,6 +258,11 @@ class DocumentProduitDirectionController extends Controller
     {
         abort_unless($request->user()->can('downloadPdfOfficiel', $document), 404);
 
+        if ($request->user()->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $request->user()->poste === Poste::SECRETARIAT_1) {
+            return $this->service->telechargerPdfOfficielAccepteSec1($document);
+        }
+
         return $this->service->telechargerPdfOfficiel($document);
     }
 
@@ -199,6 +273,12 @@ class DocumentProduitDirectionController extends Controller
             abort_unless($user->can('consulterScanOfficiel', $document), 404);
 
             return $this->serviceScanOfficiel->consulterTransmisReception($document);
+        }
+
+        if ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::SECRETARIAT_1) {
+            abort_unless($user->can('consulterScanOfficiel', $document), 404);
+
+            return $this->serviceScanOfficiel->consulterAccepteSec1($document);
         }
 
         abort_unless($request->user()->can('consulterScanOfficiel', $document), 404);
@@ -339,6 +419,27 @@ class DocumentProduitDirectionController extends Controller
                     ->orderBy('id'),
             ]);
         }
+
+        return $document;
+    }
+
+    private function chargerAutonomeSec1(DocumentProduitDirection $document): DocumentProduitDirection
+    {
+        $document->load([
+            'courrier.directionOrigine',
+            'courrier.transitions.auteur',
+            'courrier.transitions.accuseReceptionPar',
+            'direction',
+            'directionDestinationSouhaitee',
+            'directeur',
+            'transmisReceptionPar',
+            'recuPar',
+            'auditLogs' => fn ($audits) => $audits
+                ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
+                ->with('utilisateur')
+                ->orderBy('created_at')
+                ->orderBy('id'),
+        ]);
 
         return $document;
     }

@@ -26,6 +26,10 @@ class DocumentProduitDirectionPolicy
 
     public function downloadPdfOfficiel(User $user, DocumentProduitDirection $document): bool
     {
+        if ($this->estSecretariat1($user)) {
+            return $this->estAutonomeAccepte($document);
+        }
+
         return $document->origine === DocumentProduitOrigine::AUTONOME
             && in_array($document->statut, [DocumentProduitStatut::VALIDE, DocumentProduitStatut::SCAN_ENREGISTRE], true)
             && $document->estVisiblePour($user);
@@ -41,6 +45,10 @@ class DocumentProduitDirectionPolicy
 
     public function consulterScanOfficiel(User $user, DocumentProduitDirection $document): bool
     {
+        if ($this->estSecretariat1($user)) {
+            return $this->estAutonomeAccepte($document);
+        }
+
         if ($user->role === UserRole::AGENT_CIRCUIT_COURRIER
             && $user->poste === Poste::RECEPTION) {
             return $document->origine === DocumentProduitOrigine::AUTONOME
@@ -160,6 +168,44 @@ class DocumentProduitDirectionPolicy
             ], true)
             && $document->transmis_reception_par_id !== null
             && $document->transmis_reception_at !== null;
+    }
+
+    public function consulterFileAutonomesSec1(User $user): bool
+    {
+        return $this->estSecretariat1($user);
+    }
+
+    public function consulterAutonomeSec1(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->estSecretariat1($user) && $this->estAutonomeAccepte($document);
+    }
+
+    public function prendreEnChargeAutonomeSec1(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->consulterAutonomeSec1($user, $document);
+    }
+
+    public function transmettreAutonomeSec1(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->consulterAutonomeSec1($user, $document);
+    }
+
+    private function estSecretariat1(User $user): bool
+    {
+        return $user->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $user->poste === Poste::SECRETARIAT_1;
+    }
+
+    private function estAutonomeAccepte(DocumentProduitDirection $document): bool
+    {
+        return $document->origine === DocumentProduitOrigine::AUTONOME
+            && $document->statut === DocumentProduitStatut::ENTRE_CIRCUIT
+            && $document->courrier_id !== null
+            && $document->transmis_reception_par_id !== null
+            && $document->transmis_reception_at !== null
+            && $document->recu_par_id !== null
+            && $document->recu_at !== null
+            && $document->scan_officiel_document_id !== null;
     }
 
     private function controlerAutonomeReception(User $user, DocumentProduitDirection $document): bool

@@ -57,6 +57,48 @@ class DocumentProduitDirectionTransmissionPolicyTest extends TestCase
         self::assertFalse($policy->consulterScanOfficiel($reception, $recu));
     }
 
+    public function test_sec1_ne_peut_consulter_ou_traiter_que_les_documents_autonomes_acceptes(): void
+    {
+        $policy = new DocumentProduitDirectionPolicy;
+        $sec1 = $this->secretariat1();
+        $accepte = $this->document(DocumentProduitStatut::ENTRE_CIRCUIT, [
+            'courrier_id' => 42,
+            'transmis_reception_par_id' => 10,
+            'transmis_reception_at' => '2026-10-13T12:00:00+00:00',
+            'recu_par_id' => 30,
+            'recu_at' => '2026-10-13T14:00:00+00:00',
+        ]);
+
+        self::assertTrue($policy->consulterAutonomeSec1($sec1, $accepte));
+        self::assertTrue($policy->prendreEnChargeAutonomeSec1($sec1, $accepte));
+        self::assertTrue($policy->transmettreAutonomeSec1($sec1, $accepte));
+        self::assertTrue($policy->downloadPdfOfficiel($sec1, $accepte));
+        self::assertTrue($policy->consulterScanOfficiel($sec1, $accepte));
+
+        self::assertFalse($policy->consulterAutonomeSec1($this->reception(Poste::RECEPTION), $accepte));
+        self::assertFalse($policy->consulterAutonomeSec1($this->reception(Poste::SECRETARIAT_2), $accepte));
+        self::assertFalse($policy->downloadPdfOfficiel($this->reception(), $accepte));
+
+        $pretransmission = $this->document(DocumentProduitStatut::SCAN_ENREGISTRE, [
+            'courrier_id' => 42,
+            'transmis_reception_par_id' => null,
+            'transmis_reception_at' => null,
+            'recu_par_id' => null,
+            'recu_at' => null,
+        ]);
+        self::assertFalse($policy->consulterAutonomeSec1($sec1, $pretransmission));
+        self::assertFalse($policy->consulterScanOfficiel($sec1, $pretransmission));
+
+        $sansPreuveAcceptation = $this->document(DocumentProduitStatut::ENTRE_CIRCUIT, [
+            'courrier_id' => 42,
+            'transmis_reception_par_id' => 10,
+            'transmis_reception_at' => '2026-10-13T12:00:00+00:00',
+            'recu_par_id' => null,
+            'recu_at' => null,
+        ]);
+        self::assertFalse($policy->consulterAutonomeSec1($sec1, $sansPreuveAcceptation));
+    }
+
     public function test_la_file_historique_et_la_reception_ne_peuvent_pas_ouvrir_un_autonome_pretransmis(): void
     {
         $policy = new DocumentProduitDirectionPolicy;
@@ -138,6 +180,18 @@ class DocumentProduitDirectionTransmissionPolicyTest extends TestCase
         $user->forceFill([
             'role' => UserRole::AGENT_CIRCUIT_COURRIER,
             'poste' => $poste,
+            'direction_id' => null,
+        ]);
+
+        return $user;
+    }
+
+    private function secretariat1(): User
+    {
+        $user = new User;
+        $user->forceFill([
+            'role' => UserRole::AGENT_CIRCUIT_COURRIER,
+            'poste' => Poste::SECRETARIAT_1,
             'direction_id' => null,
         ]);
 

@@ -15,6 +15,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\QualiteDocumentNumerise;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Enums\UserRole;
@@ -191,47 +192,71 @@ class DocumentProduitScanOfficielService
 
     public function consulter(DocumentProduitDirection $document): StreamedResponse
     {
-        return $this->consulterSelonEtat($document, false);
+        return $this->consulterSelonEtat($document, 'producteur');
     }
 
-    private function consulterSelonEtat(DocumentProduitDirection $document, bool $transmisReception): StreamedResponse
+    public function consulterAccepteSec1(DocumentProduitDirection $document): StreamedResponse
+    {
+        return $this->consulterSelonEtat($document, 'sec1');
+    }
+
+    private function consulterSelonEtat(DocumentProduitDirection $document, string $contexte): StreamedResponse
     {
         $document->refresh();
 
-        $étatAttendu = $transmisReception
-            ? $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
+        $transmisReception = $contexte === 'reception';
+        $accepteSec1 = $contexte === 'sec1';
+        $étatAttendu = $accepteSec1
+            ? $document->statut === DocumentProduitStatut::ENTRE_CIRCUIT
+                && $document->transmis_reception_par_id !== null
+                && $document->transmis_reception_at !== null
+                && $document->recu_par_id !== null
+                && $document->recu_at !== null
+            : ($transmisReception
+                ? $document->statut === DocumentProduitStatut::TRANSMIS_RECEPTION
                 && $document->transmis_reception_par_id !== null
                 && $document->transmis_reception_at !== null
             : $document->statut === DocumentProduitStatut::SCAN_ENREGISTRE
                 && (($document->transmis_reception_par_id === null && $document->transmis_reception_at === null)
                     || ($document->transmis_reception_par_id !== null
                         && $document->transmis_reception_at !== null
-                        && $document->correction_demandee_at !== null));
+                        && $document->correction_demandee_at !== null)));
 
         if ($document->origine !== DocumentProduitOrigine::AUTONOME
             || ! $étatAttendu
             || ! is_numeric($document->scan_officiel_document_id)
             || $document->courrier_id === null
-            || $document->recu_par_id !== null
-            || $document->recu_at !== null) {
+            || (! $accepteSec1 && ($document->recu_par_id !== null || $document->recu_at !== null))) {
             abort(404);
         }
 
         $courrier = Courrier::withoutGlobalScopes()->find($document->courrier_id);
         if ($courrier === null
             || $courrier->direction_origine_id !== $document->direction_id
-            || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
-            || (($transmisReception || $document->transmis_reception_at !== null) && (
+            || ($accepteSec1
+                ? ! in_array($courrier->statut, [CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_AVIS_DG], true)
+                : $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION)
+            || (($transmisReception || $accepteSec1 || $document->transmis_reception_at !== null) && (
                 $courrier->reference_documentaire === null
                 || trim($courrier->reference_documentaire) === ''
                 || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
             ))
-            || $courrier->numero_enregistrement !== null
-            || $courrier->transitions()->exists()
+            || ($accepteSec1
+                ? $courrier->numero_enregistrement === null || trim($courrier->numero_enregistrement) === ''
+                : $courrier->numero_enregistrement !== null)
+            || ($accepteSec1
+                ? ! $courrier->transitions()->where('nouveau_statut', CourrierStatut::RECU->value)
+                    ->where('destinataire_poste', Poste::SECRETARIAT_1->value)
+                    ->where('changed_by_id', $document->recu_par_id)
+                    ->exists()
+                : $courrier->transitions()->exists())
             || $courrier->dispatchs()->exists()) {
             abort(404);
         }
 
+        $étapeScanAttendue = $accepteSec1
+            ? CourrierStatut::BROUILLON_DIRECTION->value
+            : $courrier->statut->value;
         $scan = DocumentProduitScanOfficiel::query()
             ->where('document_produit_direction_id', $document->id)
             ->where('courrier_id', $courrier->id)
@@ -269,7 +294,7 @@ class DocumentProduitScanOfficielService
             || $numerisation->numerisable_type !== $courrier->getMorphClass()
             || (int) $numerisation->numerisable_id !== $courrier->id
             || (int) $numerisation->version < 1
-            || $numerisation->etape_circuit !== $courrier->statut->value
+            || $numerisation->etape_circuit !== $étapeScanAttendue
             || $numerisation->source !== SourceDocumentNumerise::TELEVERSEMENT
             || (int) $numerisation->capture_par_id !== (int) $scan->depose_par_id
             || ! is_string($numerisation->chemin)
@@ -285,7 +310,8 @@ class DocumentProduitScanOfficielService
             || (int) $numerisation->nombre_pages < 1
             || $numerisation->qualite !== QualiteDocumentNumerise::BONNE
             || User::query()->whereKey($scan->depose_par_id)->doesntExist()
-            || ($transmisReception && User::query()->whereKey($document->transmis_reception_par_id)->doesntExist())
+            || (($transmisReception || $accepteSec1) && User::query()->whereKey($document->transmis_reception_par_id)->doesntExist())
+            || ($accepteSec1 && User::query()->whereKey($document->recu_par_id)->doesntExist())
             || ! Storage::disk('local')->exists($numerisation->chemin)) {
             abort(404);
         }
@@ -371,9 +397,23 @@ class DocumentProduitScanOfficielService
         $this->consulterTransmisReception($document);
     }
 
+    public function verifierPourSec1(DocumentProduitDirection $document): void
+    {
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::ENTRE_CIRCUIT
+            || $document->transmis_reception_par_id === null
+            || $document->transmis_reception_at === null
+            || $document->recu_par_id === null
+            || $document->recu_at === null) {
+            throw ValidationException::withMessages(['document' => 'Le document autonome n’a pas été accepté par la Réception.']);
+        }
+
+        $this->consulterAccepteSec1($document);
+    }
+
     public function consulterTransmisReception(DocumentProduitDirection $document): StreamedResponse
     {
-        return $this->consulterSelonEtat($document, true);
+        return $this->consulterSelonEtat($document, 'reception');
     }
 
     private function verifierAutorisationSousVerrou(DocumentProduitDirection $document, User $deposant): void
