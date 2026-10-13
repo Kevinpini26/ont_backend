@@ -20,6 +20,7 @@ use Modules\Courrier\Services\DocumentProduitDirectionService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DocumentProduitDirectionController extends Controller
 {
@@ -117,6 +118,13 @@ class DocumentProduitDirectionController extends Controller
         abort_unless($request->user()->can('downloadPdfOfficiel', $document), 404);
 
         return $this->service->telechargerPdfOfficiel($document);
+    }
+
+    public function consulterScanOfficiel(Request $request, DocumentProduitDirection $document): StreamedResponse
+    {
+        abort_unless($request->user()->can('consulterScanOfficiel', $document), 404);
+
+        return $this->serviceScanOfficiel->consulter($document);
     }
 
     public function deposerScanOfficiel(DeposerScanOfficielRequest $request, DocumentProduitDirection $document): JsonResponse

@@ -12,6 +12,7 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DegreUrgence;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
@@ -39,8 +40,10 @@ use Modules\Courrier\Http\Requests\ValiderRelectureRequest;
 use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
+use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\DispatchCourrierService;
+use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Courrier\Services\PdfOfficielIntegrity;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
@@ -64,6 +67,7 @@ class CourrierController extends Controller
         private readonly NotificationService $notifications,
         private readonly FeuilleCouvertureGenerator $feuilleCouvertureGenerator,
         private readonly GestionnaireDocumentNumerise $gestionnaire,
+        private readonly DocumentProduitScanOfficielService $scanOfficiel,
     ) {}
 
     public function index(Request $request)
@@ -717,7 +721,7 @@ class CourrierController extends Controller
      * papier continue de vivre après son arrivée : annotation DG, cachet
      * Protocole...).
      */
-    public function telechargerNumerisation(Courrier $courrier, DocumentNumerise $document)
+    public function telechargerNumerisation(Request $request, Courrier $courrier, DocumentNumerise $document)
     {
         $this->authorize('view', $courrier);
 
@@ -725,6 +729,61 @@ class CourrierController extends Controller
             $document->numerisable_type === $courrier->getMorphClass() && $document->numerisable_id === $courrier->id,
             404,
         );
+
+        $documentProduit = $courrier->documentProduitDirection;
+        $doitVerifierScanOfficiel = $documentProduit !== null
+            && ($documentProduit->origine === DocumentProduitOrigine::AUTONOME
+                || $documentProduit->traitement_direction_id === null
+                || $documentProduit->document_source_id === null);
+
+        if ($doitVerifierScanOfficiel) {
+            abort_unless(
+                $documentProduit->origine === DocumentProduitOrigine::AUTONOME
+                && $documentProduit->traitement_direction_id === null
+                && $documentProduit->document_source_id === null
+                && (int) $documentProduit->courrier_id === (int) $courrier->id
+                && (int) $documentProduit->scan_officiel_document_id === (int) $document->id,
+                404,
+            );
+
+            $scanOfficiel = DocumentProduitScanOfficiel::query()
+                ->where('document_numerise_id', $document->id)
+                ->first();
+
+            abort_unless(
+                $scanOfficiel !== null
+                && (int) $scanOfficiel->courrier_id === (int) $courrier->id
+                && (int) $scanOfficiel->document_produit_direction_id === (int) $documentProduit->id,
+                404,
+            );
+
+            abort_unless($request->user()->can('consulterScanOfficiel', $documentProduit), 404);
+
+            return $this->scanOfficiel->consulter($documentProduit);
+        }
+
+        $scanOfficiel = DocumentProduitScanOfficiel::query()
+            ->where('document_numerise_id', $document->id)
+            ->first();
+
+        if ($scanOfficiel !== null
+            || str_starts_with((string) $document->chemin, 'documents-internes/scans-officiels/')) {
+            $documentProduit ??= $scanOfficiel?->documentProduitDirection;
+
+            abort_unless(
+                $documentProduit !== null
+                && $documentProduit->origine === DocumentProduitOrigine::AUTONOME
+                && (int) $documentProduit->courrier_id === (int) $courrier->id
+                && (int) $documentProduit->scan_officiel_document_id === (int) $document->id
+                && $scanOfficiel !== null
+                && (int) $scanOfficiel->courrier_id === (int) $courrier->id
+                && (int) $scanOfficiel->document_produit_direction_id === (int) $documentProduit->id,
+                404,
+            );
+            abort_unless($request->user()->can('consulterScanOfficiel', $documentProduit), 404);
+
+            return $this->scanOfficiel->consulter($documentProduit);
+        }
 
         return Storage::disk('local')->download(
             $document->chemin,

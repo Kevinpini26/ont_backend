@@ -23,6 +23,7 @@ use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\CompteurPagesPdf;
 use RuntimeException;
 use Smalot\PdfParser\Parser;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
@@ -167,6 +168,131 @@ class DocumentProduitScanOfficielService
 
             throw $exception;
         }
+    }
+
+    public function consulter(DocumentProduitDirection $document): StreamedResponse
+    {
+        $document->refresh();
+
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
+            || ! is_numeric($document->scan_officiel_document_id)
+            || $document->courrier_id === null
+            || $document->transmis_reception_par_id !== null
+            || $document->transmis_reception_at !== null
+            || $document->recu_par_id !== null
+            || $document->recu_at !== null) {
+            abort(404);
+        }
+
+        $courrier = Courrier::withoutGlobalScopes()->find($document->courrier_id);
+        if ($courrier === null
+            || $courrier->direction_origine_id !== $document->direction_id
+            || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
+            || $courrier->numero_enregistrement !== null
+            || $courrier->transitions()->exists()
+            || $courrier->dispatchs()->exists()) {
+            abort(404);
+        }
+
+        $scan = DocumentProduitScanOfficiel::query()
+            ->where('document_produit_direction_id', $document->id)
+            ->where('courrier_id', $courrier->id)
+            ->where('est_actif', true)
+            ->first();
+
+        if ($scan === null
+            || (int) $scan->version !== 1
+            || ! $scan->attestation_confirmee
+            || $scan->atteste_at === null
+            || (int) $scan->attestation_version !== self::ATTESTATION_VERSION
+            || ! is_string($scan->empreinte_requete)
+            || preg_match('/\A[a-f0-9]{64}\z/', $scan->empreinte_requete) !== 1
+            || (int) $scan->document_numerise_id !== (int) $document->scan_officiel_document_id) {
+            abort(404);
+        }
+
+        if (DocumentProduitScanOfficiel::query()
+            ->where('document_produit_direction_id', $document->id)
+            ->where('est_actif', true)
+            ->count() !== 1
+            || DocumentProduitScanOfficiel::query()
+                ->where('document_produit_direction_id', $document->id)
+                ->count() !== 1) {
+            abort(404);
+        }
+
+        $numerisation = $scan->documentNumerise;
+        if ($numerisation === null
+            || $numerisation->numerisable_type !== $courrier->getMorphClass()
+            || (int) $numerisation->numerisable_id !== $courrier->id
+            || (int) $numerisation->version < 1
+            || $numerisation->etape_circuit !== $courrier->statut->value
+            || $numerisation->source !== SourceDocumentNumerise::TELEVERSEMENT
+            || (int) $numerisation->capture_par_id !== (int) $scan->depose_par_id
+            || ! is_string($numerisation->chemin)
+            || preg_match(
+                '/\Adocuments-internes\/scans-officiels\/'.preg_quote((string) $document->id, '/').'\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.pdf\z/i',
+                $numerisation->chemin,
+            ) !== 1
+            || ! is_string($numerisation->sha256)
+            || preg_match('/\A[a-f0-9]{64}\z/', $numerisation->sha256) !== 1
+            || ! is_numeric($numerisation->poids_octets)
+            || (int) $numerisation->poids_octets < 1
+            || ! is_numeric($numerisation->nombre_pages)
+            || (int) $numerisation->nombre_pages < 1
+            || $numerisation->qualite !== QualiteDocumentNumerise::BONNE
+            || User::query()->whereKey($scan->depose_par_id)->doesntExist()
+            || ! Storage::disk('local')->exists($numerisation->chemin)) {
+            abort(404);
+        }
+
+        $empreinteRequeteAttendue = hash('sha256', json_encode([
+            'sha256' => $numerisation->sha256,
+            'depose_par_id' => (int) $scan->depose_par_id,
+            'attestation_confirmee' => true,
+            'attestation_version' => self::ATTESTATION_VERSION,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+
+        if (! hash_equals($scan->empreinte_requete, $empreinteRequeteAttendue)) {
+            abort(404);
+        }
+
+        try {
+            $contenu = Storage::disk('local')->get($numerisation->chemin);
+        } catch (Throwable $exception) {
+            Log::error('Le scan officiel actif ne peut pas être lu depuis le stockage privé.', [
+                'document_id' => $document->id,
+                'document_numerise_id' => $numerisation->id,
+                'exception' => $exception,
+            ]);
+            abort(404);
+        }
+
+        if (! is_string($contenu)
+            || strlen($contenu) !== (int) $numerisation->poids_octets
+            || ! hash_equals($numerisation->sha256, hash('sha256', $contenu))
+            || ! str_starts_with($contenu, '%PDF-')
+            || ! str_contains($contenu, '%%EOF')) {
+            Log::critical('Intégrité du scan officiel de document autonome compromise.', [
+                'document_id' => $document->id,
+                'document_numerise_id' => $numerisation->id,
+            ]);
+            abort(404);
+        }
+
+        return response()->stream(
+            static function () use ($contenu): void {
+                echo $contenu;
+            },
+            200,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => "inline; filename=\"scan-officiel-{$document->id}.pdf\"",
+                'Cache-Control' => 'private, no-store',
+                'X-Content-Type-Options' => 'nosniff',
+            ],
+        );
     }
 
     private function verifierAutorisationSousVerrou(DocumentProduitDirection $document, User $deposant): void

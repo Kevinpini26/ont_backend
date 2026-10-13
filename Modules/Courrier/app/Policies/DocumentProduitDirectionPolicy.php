@@ -39,6 +39,25 @@ class DocumentProduitDirectionPolicy
             && $user->direction_id === $document->direction_id;
     }
 
+    public function consulterScanOfficiel(User $user, DocumentProduitDirection $document): bool
+    {
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::SCAN_ENREGISTRE
+            || $document->scan_officiel_document_id === null
+            || $user->direction_id !== $document->direction_id) {
+            return false;
+        }
+
+        if ($user->role === UserRole::SECRETARIAT_DIRECTION) {
+            return true;
+        }
+
+        return in_array($user->role, [UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION], true)
+            && $user->id === $document->directeur_id
+            && $document->soumis_at !== null
+            && $document->soumis_par_id !== null;
+    }
+
     public function soumettre(User $user, DocumentProduitDirection $document): bool
     {
         $statuts = $document->origine === DocumentProduitOrigine::AUTONOME

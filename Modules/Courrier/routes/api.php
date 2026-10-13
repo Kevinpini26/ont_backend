@@ -57,6 +57,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
     Route::get('/documents-produits-direction/{document}', [DocumentProduitDirectionController::class, 'show']);
     Route::get('/documents-produits-direction/{document}/pdf-officiel', [DocumentProduitDirectionController::class, 'telechargerPdfOfficiel']);
+    Route::get('/documents-produits-direction/{document}/scan-officiel', [DocumentProduitDirectionController::class, 'consulterScanOfficiel']);
     Route::post('/documents-produits-direction/{document}/scan-officiel', [DocumentProduitDirectionController::class, 'deposerScanOfficiel']);
     Route::patch('/documents-produits-direction/{document}/brouillon', [DocumentProduitDirectionController::class, 'modifierBrouillon']);
     Route::post('/traitements-direction/{traitement}/document-produit', [DocumentProduitDirectionController::class, 'store']);
