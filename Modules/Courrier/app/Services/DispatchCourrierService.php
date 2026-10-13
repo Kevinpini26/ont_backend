@@ -9,12 +9,15 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
+use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Notifications\DispatchCourrierNotification;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
@@ -24,6 +27,7 @@ use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgAuthorityResolver;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class DispatchCourrierService
 {
@@ -35,6 +39,8 @@ class DispatchCourrierService
         private readonly DossierWorkflowGuard $dossiers,
         private readonly CycleDecisionnelService $cycles,
         private readonly DgAuthorityResolver $autoriteDg,
+        private readonly DocumentProduitDirectionService $documentsProduits,
+        private readonly DocumentProduitScanOfficielService $scansOfficiels,
     ) {}
 
     /** @param array<int, array<string, mixed>> $destinations */
@@ -128,6 +134,128 @@ class DispatchCourrierService
         });
 
         return $courrier->load(['dispatchs.direction', 'dispatchs.decisionnaire', 'dispatchs.executePar', 'dispatchs.accuseReceptionPar']);
+    }
+
+    /** @param array{direction_id: int, motif_reorientation?: ?string} $decision */
+    public function deciderDocumentAutonomeDg(DocumentProduitDirection $document, User $acteur, array $decision): DocumentProduitDirection
+    {
+        $dispatch = null;
+        DB::transaction(function () use ($document, $acteur, $decision, &$dispatch): void {
+            $document = DocumentProduitDirection::query()->lockForUpdate()->findOrFail($document->id);
+            $acteur = User::query()->lockForUpdate()->findOrFail($acteur->id);
+            $sourceAutorite = $this->autoriteDg->source($acteur);
+            $autorite = $this->autoriteDe($acteur);
+            $courrier = $document->courrier_id === null
+                ? null
+                : Courrier::withoutGlobalScopes()->lockForUpdate()->find($document->courrier_id);
+
+            if ($document->origine !== DocumentProduitOrigine::AUTONOME
+                || $document->traitement_direction_id !== null
+                || $document->document_source_id !== null
+                || $document->statut !== DocumentProduitStatut::ENTRE_CIRCUIT
+                || $document->transmis_reception_par_id === null
+                || $document->transmis_reception_at === null
+                || $document->recu_par_id === null
+                || $document->recu_at === null
+                || $document->scan_officiel_document_id === null
+                || $courrier === null
+                || $courrier->dossier_id !== null
+                || $courrier->direction_origine_id !== $document->direction_id
+                || $courrier->statut !== CourrierStatut::EN_ATTENTE_AVIS_DG
+                || ! $courrier->necessite_avis_dg
+                || ! is_string($courrier->reference_documentaire)
+                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || ! is_string($courrier->numero_enregistrement)
+                || trim($courrier->numero_enregistrement) === ''
+                || $courrier->dispatchs()->exists()
+                || ! $courrier->transitions()->where('nouveau_statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
+                    ->where('destinataire_poste', Poste::DG->value)
+                    ->exists()) {
+                throw new ConflictHttpException('Le document autonome n’est plus en attente d’une décision DG/DGA valide.');
+            }
+
+            $this->documentsProduits->telechargerPdfOfficielEnAttenteDg($document);
+            $this->scansOfficiels->verifierPourDg($document);
+
+            $destinationSouhaiteeId = $document->direction_destination_souhaitee_id;
+            $direction = Direction::query()->lockForUpdate()->find($decision['direction_id']);
+            if ($direction === null || ! $direction->actif || ! $direction->est_operationnelle) {
+                throw ValidationException::withMessages(['direction_id' => 'La direction destinataire doit être active et opérationnelle.']);
+            }
+            $motif = trim((string) ($decision['motif_reorientation'] ?? ''));
+            if ($direction->id !== $destinationSouhaiteeId && $motif === '') {
+                throw ValidationException::withMessages(['motif_reorientation' => 'Un motif est obligatoire pour changer la direction destinataire souhaitée.']);
+            }
+            if ($destinationSouhaiteeId === null
+                || ! Direction::query()->whereKey($destinationSouhaiteeId)->where('actif', true)->where('est_operationnelle', true)->exists()) {
+                throw ValidationException::withMessages(['direction_id' => 'La direction souhaitée doit être active et opérationnelle.']);
+            }
+
+            $ancienStatut = $courrier->statut;
+            $dateDecision = now();
+            $instruction = $direction->id === $destinationSouhaiteeId
+                ? 'Destination souhaitée confirmée par la DG/DGA.'
+                : $motif;
+            $dispatch = DispatchCourrier::query()->create([
+                'courrier_id' => $courrier->id,
+                'dossier_id' => null,
+                'cycle' => $this->cycles->prochainNumero($courrier),
+                'type_destination' => DispatchTypeDestination::DIRECTION,
+                'direction_id' => $direction->id,
+                'instruction' => $instruction,
+                'decisionnaire_id' => $acteur->id,
+                'decisionnaire_poste' => $acteur->poste,
+                'autorite_poste' => $autorite,
+                'decide_at' => $dateDecision,
+                'statut' => DispatchStatut::EN_ATTENTE,
+            ]);
+
+            $courrier->direction_destination_id = $direction->id;
+            $courrier->avis_dg = AvisDg::FAVORABLE;
+            $courrier->avis_dg_rendu_at = $dateDecision;
+            $courrier->avis_dg_rendu_par_id = $acteur->id;
+            $courrier->avis_dg_rendu_en_interim = $sourceAutorite === 'interim_dga' || $acteur->poste !== $autorite;
+            $courrier->statut = CourrierStatut::EN_DISPATCH;
+            $courrier->save();
+            $this->tracer($courrier, $ancienStatut, CourrierStatut::EN_DISPATCH, $acteur, Poste::SECRETARIAT_2);
+            $this->audit->enregistrer('dispatch.decision_prise', $courrier, $acteur, [
+                'document_autonome' => true,
+                'dispatch_id' => $dispatch->id,
+                'direction_destination_souhaitee_id' => $destinationSouhaiteeId,
+                'direction_destination_id' => $direction->id,
+                'motif_reorientation' => $direction->id === $destinationSouhaiteeId ? null : $motif,
+                'autorite_poste' => $autorite->value,
+                'source_autorite' => $sourceAutorite,
+            ]);
+            $this->audit->enregistrer('document_direction.autonome_decide_dg', $document, $acteur, [
+                'courrier_id' => $courrier->id,
+                'dispatch_id' => $dispatch->id,
+                'reference_documentaire' => $courrier->reference_documentaire,
+                'numero_enregistrement' => $courrier->numero_enregistrement,
+                'direction_destination_id' => $direction->id,
+                'motif_reorientation' => $direction->id === $destinationSouhaiteeId ? null : $motif,
+                'decide_at' => $dateDecision->toIso8601String(),
+            ]);
+        });
+
+        if ($dispatch !== null) {
+            DB::afterCommit(function () use ($dispatch): void {
+                User::query()->where('poste', Poste::SECRETARIAT_2)->each(function (User $user) use ($dispatch): void {
+                    $this->notifications->notifier($user, new DispatchCourrierNotification($dispatch, 'a_executer'));
+                });
+            });
+        }
+
+        return $document->refresh()->load([
+            'courrier.directionOrigine',
+            'courrier.directionDestination',
+            'courrier.dispatchs.direction',
+            'courrier.dispatchs.decisionnaire',
+            'direction',
+            'directionDestinationSouhaitee',
+            'recuPar',
+            'auditLogs.utilisateur',
+        ]);
     }
 
     public function executer(DispatchCourrier $dispatch, User $acteur, ?UploadedFile $preuve = null, ?string $reference = null): DispatchCourrier
@@ -243,6 +371,9 @@ class DispatchCourrierService
             $this->dossiers->assertCourrierActifPourNouvelleActivite($courrier);
             if ($courrier->statut !== CourrierStatut::EN_DISPATCH) {
                 throw ValidationException::withMessages(['courrier' => "Le courrier n'est pas en attente de dispatch."]);
+            }
+            if ($courrier->dossier_id === null) {
+                throw ValidationException::withMessages(['courrier' => 'Un dispatch historique ne peut pas être créé sans dossier.']);
             }
             if ($courrier->transitions()->where('statut', CourrierStatut::EN_DISPATCH)->whereNull('accuse_reception_at')->exists()) {
                 throw ValidationException::withMessages(['courrier' => 'Le bordereau doit être réceptionné par SEC2 avant exécution.']);

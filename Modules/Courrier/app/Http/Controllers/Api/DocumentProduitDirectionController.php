@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitAutonomeRequest;
 use Modules\Courrier\Http\Requests\CreerDocumentProduitRequest;
+use Modules\Courrier\Http\Requests\DeciderDocumentAutonomeDgRequest;
 use Modules\Courrier\Http\Requests\DemanderCorrectionDocumentRequest;
 use Modules\Courrier\Http\Requests\DemanderCorrectionReceptionDocumentRequest;
 use Modules\Courrier\Http\Requests\DeposerScanOfficielRequest;
@@ -18,6 +19,7 @@ use Modules\Courrier\Http\Resources\DocumentProduitDirectionResource;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
 use Modules\Courrier\Services\CourrierCircuitService;
+use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Courrier\Services\DocumentProduitDirectionService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Kernel\Enums\Poste;
@@ -38,12 +40,14 @@ class DocumentProduitDirectionController extends Controller
         'document_direction.autonome_correction_demandee_reception',
         'document_direction.autonome_pris_en_charge_sec1',
         'document_direction.autonome_transmis_dg_sec1',
+        'document_direction.autonome_decide_dg',
     ];
 
     public function __construct(
         private readonly DocumentProduitDirectionService $service,
         private readonly DocumentProduitScanOfficielService $serviceScanOfficiel,
         private readonly CourrierCircuitService $circuit,
+        private readonly DispatchCourrierService $dispatchs,
     ) {}
 
     public function index(Request $request)
@@ -190,6 +194,74 @@ class DocumentProduitDirectionController extends Controller
         return DocumentProduitDirectionResource::collection($query->paginate(20));
     }
 
+    public function autonomesEnAttenteDg(Request $request)
+    {
+        $this->authorize('consulterFileAutonomesDg', DocumentProduitDirection::class);
+
+        $query = DocumentProduitDirection::query()
+            ->where('origine', DocumentProduitOrigine::AUTONOME)
+            ->where('statut', 'entre_circuit')
+            ->whereNotNull('transmis_reception_par_id')
+            ->whereNotNull('transmis_reception_at')
+            ->whereNotNull('recu_par_id')
+            ->whereNotNull('recu_at')
+            ->whereNotNull('scan_officiel_document_id')
+            ->whereHas('courrier', fn ($courriers) => $courriers
+                ->where('statut', 'en_attente_avis_dg')
+                ->where('necessite_avis_dg', true)
+                ->whereNotNull('reference_documentaire')
+                ->whereNotNull('numero_enregistrement')
+                ->whereHas('transitions', fn ($transitions) => $transitions
+                    ->where('nouveau_statut', 'en_attente_avis_dg')
+                    ->where('destinataire_poste', Poste::DG->value))
+                ->whereDoesntHave('dispatchs'))
+            ->whereHas('scansOfficiels', fn ($scans) => $scans
+                ->whereColumn('document_numerise_id', 'documents_produits_direction.scan_officiel_document_id')
+                ->where('est_actif', true)
+                ->where('attestation_confirmee', true)
+                ->whereNotNull('atteste_at'))
+            ->with([
+                'courrier.directionOrigine',
+                'courrier.directionDestination',
+                'courrier.transitions.auteur',
+                'courrier.dispatchs.direction',
+                'courrier.dispatchs.decisionnaire',
+                'direction',
+                'directionDestinationSouhaitee',
+                'directeur',
+                'transmisReceptionPar',
+                'recuPar',
+                'scansOfficiels' => fn ($scans) => $scans->where('est_actif', true)->with('deposePar'),
+                'auditLogs' => fn ($audits) => $audits
+                    ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
+                    ->with('utilisateur')
+                    ->orderBy('created_at')
+                    ->orderBy('id'),
+            ])
+            ->latest('recu_at');
+
+        return DocumentProduitDirectionResource::collection($query->paginate(20));
+    }
+
+    public function etatAutonomeDg(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('consulterAutonomeDg', $document);
+
+        return new DocumentProduitDirectionResource($this->chargerPourDg($document));
+    }
+
+    public function deciderAutonomeDg(DeciderDocumentAutonomeDgRequest $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('deciderAutonomeDg', $document);
+        $documentDecide = $this->dispatchs->deciderDocumentAutonomeDg(
+            $document,
+            $request->user(),
+            $request->validated(),
+        );
+
+        return new DocumentProduitDirectionResource($this->chargerPourDg($documentDecide));
+    }
+
     public function etatSec1(Request $request, DocumentProduitDirection $document)
     {
         $this->authorize('consulterAutonomeSec1', $document);
@@ -263,6 +335,10 @@ class DocumentProduitDirectionController extends Controller
             return $this->service->telechargerPdfOfficielAccepteSec1($document);
         }
 
+        if ($request->user()->can('consulterAutonomeDg', $document)) {
+            return $this->service->telechargerPdfOfficielEnAttenteDg($document);
+        }
+
         return $this->service->telechargerPdfOfficiel($document);
     }
 
@@ -279,6 +355,12 @@ class DocumentProduitDirectionController extends Controller
             abort_unless($user->can('consulterScanOfficiel', $document), 404);
 
             return $this->serviceScanOfficiel->consulterAccepteSec1($document);
+        }
+
+        if ($user->can('consulterAutonomeDg', $document)) {
+            abort_unless($user->can('consulterScanOfficiel', $document), 404);
+
+            return $this->serviceScanOfficiel->consulterEnAttenteDg($document);
         }
 
         abort_unless($request->user()->can('consulterScanOfficiel', $document), 404);
@@ -442,5 +524,27 @@ class DocumentProduitDirectionController extends Controller
         ]);
 
         return $document;
+    }
+
+    private function chargerPourDg(DocumentProduitDirection $document): DocumentProduitDirection
+    {
+        return $document->load([
+            'courrier.directionOrigine',
+            'courrier.directionDestination',
+            'courrier.transitions.auteur',
+            'courrier.dispatchs.direction',
+            'courrier.dispatchs.decisionnaire',
+            'direction',
+            'directionDestinationSouhaitee',
+            'directeur',
+            'transmisReceptionPar',
+            'recuPar',
+            'scansOfficiels' => fn ($scans) => $scans->where('est_actif', true)->with('deposePar'),
+            'auditLogs' => fn ($audits) => $audits
+                ->whereIn('action', self::ACTIONS_HISTORIQUE_AUTONOME)
+                ->with('utilisateur')
+                ->orderBy('created_at')
+                ->orderBy('id'),
+        ]);
     }
 }

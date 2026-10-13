@@ -9,10 +9,20 @@ use Modules\Courrier\Policies\DocumentProduitDirectionPolicy;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
-use PHPUnit\Framework\TestCase;
+use Modules\Kernel\Support\DgAuthorityResolver;
+use Tests\TestCase;
 
 class DocumentProduitDirectionTransmissionPolicyTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $resolver = \Mockery::mock(DgAuthorityResolver::class);
+        $resolver->shouldReceive('estAutorite')->andReturnFalse();
+        $this->instance(DgAuthorityResolver::class, $resolver);
+    }
+
     public function test_seul_le_secretariat_producteur_peut_transmettre_un_autonome_scanne_une_fois(): void
     {
         $policy = new DocumentProduitDirectionPolicy;

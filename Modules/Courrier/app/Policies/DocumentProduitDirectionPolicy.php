@@ -2,12 +2,17 @@
 
 namespace Modules\Courrier\Policies;
 
+use Modules\Courrier\Enums\CourrierStatut;
+use Modules\Courrier\Enums\DispatchStatut;
+use Modules\Courrier\Enums\DispatchTypeDestination;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
+use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DgAuthorityResolver;
 
 class DocumentProduitDirectionPolicy
 {
@@ -28,6 +33,10 @@ class DocumentProduitDirectionPolicy
     {
         if ($this->estSecretariat1($user)) {
             return $this->estAutonomeAccepte($document);
+        }
+
+        if ($this->estAutoriteDg($user) && $this->estAutonomeTransmisSec1Dg($document)) {
+            return true;
         }
 
         return $document->origine === DocumentProduitOrigine::AUTONOME
@@ -58,6 +67,10 @@ class DocumentProduitDirectionPolicy
                 && $document->transmis_reception_at !== null
                 && $document->recu_par_id === null
                 && $document->recu_at === null;
+        }
+
+        if ($this->estAutoriteDg($user) && $this->estAutonomeTransmisSec1Dg($document)) {
+            return true;
         }
 
         if ($document->origine !== DocumentProduitOrigine::AUTONOME
@@ -188,6 +201,66 @@ class DocumentProduitDirectionPolicy
     public function transmettreAutonomeSec1(User $user, DocumentProduitDirection $document): bool
     {
         return $this->consulterAutonomeSec1($user, $document);
+    }
+
+    public function consulterFileAutonomesDg(User $user): bool
+    {
+        return $this->estAutoriteDg($user);
+    }
+
+    public function consulterAutonomeDg(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->estAutoriteDg($user)
+            && $this->estAutonomeTransmisSec1Dg($document);
+    }
+
+    public function deciderAutonomeDg(User $user, DocumentProduitDirection $document): bool
+    {
+        return $this->consulterAutonomeDg($user, $document);
+    }
+
+    private function estAutonomeTransmisSec1Dg(DocumentProduitDirection $document): bool
+    {
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::ENTRE_CIRCUIT
+            || $document->traitement_direction_id !== null
+            || $document->document_source_id !== null
+            || $document->courrier_id === null
+            || $document->transmis_reception_par_id === null
+            || $document->transmis_reception_at === null
+            || $document->recu_par_id === null
+            || $document->recu_at === null
+            || $document->scan_officiel_document_id === null) {
+            return false;
+        }
+
+        return Courrier::withoutGlobalScopes()
+            ->whereKey($document->courrier_id)
+            ->where('direction_origine_id', $document->direction_id)
+            ->where('necessite_avis_dg', true)
+            ->whereNotNull('reference_documentaire')
+            ->whereNotNull('numero_enregistrement')
+            ->whereHas('transitions', fn ($transitions) => $transitions
+                ->where('nouveau_statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
+                ->where('destinataire_poste', Poste::DG->value))
+            ->where(static fn ($courriers) => $courriers
+                ->where(static fn ($enAttente) => $enAttente
+                    ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
+                    ->whereDoesntHave('dispatchs'))
+                ->orWhere(static fn ($decide) => $decide
+                    ->where('statut', CourrierStatut::EN_DISPATCH)
+                    ->whereHas('dispatchs', static fn ($dispatchs) => $dispatchs
+                        ->where('type_destination', DispatchTypeDestination::DIRECTION)
+                        ->where('statut', DispatchStatut::EN_ATTENTE)
+                        ->whereNull('dossier_id')
+                        ->whereColumn('direction_id', 'courriers.direction_destination_id')))
+            )
+            ->exists();
+    }
+
+    private function estAutoriteDg(User $user): bool
+    {
+        return app(DgAuthorityResolver::class)->estAutorite($user);
     }
 
     private function estSecretariat1(User $user): bool

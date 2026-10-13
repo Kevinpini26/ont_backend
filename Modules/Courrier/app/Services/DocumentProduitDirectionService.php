@@ -11,6 +11,8 @@ use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DecisionDirection;
+use Modules\Courrier\Enums\DispatchStatut;
+use Modules\Courrier\Enums\DispatchTypeDestination;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\DocumentRelationType;
@@ -363,6 +365,44 @@ class DocumentProduitDirectionService
                 ->where('destinataire_poste', Poste::SECRETARIAT_1->value)
                 ->where('changed_by_id', $document->recu_par_id)
                 ->exists()) {
+            abort(404);
+        }
+
+        return $this->streamerPdfOfficiel($document);
+    }
+
+    public function telechargerPdfOfficielEnAttenteDg(DocumentProduitDirection $document): StreamedResponse
+    {
+        $document->refresh();
+        $courrier = $document->courrier_id === null
+            ? null
+            : Courrier::withoutGlobalScopes()->find($document->courrier_id);
+        $dispatch = $courrier?->dispatchs()->first();
+
+        if ($document->origine !== DocumentProduitOrigine::AUTONOME
+            || $document->statut !== DocumentProduitStatut::ENTRE_CIRCUIT
+            || $document->transmis_reception_par_id === null
+            || $document->transmis_reception_at === null
+            || $document->recu_par_id === null
+            || $document->recu_at === null
+            || $courrier === null
+            || $courrier->direction_origine_id !== $document->direction_id
+            || ! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_DISPATCH], true)
+            || $courrier->reference_documentaire === null
+            || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            || $courrier->numero_enregistrement === null
+            || trim($courrier->numero_enregistrement) === ''
+            || ! $courrier->transitions()->where('nouveau_statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)
+                ->where('destinataire_poste', Poste::DG->value)
+                ->exists()
+            || ($dispatch === null
+                ? $courrier->statut !== CourrierStatut::EN_ATTENTE_AVIS_DG
+                : $courrier->statut !== CourrierStatut::EN_DISPATCH
+                    || $dispatch->statut !== DispatchStatut::EN_ATTENTE
+                    || $dispatch->type_destination !== DispatchTypeDestination::DIRECTION
+                    || $dispatch->dossier_id !== null
+                    || $dispatch->direction_id !== $courrier->direction_destination_id
+                    || $courrier->dispatchs()->count() !== 1)) {
             abort(404);
         }
 

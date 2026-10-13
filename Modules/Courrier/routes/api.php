@@ -55,8 +55,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/traitements-direction/{traitement}/decision', [TraitementDirectionController::class, 'decider']);
     Route::get('/documents-produits-direction/transmis-reception/autonomes', [DocumentProduitDirectionController::class, 'autonomesTransmisReception']);
     Route::get('/documents-produits-direction/autonomes-sec1', [DocumentProduitDirectionController::class, 'autonomesAcceptesSec1']);
+    Route::get('/documents-produits-direction/autonomes-dg', [DocumentProduitDirectionController::class, 'autonomesEnAttenteDg']);
     Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
     Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
+    Route::get('/documents-produits-direction/{document}/controle-dg', [DocumentProduitDirectionController::class, 'etatAutonomeDg']);
+    Route::post('/documents-produits-direction/{document}/decision-dg', [DocumentProduitDirectionController::class, 'deciderAutonomeDg']);
     Route::get('/documents-produits-direction/{document}/controle-reception', [DocumentProduitDirectionController::class, 'etatControleReception']);
     Route::get('/documents-produits-direction/{document}/controle-sec1', [DocumentProduitDirectionController::class, 'etatSec1']);
     Route::get('/documents-produits-direction/{document}', [DocumentProduitDirectionController::class, 'show']);
