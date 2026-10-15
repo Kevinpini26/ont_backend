@@ -29,8 +29,7 @@ class CourrierVisibilityService
     {
         $query->where(function (Builder $visibiliteAutonome) use ($user): void {
             $visibiliteAutonome
-                ->whereDoesntHave('documentProduitDirection', fn (Builder $document) => $document
-                    ->where('origine', 'autonome'))
+                ->whereDoesntHave('documentProduitDirection', fn (Builder $document) => DocumentProduitDirection::appliquerFiltreAutonome($document))
                 ->orWhereHas('documentProduitDirection', fn (Builder $document) => DocumentProduitDirection::appliquerVisibilitePour($document, $user));
         });
 

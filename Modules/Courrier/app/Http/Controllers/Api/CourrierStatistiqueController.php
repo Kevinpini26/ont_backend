@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\ReorientationTri;
 use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\Poste;
@@ -38,13 +39,17 @@ class CourrierStatistiqueController extends Controller
         $poste = app(DelegationResolver::class)->posteDelegueAujourdhui($request->user()) ?? $request->user()->poste;
         $sec1 = $request->user()->poste === Poste::SECRETARIAT_1 || $poste === Poste::SECRETARIAT_2;
         $visibles = fn () => Courrier::query()->select('courriers.id');
-        $courriers = fn () => DB::table('courriers')
-            ->whereNotExists(fn ($autonomes) => $autonomes->selectRaw('1')
-                ->from('documents_produits_direction')
-                ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id')
-                ->where('documents_produits_direction.origine', 'autonome')
-                ->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']))
-            ->when($sec1, fn ($query) => $query->whereIn('courriers.id', $visibles()));
+        $courriers = function () use ($sec1, $visibles) {
+            return DB::table('courriers')
+                ->whereNotExists(function ($autonomes): void {
+                    $autonomes->selectRaw('1')
+                        ->from('documents_produits_direction')
+                        ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id');
+                    DocumentProduitDirection::appliquerFiltreAutonome($autonomes);
+                    $autonomes->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']);
+                })
+                ->when($sec1, fn ($query) => $query->whereIn('courriers.id', $visibles()));
+        };
 
         $parStatut = $courriers()
             ->select('statut', DB::raw('count(*) as total'))

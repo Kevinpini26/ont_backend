@@ -244,9 +244,9 @@ class Courrier extends Model implements Numerisable
         return $query->whereNotExists(function ($autonomes): void {
             $autonomes->selectRaw('1')
                 ->from('documents_produits_direction')
-                ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id')
-                ->where('documents_produits_direction.origine', 'autonome')
-                ->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']);
+                ->whereColumn('documents_produits_direction.courrier_id', 'courriers.id');
+            DocumentProduitDirection::appliquerFiltreAutonome($autonomes);
+            $autonomes->whereNotIn('documents_produits_direction.statut', ['transmis_reception', 'entre_circuit']);
         });
     }
 

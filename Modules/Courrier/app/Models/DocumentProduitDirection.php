@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Kernel\Enums\UserRole;
@@ -138,15 +139,26 @@ class DocumentProduitDirection extends Model
     }
 
     /**
+     * @template T of Builder|QueryBuilder
+     *
+     * @param  T  $query
+     * @return T
+     */
+    public static function appliquerFiltreAutonome(Builder|QueryBuilder $query): Builder|QueryBuilder
+    {
+        return $query
+            ->whereNull('documents_produits_direction.traitement_direction_id')
+            ->whereNull('documents_produits_direction.document_source_id');
+    }
+
+    /**
      * @param  Builder<covariant Model>  $query
      * @return Builder<covariant Model>
      */
     public static function appliquerVisibilitePour(Builder $query, User $user): Builder
     {
-        $query->where('origine', DocumentProduitOrigine::AUTONOME->value);
-
         if ($user->role === UserRole::SECRETARIAT_DIRECTION) {
-            return $query->where('direction_id', $user->direction_id);
+            return self::appliquerFiltreAutonome($query)->where('direction_id', $user->direction_id);
         }
 
         return self::appliquerVisibiliteDirecteur($query, $user);
@@ -171,8 +183,9 @@ class DocumentProduitDirection extends Model
             return $query->whereRaw('1 = 0');
         }
 
+        self::appliquerFiltreAutonome($query);
+
         return $query
-            ->where('origine', DocumentProduitOrigine::AUTONOME->value)
             ->where('directeur_id', $user->id)
             ->where('direction_id', $user->direction_id)
             ->whereIn('statut', array_map(

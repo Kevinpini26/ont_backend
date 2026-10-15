@@ -9,7 +9,6 @@ use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
-use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Http\Requests\DeciderDispatchRequest;
 use Modules\Courrier\Http\Requests\ExecuterDispatchRequest;
@@ -17,6 +16,7 @@ use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Http\Resources\DispatchCourrierResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Kernel\Enums\Poste;
@@ -170,8 +170,8 @@ class DispatchCourrierController extends Controller
                                 ->whereNotNull('courriers.reference_documentaire')
                                 ->whereNotNull('courriers.numero_enregistrement')
                                 ->whereHas('documentProduitDirection', function (Builder $documents): void {
+                                    DocumentProduitDirection::appliquerFiltreAutonome($documents);
                                     $documents
-                                        ->where('origine', DocumentProduitOrigine::AUTONOME)
                                         ->where('statut', DocumentProduitStatut::ENTRE_CIRCUIT)
                                         ->whereNull('traitement_direction_id')
                                         ->whereNull('document_source_id')
