@@ -31,7 +31,7 @@ tags:
 
 components:
   securitySchemes:
-    saheatchtum:
+    sanctum:
       type: http
       scheme: bearer
       bearerFormat: opaque
@@ -158,7 +158,7 @@ components:
               code: { type: string, example: doit_changer_mot_de_passe }
 
 security:
-  - saheatchtum: []
+  - sanctum: []
 
 paths:
   /auth/login:
@@ -405,6 +405,62 @@ paths:
       responses:
         '201': { description: Créée. }
 
+  /courriers/{courrier}/sortir-original:
+    post:
+      tags: [Courrier]
+      summary: Sortir l'original papier pour consultation
+      description: >-
+        Distinct d'une version numérisée (voir docs/numerisation-courrier.md,
+        Lot 5) — refusé tant qu'une sortie précédente n'a pas été restituée.
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motif]
+              properties:
+                motif: { type: string }
+      responses:
+        '201': { description: Emprunt créé. }
+        '422': { description: Un emprunt est déjà en cours pour ce courrier. }
+
+  /courriers/{courrier}/restituer-original:
+    post:
+      tags: [Courrier]
+      summary: Restituer l'original papier sorti
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Restitution enregistrée. }
+        '422': { description: Aucun emprunt en cours pour ce courrier. }
+
+  /courriers/import-lot:
+    post:
+      tags: [Courrier]
+      summary: Importer un segment de lot numérisé (clé USB)
+      description: >-
+        Reçoit un segment de PDF déjà découpé côté client — la lecture des
+        codes-barres CODE_128 des feuilles de couverture et le découpage du
+        PDF multi-courriers se font entièrement dans le navigateur
+        (pdfjs-dist + @zxing/browser + pdf-lib), voir
+        docs/numerisation-courrier.md. Un appel par courrier du lot.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [numero_accuse_reception, fichier]
+              properties:
+                numero_accuse_reception: { type: string }
+                fichier: { type: string, format: binary }
+      responses:
+        '200': { description: Segment importé et rattaché au bon courrier. }
+        '404': { description: Aucun courrier ne correspond à ce numéro d'accusé de réception. }
+
   /stagiaires:
     get:
       tags: [Stagiaires]
@@ -535,6 +591,94 @@ paths:
       responses:
         '201': { description: Enregistré. }
         '422': { description: "Jour de week-end, ou aucune heure fournie." }
+
+  /stagiaires/{stagiaire}/presences/reconciliation:
+    post:
+      tags: [Stagiaires]
+      summary: Réconcilier des présences saisies hors ligne
+      description: >-
+        Lot d'entrées notées sur papier pendant une coupure réseau. Une
+        entrée qui contredit une présence déjà enregistrée est signalée en
+        conflit et non appliquée, sauf `forcer: true`.
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entrees]
+              properties:
+                entrees:
+                  type: array
+                  items:
+                    type: object
+                    required: [date]
+                    properties:
+                      date: { type: string, format: date }
+                      heure_arrivee: { type: string, example: "08:30" }
+                      heure_depart: { type: string, example: "15:30" }
+                forcer: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Rapport par entrée (`applique` ou `conflit`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date }
+                        statut: { type: string, enum: [applique, conflit] }
+                        champs_conflit: { type: array, items: { type: string } }
+
+  /stagiaires/{stagiaire}/badge:
+    get:
+      tags: [Stagiaires]
+      summary: Badge d'identité du stagiaire (PDF)
+      description: >-
+        Généré à la demande, jamais stocké — refusé (422) tant qu'aucun
+        matricule n'est attribué (avant affectation).
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: PDF du badge. }
+        '422': { description: Aucun matricule attribué. }
+
+  /stagiaires/{stagiaire}/suivis:
+    get:
+      tags: [Stagiaires]
+      summary: Fiche de suivi périodique d'un stagiaire
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Stagiaires]
+      summary: Ajouter une note de suivi périodique
+      description: >-
+        Réservé à la direction d'accueil, au maître de stage désigné, ou à
+        la DFP — voir StagiairePolicy::gererSuivi().
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date_suivi, observations]
+              properties:
+                date_suivi: { type: string, format: date }
+                observations: { type: string }
+                difficultes_signalees: { type: string }
+      responses:
+        '201': { description: Créée. }
 
   /stagiaires/{stagiaire}/documents/{document}/telecharger:
     get:

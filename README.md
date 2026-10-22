@@ -17,7 +17,7 @@ Le code applicatif vit entièrement sous `Modules/<Nom>/app`, jamais dans `app/`
 
 ## Installation
 
-Environnement de développement complet (base de données, backend, frontend) en une commande : `docker compose up` depuis la racine du dépôt parent (voir le `docker-compose.yml` à cette racine, et son en-tête pour le détail). Déploiement en production : `INSTALLATION.md` à la racine de ce dépôt.
+Environnement de développement complet (base de données, backend, frontend) en une commande : `docker compose up` depuis la racine du dépôt parent (voir le `docker-compose.yml` à cette racine, et son en-tête pour le détail). Déploiement en production : `INSTALLATION.md` à la racine de ce dépôt, puis `PRODUCTION_CHECKLIST.md` pour la vérification finale avant ouverture réelle.
 
 Installation native (hors Docker), pour travailler sur ce dépôt seul :
 
@@ -41,7 +41,7 @@ PostgreSQL (paramétrable dans `.env` : `DB_CONNECTION=pgsql`). Les tests utilis
 php artisan test
 ```
 
-Plus de 300 tests (dont une quarantaine de tests unitaires purs, sans base de données) couvrant : authentification, verrouillage de compte, changement/réinitialisation de mot de passe, filtrage par direction et journal d'audit (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence et tableau de bord statistique (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
+Plus de 850 tests couvrant : authentification, verrouillage de compte, changement/réinitialisation de mot de passe, filtrage par direction et journal d'audit (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence et tableau de bord statistique (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
 
 ```bash
 ./vendor/bin/pint --test      # style de code (PSR-12 + règles Laravel)
@@ -63,7 +63,7 @@ Voir `SECURITY.md` à la racine du dépôt pour le détail des mesures de sécur
 ## Rôles et postes (module Kernel)
 
 - **Rôles** : `administrateur`, `agent_dfp`, `responsable_direction`, `agent_circuit_courrier`.
-- **Postes** (uniquement pour `agent_circuit_courrier`) : `reception`, `protocole`, `dga`, `assistant_protocole` (Ass.P), `assistant_1` (Ass1), `assistant_2` (Ass2), `assistant_dga` (Ass.Dga), `dg`, `secretariat_1`, `secretariat_2`.
+- **Postes** (uniquement pour `agent_circuit_courrier`) : `reception`, `dga`, `assistant_1` (Ass1), `assistant_2` (Ass2), `assistant_dga` (Ass.Dga), `dg`, `secretariat_1`, `secretariat_2`. Deux postes historiques subsistent dans l'enum (`protocole`, `assistant_protocole`) uniquement pour hydrater d'anciens dossiers — plus jamais attribués à une nouvelle affectation, voir `Poste::estHistorique()`.
 - Tout utilisateur sauf `administrateur` et `agent_dfp` est rattaché à une `direction_id`.
 
 ### Global Scope par direction
@@ -99,6 +99,8 @@ Détail exhaustif (schémas de requête/réponse, codes d'erreur) : `docs/openap
 | POST | `/api/v1/directions` | ✔ admin | Créer une direction |
 | PUT/PATCH | `/api/v1/directions/{id}` | ✔ admin | Modifier une direction |
 | DELETE | `/api/v1/directions/{id}` | ✔ admin | Supprimer une direction |
+| GET  | `/api/v1/sites` | ✔ (tous) | Référentiel des sites (siège, représentations provinciales) — préparation multi-site, pas encore exploitée par les directions |
+| POST | `/api/v1/sites` | ✔ admin | Créer un site — pas de modification ni de suppression (portée volontairement minimale) |
 | GET | `/api/v1/dg-disponibilite` | ✔ | Disponibilité déclarée de la DG (garde l'intérim dynamique de la DGA) |
 | POST | `/api/v1/dg-disponibilite` | ✔ dg | Déclare la DG indisponible/disponible |
 | GET | `/api/v1/rapports/periodique` | ✔ admin ou dfp | Génère le rapport PDF mensuel/annuel destiné à la tutelle |
@@ -115,33 +117,63 @@ Détail exhaustif (schémas de requête/réponse, codes d'erreur) : `docs/openap
 
 ## Endpoints — Module Courrier
 
-Circuit complet (celui d'une demande de stage, ou d'un courrier destiné à la DG) : `recu → au_protocole → en_attente_avis_dg → projet_reponse_en_cours → en_relecture → signe → enregistre`. Un courrier envoyé directement entre deux directions (jamais une demande de stage) emprunte le **circuit court** : `recu → en_attente_avis_dg → ...` (saute `au_protocole`). Un courrier **initié par la DG** (`POST .../initier-dg`) suit une troisième variante : `recu → en_attente_validation_dg → en_relecture → ...`. Le poste habilité à chaque étape est piloté par `config('courrier.circuit_transitions')`, point d'extension `Modules\Courrier\Contracts\CircuitTransitionRules`.
+Le Protocole n'existe plus dans l'organisation actuelle (`au_protocole`/`en_circuit_hierarchique` restent dans l'enum `CourrierStatut` uniquement pour hydrater d'anciens dossiers) : un courrier entrant qui nécessite l'avis de la DG suit désormais `recu → en_attente_tri → (en_attente_avis_dg | en_attente_classeur → en_attente_avis_dg) → en_dispatch | projet_a_rediger → projet_a_valider → en_attente_signature → signe → enregistre`. Le tri (Secrétariat 01) oriente par degré d'urgence (urgent/très urgent part directement à la DG, normal patiente au classeur d'attente) ; un avis DG « réservé » boucle vers `retour_reception` plutôt que d'avancer. Un courrier sans avis DG requis (entre deux directions) emprunte le **circuit court**, sans tri ni avis. Un courrier **initié par la DG** (`POST .../initier-dg`) suit une troisième variante : `en_attente_validation_dg → en_relecture → signe → enregistre`. Le poste habilité à chaque étape (et les transitions dynamiques — intérim DGA, renvoi pour correction par le relecteur désigné) est piloté par `config('courrier.circuit_transitions')`, point d'extension `Modules\Courrier\Contracts\CircuitTransitionRules` (implémentation : `ConfigCircuitTransitionRules`).
 
-**Bordereau de transmission et décharge** : chaque transition produit un bordereau (`Modules\Courrier\Models\CourrierTransition`) à l'attention d'un destinataire précis (poste, ou personne désignée pour la relecture). Le destinataire doit explicitement accuser réception (`POST .../accuser-reception`) avant de pouvoir agir à son tour — voir `Courrier::enTransit()`. Toute tentative d'action sur un dossier encore « en transit » renvoie **422**.
+**Courrier sortant** (réponse à un courrier entrant, ou courrier sortant direct via `POST .../initier-sortant`) : `projet_a_rediger → projet_a_valider → en_attente_signature → signe → envoye`, avec choix du mode de remise (courriel, retrait physique, ou les deux) après signature.
+
+**Bordereau de transmission et décharge** : chaque transition produit un bordereau (`Modules\Courrier\Models\CourrierTransition`) à l'attention d'un destinataire précis (poste, ou personne désignée pour la relecture). Le destinataire doit explicitement accuser réception (`POST .../accuser-reception`, ou en lot via `POST /bordereaux-lot`) avant de pouvoir agir à son tour — voir `Courrier::enTransit()`. Toute tentative d'action sur un dossier encore « en transit » renvoie **422**.
+
+La logique applicative (orchestration des transitions) est répartie en plusieurs services spécialisés sous `Modules\Courrier\Services`, tous invoqués via l'unique façade `CourrierCircuitService` (aucun appelant externe ne connaît ce découpage interne) : `CourrierReceptionService` (création, accusé de réception, prise en charge des documents autonomes), `CourrierTriDispatchService` (tri, avis DG, dispatch vers une direction), `CourrierReponseService` (rédaction, relecture, signature), `CourrierEnvoiService` (choix du mode de sortie, envoi, remise).
 
 | Méthode | URL | Poste requis | Description |
 |---|---|---|---|
 | GET | `/api/v1/courriers` | ✔ (filtré par direction) | Liste paginée, filtrable par `statut`, `direction_origine_id`, `direction_destination_id`, `recherche` |
-| POST | `/api/v1/courriers` | `reception` **ou** `responsable_direction` | Création (`objet`, `type`, `direction_destination_id?`, `piece_jointe?`, champs `candidat_*` si `type=demande_stage`) → statut `recu` + génère `numero_accuse_reception`. Si l'auteur est un `responsable_direction`, `direction_origine_id` est forcé à sa propre direction. |
-| POST | `/api/v1/courriers/initier-dg` | `secretariat_1` | Courrier sortant initié par la DG (objet + contenu + relecteur en une seule action) → `recu → en_attente_validation_dg` |
+| POST | `/api/v1/courriers` | `reception` | Création d'un courrier entrant (`objet`, `type`, `piece_jointe?`, champs `candidat_*` si `type=demande_stage`) → statut `recu` + génère `numero_accuse_reception` |
+| POST | `/api/v1/courriers/initier-dg` | `secretariat_1` | Courrier sortant initié par la DG sur instruction préalable (`instructions-courrier-dg`) → `en_attente_validation_dg` |
+| POST | `/api/v1/courriers/initier-sortant` | poste habilité à initier une réponse | Courrier sortant direct, sans courrier entrant déclencheur |
 | GET | `/api/v1/courriers/{id}` | ✔ (filtré) | Détail, avec le fil complet des bordereaux (`transitions`) |
 | POST | `/api/v1/courriers/{id}/accuser-reception` | destinataire du bordereau courant | Décharge le bordereau en cours, débloque l'action suivante |
-| POST | `/api/v1/courriers/{id}/transmettre-protocole` | `protocole` | `recu → au_protocole` (circuit complet uniquement) |
-| POST | `/api/v1/courriers/{id}/valider-avant-diffusion` | `dg` | `en_attente_validation_dg → en_relecture` (circuit « initié par DG » uniquement) |
-| POST | `/api/v1/courriers/{id}/transmettre-avis-dg` | `protocole`, ou la direction d'origine (circuit court) | `→ en_attente_avis_dg` |
-| POST | `/api/v1/courriers/{id}/rendre-avis` | `dg` (ou `dga` en intérim si la DG s'est déclarée indisponible) | `{avis_dg: favorable\|defavorable\|reserve, avis_dg_commentaire?}` → `en_attente_avis_dg → projet_reponse_en_cours`. Si `avis_dg=favorable` et `type=demande_stage`, émet `CourrierStageAvisFavorable`. |
-| POST | `/api/v1/courriers/{id}/soumettre-projet-reponse` | `secretariat_1` | `{projet_reponse_contenu (JSON TipTap), relecteur_id}` → `projet_reponse_en_cours → en_relecture` |
+| POST | `/api/v1/courriers/{id}/transmettre-tri` | `secretariat_1` | `recu → en_attente_tri` |
+| POST | `/api/v1/courriers/{id}/transmettre-avis-dg` | `secretariat_1` | `en_attente_tri → en_attente_avis_dg` (degré urgent/très urgent) ou `→ en_attente_classeur` (normal) |
+| POST | `/api/v1/courriers/{id}/transmettre-depuis-classeur` | `secretariat_1` | `en_attente_classeur → en_attente_avis_dg`, à l'initiative de SEC1 |
+| POST | `/api/v1/courriers/{id}/transmettre-sec1` | `reception` | `retour_reception → en_attente_tri`, incrémente le tour du dossier |
+| POST | `/api/v1/courriers/{id}/requalifier-urgence` | `dg` | Corrige le degré d'urgence après le tri initial |
+| POST | `/api/v1/courriers/{id}/rendre-avis` | `dg` (ou `dga` en intérim si la DG s'est déclarée indisponible) | `{avis_dg: favorable\|defavorable\|reserve, avis_dg_commentaire?}` → `en_dispatch` (favorable sur courrier imputé), `projet_a_rediger` (favorable/défavorable), ou `retour_reception` (réservé). Favorable + `type=demande_stage` émet `CourrierStageAvisFavorable`. |
+| POST | `/api/v1/courriers/{id}/renvoyer-au-tri` | `dg`/`dga` | Mauvaise orientation : renvoi au Secrétariat 01 sans incrémenter le tour |
+| POST | `/api/v1/courriers/{id}/imputer` | poste habilité | Impute le courrier à une direction principale (avant dispatch) |
+| POST | `/api/v1/courriers/{id}/dispatcher-direction` | `secretariat_2` | `en_dispatch → chez_direction`, remet le courrier imputé au secrétariat de la direction |
+| POST | `/api/v1/courriers/{id}/soumettre-projet-reponse` | assistant actif (Ass1/Ass2) | `{projet_reponse_contenu (JSON TipTap), relecteur_id}` → `projet_a_rediger → projet_a_valider` |
+| POST | `/api/v1/courriers/{id}/renvoyer-pour-correction` | relecteur désigné | `{observation}` → `projet_a_valider → projet_a_rediger` |
 | POST | `/api/v1/courriers/{id}/valider-relecture` | relecteur désigné uniquement | `{commentaire?}` — ne change pas le statut, débloque la signature |
-| POST | `/api/v1/courriers/{id}/signer` | `dg` | `en_relecture → signe` — **refusé (422) si la relecture n'a pas été validée** |
+| POST | `/api/v1/courriers/{id}/valider-pour-signature` | `dg` | `projet_a_valider → en_attente_signature`, attribue le numéro de départ et prépare le PDF à signer |
+| GET | `/api/v1/courriers/{id}/pdf-a-signer` | ✔ (filtré) | Télécharge le PDF à imprimer et faire signer physiquement |
+| POST | `/api/v1/courriers/{id}/scan-signe` | `dg` (titulaire ou DGA en intérim) | Téléverse le scan signé → `en_attente_signature → signe` |
+| POST | `/api/v1/courriers/{id}/signer` | `dg` | `en_relecture → signe` (circuit « initié par DG ») — **refusé (422) si la relecture n'a pas été validée** |
 | POST | `/api/v1/courriers/{id}/enregistrer` | `secretariat_2` | `{classification: interne\|externe, note_technique?, accuse_reception_partenaire?}` → `signe → enregistre`, génère `numero_enregistrement` |
-| GET | `/api/v1/courriers/{id}/pdf` \| `/piece-jointe` \| `/lettre-stage` \| `/pieces/{piece}` | ✔ (filtré) | Téléchargements associés au dossier (PDF signé, pièce jointe, lettre de stage, pièce du candidat) |
+| POST | `/api/v1/courriers/{id}/mode-sortie` | `secretariat_2` | Choisit le canal de sortie d'un courrier sortant signé (courriel, retrait physique, les deux) |
+| POST | `/api/v1/courriers/{id}/envoyer-par-courriel` \| `/rendre-disponible-retrait` \| `/confirmer-remise-physique` | `secretariat_2` | Suit chaque canal de sortie séparément jusqu'à la remise effective |
+| POST | `/api/v1/courriers/{id}/initier-reponse` \| `/enregistrer-remise` | poste habilité | Réponse directe à un courrier reçu (hors workflow sortant complet) et remise physique legacy |
+| POST \| GET | `/api/v1/courriers/{id}/sortir-original` \| `/restituer-original` | ✔ (filtré) | Sortie/retour de l'original papier pour consultation, distinct d'une version numérisée (`docs/numerisation-courrier.md`, Lot 5) |
+| GET | `/api/v1/courriers/originaux-empruntes` | ✔ (filtré) | Liste des originaux actuellement sortis, toutes directions confondues |
+| GET | `/api/v1/courriers/{id}/feuille-couverture` \| `/courriers/feuilles-couverture-lot` | `reception` | Feuille(s) de couverture à code-barres CODE_128, à imprimer avant numérisation |
+| POST | `/api/v1/courriers/import-lot` | `reception` | Reçoit un segment de PDF déjà découpé côté client (lecture de code-barres et découpage faits dans le navigateur) |
+| GET | `/api/v1/courriers/a-numeriser` | `reception` | Rattrapage des dossiers dont la numérisation officielle manque encore |
+| GET | `/api/v1/courriers/{id}/numerisations/{document}` | ✔ (filtré) | Télécharge une version numérisée précise |
+| GET | `/api/v1/courriers/{id}/pdf` \| `/piece-jointe` \| `/pieces-jointes/{piece}` \| `/lettre-stage` \| `/pieces/{piece}` \| `/imprimer` | ✔ (filtré) | Téléchargements associés au dossier (PDF signé, pièces jointes, lettre de stage, pièce du candidat, fiche imprimable) |
 | GET | `/api/v1/courriers/{id}/annotations` | ✔ (filtré) | Liste des annotations horodatées |
 | POST | `/api/v1/courriers/{id}/annotations` | ✔ (filtré) | `{contenu}` |
-| GET | `/api/v1/courriers/statistiques` | ✔ (filtré) | Tableau de bord : volumétrie par étape, en attente de relecture, temps moyen de traitement (historique `courrier_transitions`) |
+| GET | `/api/v1/courriers/registre` \| `/export` | postes du circuit central, admin | Registre PDF (arrivée/départ sur une période) et export CSV filtré |
+| GET | `/api/v1/courriers/statistiques` \| `/en-souffrance` \| `/justesse-tri` | ✔ (filtré) | Tableau de bord par étape, dossiers en retard par rapport au délai indicatif de leur statut, taux de justesse du tri |
 | GET | `/api/v1/courriers/statistiques-dg` | `dg`/`dga` | Tableau de bord dédié à la DG (dossiers en attente d'avis, délais) |
 | GET | `/api/v1/courriers/statistiques-direction` | responsable de direction, `agent_dfp`, admin | Tableau de bord d'une direction précise |
 
-Toute tentative de saut d'étape ou de mauvais poste renvoie **422** (`TransitionNonAutoriseeException`) si le poste correspond à l'étape courante mais vise le mauvais statut cible, ou **403** si le poste ne correspond pas du tout à l'étape courante (policy `CourrierPolicy@transmettre`).
+Toute tentative de saut d'étape ou de mauvais poste renvoie **422** (`TransitionNonAutoriseeException`) si le poste correspond à l'étape courante mais vise le mauvais statut cible, ou **403** si le poste ne correspond pas du tout à l'étape courante (policy `CourrierPolicy@transmettre`, filtre grossier — la vérification précise reste dans les services ci-dessus).
+
+Sous-systèmes documentés séparément (trop volumineux pour ce tableau, chacun avec ses propres routes, statuts et policies) :
+- **Documents autonomes** (`documents-produits-direction`, `traitements-direction`) : une direction initie elle-même un document (note, courrier) sans courrier entrant déclencheur, avec contrôle qualité Réception/SEC1/DG selon la destination.
+- **Dispatch et classement** (`dispatchs`, `classements-documents`, `dossiers`) : exécution des décisions institutionnelles après avis DG (vers une direction, vers le classement) et archivage des dossiers physiques.
+- **Missions documentaires** (`missions-documentaires`, `projets-reponse`) : délégation nominative de la préparation d'une réponse à un assistant.
+- **Numérisation** (`docs/numerisation-courrier.md`) : feuilles de couverture à code-barres, import par lot (clé USB), originaux physiques.
 
 ---
 
@@ -174,10 +206,21 @@ La fiche est créée **automatiquement** (aucune route de création directe) par
 | GET | `/api/v1/stagiaires/{id}/documents` | ✔ (filtré) | Liste des documents |
 | POST | `/api/v1/stagiaires/{id}/documents` | `agent_dfp` ou responsable de la direction d'accueil | Upload multipart `{type, fichier}` |
 | GET | `/api/v1/stagiaires/{id}/documents/{docId}/telecharger` | ✔ (filtré, selon le type de pièce) | Télécharge un document — pièce d'identité/diplômes/CV réservés à la DFP et l'administrateur |
-| GET | `/api/v1/stagiaires/statistiques` \| `/alertes` | `agent_dfp` ou admin (`statistiques` aussi ouvert à une direction, sur son propre périmètre) | Tableau de bord DFP et échéances proches (10 jours) |
+| GET | `/api/v1/stagiaires/{id}/badge` | ✔ (filtré) | Badge d'identité PDF (matricule requis, donc uniquement une fois affecté) |
+| GET | `/api/v1/stagiaires/{id}/imprimer` | ✔ (filtré) | Fiche imprimable de l'état courant du dossier |
+| GET \| POST | `/api/v1/stagiaires/{id}/suivis` | ✔ (filtré) / direction d'accueil, maître de stage désigné, `agent_dfp` | Fiche de suivi périodique — notes datées sur le déroulement du stage |
+| POST | `/api/v1/stagiaires/{id}/presences/reconciliation` | `agent_dfp` | `{entrees: [{date, heure_arrivee?, heure_depart?}], forcer?}` — réconciliation en lot de présences saisies hors ligne ; une entrée qui contredit une présence déjà enregistrée est signalée en conflit et non appliquée, sauf `forcer` |
+| GET | `/api/v1/stagiaires/export` | `agent_dfp`, admin | Export CSV filtré (`direction_id?`, `statut?`) |
+| GET | `/api/v1/stagiaires/rapport-annuel` | `agent_dfp`, admin | Bilan PDF des stages pour une année civile (`{annee}`) |
+| GET | `/api/v1/archives/annuelle` | `agent_dfp`, admin | Archive ZIP consolidée (registres courrier arrivée/départ + rapport annuel des stages), à destination de la tutelle ou de l'INACO |
+| GET | `/api/v1/etablissements-formation` | ✔ (tous) | Référentiel des établissements de formation, utile au remplissage du dossier |
+| POST | `/api/v1/etablissements-formation` | `agent_dfp` | Alimente le référentiel |
+| GET | `/api/v1/stagiaires/statistiques` \| `/alertes` \| `/en-souffrance` | `agent_dfp` ou admin (`statistiques` aussi ouvert à une direction, sur son propre périmètre) | Tableau de bord DFP, échéances proches (10 jours), dossiers en retard par rapport au délai indicatif de leur statut |
 | GET/POST | `/api/v1/stagiaires/disponibilite-demandes` | ✔ / `agent_dfp` | Consulte/active l'ouverture des dépôts publics de demande de stage |
 
 Alerte d'échéance : commande planifiée quotidienne `stagiaires:verifier-echeances` (notifie DFP + direction d'accueil 10 jours avant `date_fin_stage`).
+
+**Tableaux de répartition** (`tableaux-repartition`, documenté séparément — trop volumineux pour ce tableau) : circuit de validation collégial (Réception, DG/DGA, administrateur) pour l'affectation d'un lot de stagiaires sur une période, distinct de l'affectation individuelle ci-dessus.
 
 ---
 
@@ -197,6 +240,12 @@ Aucune route de ce module n'exige d'authentification — c'est justement pourquo
 | GET | `/api/v1/public/liens/{token}/convention.pdf` | Télécharge la convention associée au lien. |
 | POST | `/api/v1/public/liens/{token}/signer-convention` | Signature de la convention par le stagiaire, sans compte. |
 | POST | `/api/v1/public/liens/{token}/retour` | Soumission du retour d'expérience par le stagiaire, une seule fois. |
+| POST | `/api/v1/public/liens/{token}/rapport-stage` | Soumission du rapport de stage par le stagiaire. |
+| POST | `/api/v1/public/liens/{token}/signer-engagement-confidentialite` | Signature de l'engagement de confidentialité, sans compte. |
+| GET | `/api/v1/public/capture/{token}` \| POST | Capture mobile de numérisation (dépôt de photos depuis le téléphone du candidat, voir le jeton généré par `POST /courriers/{id}/jeton-capture`). |
+| GET | `/api/v1/public/reponses/{courrier}/pdf` | Téléchargement de la réponse officielle via un lien signé à durée limitée (`reponse_externe.lien_ttl_minutes`), envoyé au demandeur externe. |
+| GET | `/api/v1/public/statistiques` | Chiffres publics (volumétrie, délais moyens) pour la page d'accueil institutionnelle. |
+| GET | `/api/v1/public/mention-information` | Texte de la mention d'information RGPD-like affichée avant tout dépôt public. |
 
 Aucune de ces routes ne renvoie jamais les annotations internes, l'avis DG ou la note technique d'un courrier.
 
