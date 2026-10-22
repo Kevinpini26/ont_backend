@@ -4,6 +4,7 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
@@ -52,6 +53,35 @@ class CourrierStatistiqueTest extends CourrierTestCase
 
         $parStatut = collect($response->json('par_statut'))->keyBy('statut');
         $this->assertSame(1, $parStatut['en_attente_tri']['total']);
+    }
+
+    public function test_un_statut_de_transition_disparu_de_lenum_naffiche_pas_une_erreur_mais_un_intitule_generique(): void
+    {
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+        $courrier = Courrier::factory()->create();
+
+        // Insertion directe (hors circuit) : simule une valeur de statut
+        // présente en base depuis une ancienne version de l'enum, et qui ne
+        // correspond plus à aucun cas de CourrierStatut aujourd'hui.
+        DB::table('courrier_transitions')->insert([
+            'courrier_id' => $courrier->id,
+            'statut' => CourrierStatut::RECU->value,
+            'created_at' => now()->subHours(3),
+        ]);
+        DB::table('courrier_transitions')->insert([
+            'courrier_id' => $courrier->id,
+            'statut' => 'statut_disparu_du_circuit',
+            'created_at' => now(),
+        ]);
+
+        $response = $this->actingAs($reception)
+            ->getJson('/api/v1/courriers/statistiques')
+            ->assertOk();
+
+        $temps = collect($response->json('temps_moyen_par_etape'))->keyBy('statut');
+        $this->assertArrayHasKey('statut_disparu_du_circuit', $temps);
+        $this->assertSame('Statut archivé (statut_disparu_du_circuit)', $temps['statut_disparu_du_circuit']['label']);
     }
 
     public function test_une_direction_ne_peut_pas_consulter_le_tableau_de_bord_du_circuit(): void

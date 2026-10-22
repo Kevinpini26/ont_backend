@@ -126,9 +126,14 @@ class CourrierStatistiqueController extends Controller
                 'periode' => Carbon::parse($ligne->periode)->toDateString(),
                 'total' => (int) $ligne->total,
             ])->values(),
+            // tryFrom() plutôt que from() : une valeur de statut présente en
+            // base mais qui ne correspond plus à aucun cas de l'enum (ex.
+            // une ancienne valeur renommée depuis) ne doit jamais faire
+            // planter tout le tableau de bord — elle s'affiche avec un
+            // intitulé générique plutôt que de lever une ValueError.
             'temps_moyen_par_etape' => collect($tempsParEtape)->map(fn ($ligne) => [
                 'statut' => $ligne->statut,
-                'label' => CourrierStatut::from($ligne->statut)->label(),
+                'label' => CourrierStatut::tryFrom($ligne->statut)?->label() ?? "Statut archivé ({$ligne->statut})",
                 'moyenne_heures' => round((float) $ligne->moyenne_heures, 1),
             ])->values(),
         ]);
