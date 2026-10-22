@@ -59,6 +59,30 @@ class CourrierEnSouffranceTest extends CourrierTestCase
             ->assertJsonPath('data.0.niveau', 3);
     }
 
+    /**
+     * Régression Étape 5 : en_attente_signature n'avait aucune transition
+     * déclarée dans circuit_transitions (postesAutorises() renvoyait un
+     * tableau vide), donc un courrier bloqué en attente du scan signé
+     * n'apparaissait jamais en souffrance pour la DG, même après des
+     * semaines — corrigé en déclarant l'entrée en_attente_signature ->
+     * signe (voir config/config.php).
+     */
+    public function test_un_courrier_en_attente_de_signature_physique_apparait_en_souffrance_pour_la_dg(): void
+    {
+        $direction = Direction::factory()->create();
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_SIGNATURE, 'necessite_avis_dg' => true]);
+        $courrier->transitions()->create([
+            'statut' => CourrierStatut::EN_ATTENTE_SIGNATURE,
+            'accuse_reception_at' => now()->subHours(72),
+            'created_at' => now()->subHours(72),
+        ]);
+        $dg = $this->agent(Poste::DG, $direction);
+
+        $this->actingAs($dg)->getJson('/api/v1/courriers/en-souffrance')
+            ->assertOk()
+            ->assertJsonPath('data.0.courrier.id', $courrier->id);
+    }
+
     public function test_seuls_les_courriers_actionnables_par_le_poste_apparaissent(): void
     {
         $direction = Direction::factory()->create();

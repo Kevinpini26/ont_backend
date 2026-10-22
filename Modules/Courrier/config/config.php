@@ -76,6 +76,16 @@ return [
      *     - projet_a_valider -> en_attente_signature : la DG valide le projet
      *       pour signature après relecture ; la signature réelle et la remise
      *       à SEC2 appartiennent à une phase ultérieure.
+     *     - en_attente_signature -> signe : la DG téléverse le scan signé
+     *       (CourrierReponseService::finaliserSignaturePhysique()) — garde
+     *       réelle dynamique (titulaire ou DGA en intérim, voir
+     *       DgAuthorityResolver::estAutoritePourTeleverserScanSigne()), pas
+     *       dans cette table statique, même principe que rendre_avis_* ;
+     *       l'entrée ci-dessous sert à ce que CourrierEnSouffrance et le
+     *       filtre grossier de CourrierPolicy::transmettre() sachent que la
+     *       DG est la responsable courante de ce statut (sans elle, un
+     *       dossier bloqué ici n'était jamais signalé en retard — oubli
+     *       corrigé).
      *     - signe -> enregistre : le Secrétariat 02 enregistre le courrier
      *       signé (numérotation, classification interne/externe).
      *
@@ -189,7 +199,14 @@ return [
                     'condition' => null,
                 ],
             ],
-            'en_attente_signature' => [],
+            'en_attente_signature' => [
+                [
+                    'action' => 'finaliser_signature_physique',
+                    'statut_arrivee' => 'signe',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
+            ],
             'signe' => [
                 [
                     'action' => 'enregistrer',
@@ -251,7 +268,14 @@ return [
                     'condition' => null,
                 ],
             ],
-            'en_attente_signature' => [],
+            'en_attente_signature' => [
+                [
+                    'action' => 'finaliser_signature_physique',
+                    'statut_arrivee' => 'signe',
+                    'postes' => [Poste::DG->value],
+                    'condition' => null,
+                ],
+            ],
             'en_relecture' => [
                 [
                     'action' => 'signer',
