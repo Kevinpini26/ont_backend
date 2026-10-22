@@ -55,6 +55,19 @@ class CourrierResource extends JsonResource
             'trouve_dans_contenu_numerise' => (bool) ($this->trouve_dans_contenu_numerise ?? false),
             'cote_classement' => $this->cote_classement,
             'emplacement_physique' => $this->emplacement_physique,
+            // Lot 5 (docs/numerisation-courrier.md) : sortie/retour de
+            // l'original physique, distinct d'une version numérisée — même
+            // garde que view() (voir SortirOriginalRequest/RestituerOriginal,
+            // ouvert à quiconque peut voir le courrier, pas un poste précis).
+            'emprunt_original_en_cours' => $this->when(
+                $this->relationLoaded('empruntsOriginaux'),
+                fn () => $this->empruntEnCours() !== null ? [
+                    'id' => $this->empruntEnCours()->id,
+                    'emprunte_par' => $this->empruntEnCours()->empruntePar->name,
+                    'emprunte_le' => $this->empruntEnCours()->emprunte_le,
+                    'motif' => $this->empruntEnCours()->motif,
+                ] : null,
+            ),
             'sens' => $this->sens?->value,
             'sens_label' => $this->sens?->label(),
             'en_reponse_a_courrier_id' => $this->en_reponse_a_courrier_id,
@@ -81,6 +94,8 @@ class CourrierResource extends JsonResource
             'remis_a' => $this->remis_a,
             'mode_remise' => $this->mode_remise?->value,
             'mode_remise_label' => $this->mode_remise?->label(),
+            'peut_initier_reponse' => $request->user() !== null && Gate::forUser($request->user())->allows('initierReponse', $this->resource),
+            'peut_enregistrer_remise' => $request->user() !== null && Gate::forUser($request->user())->allows('enregistrerRemise', $this->resource),
             'correspondance' => $this->when(
                 $this->relationLoaded('reponses'),
                 fn () => $this->reponses

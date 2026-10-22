@@ -30,6 +30,9 @@ class CourrierSortantTest extends CourrierTestCase
         $responsable = User::factory()->responsableDirection($direction)->create();
         $relecteur = User::factory()->responsableDirection($direction)->create();
 
+        $this->actingAs($responsable)->getJson("/api/v1/courriers/{$original->id}")
+            ->assertJsonPath('data.peut_initier_reponse', true);
+
         $response = $this->actingAs($responsable)->postJson("/api/v1/courriers/{$original->id}/initier-reponse", [
             'objet' => 'Réponse à la demande',
             'projet_reponse_contenu' => $this->projetVide,
@@ -190,6 +193,11 @@ class CourrierSortantTest extends CourrierTestCase
             'destinataire_externe_nom' => 'Partenaire',
             'mode_expedition' => 'poste',
         ])->assertOk();
+
+        $this->actingAs($secretariat2)->getJson("/api/v1/courriers/{$reponse->id}")
+            ->assertJsonPath('data.peut_enregistrer_remise', true);
+        $this->actingAs($relecteur)->getJson("/api/v1/courriers/{$reponse->id}")
+            ->assertJsonPath('data.peut_enregistrer_remise', false);
 
         $response = $this->actingAs($secretariat2)->postJson("/api/v1/courriers/{$reponse->id}/enregistrer-remise", [
             'remis_a' => 'Jean Kabila',

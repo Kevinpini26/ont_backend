@@ -13,6 +13,7 @@ use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DegreUrgence;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
+use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\NumerisationStatut;
@@ -731,10 +732,23 @@ class CourrierController extends Controller
         );
 
         $documentProduit = $courrier->documentProduitDirection;
+        // Avant SCAN_ENREGISTRE, aucun scan officiel n'est encore attendu :
+        // les numérisations ordinaires (pièces jointes scannées) doivent
+        // rester téléchargeables normalement. À partir de SCAN_ENREGISTRE,
+        // un pointeur scan_officiel_document_id absent ou divergent est une
+        // incohérence qui doit être refusée, quelle que soit la numérisation
+        // demandée — d'où la vérification structurelle (comme
+        // DocumentProduitDirection::appliquerFiltreAutonome) plutôt qu'une
+        // simple lecture de la colonne origine, qui peut elle-même être
+        // incohérente avec les relations.
         $doitVerifierScanOfficiel = $documentProduit !== null
-            && ($documentProduit->origine === DocumentProduitOrigine::AUTONOME
-                || $documentProduit->traitement_direction_id === null
-                || $documentProduit->document_source_id === null);
+            && $documentProduit->traitement_direction_id === null
+            && $documentProduit->document_source_id === null
+            && in_array($documentProduit->statut, [
+                DocumentProduitStatut::SCAN_ENREGISTRE,
+                DocumentProduitStatut::TRANSMIS_RECEPTION,
+                DocumentProduitStatut::ENTRE_CIRCUIT,
+            ], true);
 
         if ($doitVerifierScanOfficiel) {
             abort_unless(
@@ -904,6 +918,7 @@ class CourrierController extends Controller
             'classement.classePar', 'classement.archivePar',
             'imputations.direction', 'imputations.imputeePar',
             'piecesJointes', 'reponses', 'courrierOrigine', 'numerisations.capturePar',
+            'empruntsOriginaux.empruntePar', 'empruntsOriginaux.restituePar',
         ]));
     }
 }

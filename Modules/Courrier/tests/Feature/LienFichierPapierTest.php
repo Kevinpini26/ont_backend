@@ -73,6 +73,10 @@ class LienFichierPapierTest extends CourrierTestCase
 
         $this->assertNotNull($courrier->fresh()->empruntEnCours());
 
+        $this->actingAs($agent)->getJson("/api/v1/courriers/{$courrier->id}")
+            ->assertJsonPath('data.emprunt_original_en_cours.emprunte_par', $agent->name)
+            ->assertJsonPath('data.emprunt_original_en_cours.motif', 'Consultation par la DG');
+
         $this->actingAs($agent)->postJson("/api/v1/courriers/{$courrier->id}/restituer-original")->assertOk();
 
         $this->assertDatabaseHas('audit_logs', [
@@ -86,6 +90,9 @@ class LienFichierPapierTest extends CourrierTestCase
         $this->assertArrayHasKey('restitue_le', $traceRestitution->meta);
 
         $this->assertNull($courrier->fresh()->empruntEnCours());
+
+        $this->actingAs($agent)->getJson("/api/v1/courriers/{$courrier->id}")
+            ->assertJsonPath('data.emprunt_original_en_cours', null);
     }
 
     public function test_une_sortie_deja_en_cours_ne_peut_pas_etre_dupliquee(): void
