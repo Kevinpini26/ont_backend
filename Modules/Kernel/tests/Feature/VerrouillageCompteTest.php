@@ -119,4 +119,27 @@ class VerrouillageCompteTest extends TestCase
             ->postJson("/api/v1/users/{$utilisateur->id}/deverrouiller")
             ->assertForbidden();
     }
+
+    public function test_ladministrateur_voit_le_statut_de_verrouillage_dans_la_liste_des_comptes(): void
+    {
+        $administrateur = User::factory()->administrateur()->create();
+        $verrouille = User::factory()->create(['verrouille_jusqu_a' => now()->addMinutes(15)]);
+        $libre = User::factory()->create(['verrouille_jusqu_a' => null]);
+
+        $reponse = $this->actingAs($administrateur)->getJson('/api/v1/users')->assertOk();
+
+        $donnees = collect($reponse->json('data'));
+        $this->assertTrue($donnees->firstWhere('id', $verrouille->id)['compte_verrouille']);
+        $this->assertFalse($donnees->firstWhere('id', $libre->id)['compte_verrouille']);
+    }
+
+    public function test_un_non_administrateur_ne_voit_pas_le_statut_de_verrouillage_de_son_propre_compte(): void
+    {
+        $responsable = User::factory()->responsableDirection()->create();
+
+        $reponse = $this->actingAs($responsable)->getJson('/api/v1/auth/me')->assertOk();
+
+        $this->assertArrayNotHasKey('compte_verrouille', $reponse->json('data'));
+        $this->assertArrayNotHasKey('verrouille_jusqu_a', $reponse->json('data'));
+    }
 }
