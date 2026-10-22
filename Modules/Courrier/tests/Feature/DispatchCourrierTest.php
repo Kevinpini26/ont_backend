@@ -201,7 +201,11 @@ class DispatchCourrierTest extends CourrierTestCase
         $this->actingAs($dg)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertForbidden();
         $this->actingAs($dga)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertForbidden();
         $this->actingAs($directeur)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertForbidden();
-        $this->actingAs($sec2)->putJson("/api/v1/dispatchs/{$dispatch->id}", ['direction_id' => $centrale->id])->assertNotFound();
+        // La route GET /dispatchs/{dispatch} (show) existe : un PUT sur la
+        // même URI est donc correctement rejeté en 405 par le routeur
+        // Laravel (méthode non supportée), jamais en 404 — qui supposerait
+        // de masquer artificiellement l'existence de la route GET.
+        $this->actingAs($sec2)->putJson("/api/v1/dispatchs/{$dispatch->id}", ['direction_id' => $centrale->id])->assertMethodNotAllowed();
         $this->receptionnerDispatchSec2($dispatch, $sec2);
         $this->actingAs($sec2)->postJson("/api/v1/dispatchs/{$dispatch->id}/executer")->assertOk();
         $dispatch->refresh();
