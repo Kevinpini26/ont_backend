@@ -11,6 +11,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\Setting;
 
 /**
  * Vérifie le tri par degré d'urgence introduit au Lot 2 : le Secrétariat 01
@@ -101,7 +102,7 @@ class TriUrgenceCourrierTest extends CourrierTestCase
 
     public function test_un_courrier_non_trie_depuis_plus_du_delai_configure_remonte_en_alerte(): void
     {
-        config(['courrier.tri.delai_alerte_heures' => 4]);
+        Setting::definir('courrier.tri_delai_alerte_heures', 4);
 
         $direction = Direction::factory()->create();
         $secretariat1 = $this->agent(Poste::SECRETARIAT_1, $direction);

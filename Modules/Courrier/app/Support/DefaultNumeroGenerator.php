@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Date;
 use Modules\Courrier\Contracts\NumeroGenerator;
 use Modules\Courrier\Contracts\SequenceGenerator;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\Setting;
 
 class DefaultNumeroGenerator implements NumeroGenerator
 {
@@ -32,7 +33,7 @@ class DefaultNumeroGenerator implements NumeroGenerator
         $annee = Date::now()->year;
         $sequence = $this->sequences->suivant('depart', $annee);
 
-        return sprintf(config('courrier.format_numero_depart', '%d-D%04d'), $annee, $sequence);
+        return sprintf(Setting::valeur('courrier.format_numero_depart', '%d-D%04d'), $annee, $sequence);
     }
 
     public function genererReferenceDocumentaire(Direction $direction, ?int $annee = null): string

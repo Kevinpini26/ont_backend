@@ -168,7 +168,7 @@ class CourrierTriDispatchService
      * Secrétariat 01 est réellement effectué (voir CourrierStatut::EN_ATTENTE_TRI)
      * — jamais un statut à part qui bloquerait le dossier : le courrier
      * reste visible et consultable tant qu'il n'a pas encore été trié
-     * (voir Courrier::urgenceTriee(), config('courrier.tri.delai_alerte_heures')
+     * (voir Courrier::urgenceTriee(), Setting::valeur('courrier.tri_delai_alerte_heures')
      * pour l'alerte de tri manquant). Une fois trié, seule la DG peut
      * corriger le degré (voir requalifierUrgence()) — cette méthode-ci ne
      * repose jamais sur un degré déjà présent.

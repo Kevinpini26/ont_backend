@@ -15,6 +15,7 @@ use Modules\Courrier\Models\ReorientationTri;
 use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\PeriodeStatistique;
@@ -87,7 +88,7 @@ class CourrierStatistiqueController extends Controller
         // depuis plus que le délai configuré remonte ici — jamais un
         // blocage du service, juste un signal pour le Secrétariat 01 (voir
         // CourrierCircuitService::transmettreEnAttenteAvisDg()).
-        $delaiAlerteTri = (int) config('courrier.tri.delai_alerte_heures', 4);
+        $delaiAlerteTri = (int) Setting::valeur('courrier.tri_delai_alerte_heures', 4);
         $courriersNonTries = Courrier::query()
             ->when(! $sec1, fn ($query) => $query->withoutGlobalScopes())
             ->exclureAutonomesAvantTransmission()
