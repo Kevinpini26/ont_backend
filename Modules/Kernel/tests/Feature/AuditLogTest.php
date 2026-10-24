@@ -3,6 +3,7 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Tests\TestCase;
@@ -74,5 +75,54 @@ class AuditLogTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_le_journal_filtre_par_objet_et_par_recherche_libre(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $cible = User::factory()->agentDfp()->create();
+        AuditLog::query()->create([
+            'action' => 'user.desactive', 'user_id' => $admin->id,
+            'auditable_type' => $cible->getMorphClass(), 'auditable_id' => $cible->id,
+            'description' => 'Compte désactivé pour départ.',
+        ]);
+        AuditLog::query()->create(['action' => 'auth.deconnexion', 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->getJson("/api/v1/audit-logs?sujet_type={$cible->getMorphClass()}&sujet_id={$cible->id}")
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.action', 'user.desactive');
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/audit-logs?recherche=départ')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.action', 'user.desactive');
+    }
+
+    public function test_le_journal_filtre_par_periode_depuis_et_jusqu_a(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        AuditLog::query()->create(['action' => 'ancien.evenement', 'created_at' => now()->subDays(10)]);
+        AuditLog::query()->create(['action' => 'evenement.recent', 'created_at' => now()]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/audit-logs?depuis='.now()->subDay()->toDateString())
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.action', 'evenement.recent');
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/audit-logs?jusqu_a='.now()->subDays(5)->toDateString())
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.action', 'ancien.evenement');
+    }
+
+    public function test_aucune_route_ne_permet_de_modifier_ou_supprimer_une_entree_du_journal(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $log = AuditLog::query()->create(['action' => 'auth.connexion', 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->putJson("/api/v1/audit-logs/{$log->id}", ['action' => 'modifie'])->assertStatus(404);
+        $this->actingAs($admin)->deleteJson("/api/v1/audit-logs/{$log->id}")->assertStatus(404);
+        $this->assertDatabaseHas('audit_logs', ['id' => $log->id, 'action' => 'auth.connexion']);
     }
 }
