@@ -5,10 +5,12 @@ namespace Modules\Public\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Mail\AccuseReceptionCandidatMail;
 use Modules\Courrier\Models\Courrier;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Stagiaires\Models\DisponibiliteDemandesStage;
 use Tests\TestCase;
 
@@ -31,6 +33,7 @@ class DeposerDemandeStagePublicTest extends TestCase
     public function test_un_candidat_peut_deposer_une_demande_de_stage_sans_authentification(): void
     {
         Mail::fake();
+        Queue::fake();
         Storage::fake('local');
 
         $response = $this->post('/api/v1/public/demandes-stage', $this->payloadValide());
@@ -52,9 +55,11 @@ class DeposerDemandeStagePublicTest extends TestCase
         $this->assertNotNull($courrier->lettre_stage_chemin);
         Storage::disk('local')->assertExists($courrier->lettre_stage_chemin);
 
-        Mail::assertQueued(
-            AccuseReceptionCandidatMail::class,
-            fn ($mail) => $mail->hasTo('jean.kabila@example.com') && $mail->courrier->is($courrier),
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof AccuseReceptionCandidatMail
+                && $job->email === 'jean.kabila@example.com'
+                && $job->mailable->courrier->is($courrier),
         );
     }
 

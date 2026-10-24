@@ -102,11 +102,51 @@ class CourrierReceptionService
                 ->get();
 
             foreach ($responsables as $responsable) {
-                $this->notifications->envoyerMail($responsable->email, new CourrierRecuMail($courrier));
+                $this->notifications->envoyerMail($responsable->email, new CourrierRecuMail($courrier), 'courrier.recu_direction', $courrier);
             }
         }
 
+        $this->accuserReceptionGuichet($courrier);
+
         return $courrier;
+    }
+
+    /**
+     * Un courrier enregistré au guichet n'a pas de numero_accuse_reception
+     * public (voir creer() ci-dessus) : l'email de confirmation à
+     * l'expéditeur ou au candidat n'offre donc aucun lien de suivi, juste
+     * la confirmation elle-même. Sans adresse email captée, rien n'est
+     * envoyé automatiquement ; l'agent imprime la fiche de secours via
+     * GET /courriers/{courrier}/accuse-reception-guichet
+     * (CourrierController::accuseReceptionGuichet()).
+     */
+    private function accuserReceptionGuichet(Courrier $courrier): void
+    {
+        $estDemandeStage = $courrier->type === CourrierType::DEMANDE_STAGE;
+        $email = $estDemandeStage ? $courrier->candidat_email : $courrier->expediteur_externe_email;
+        if (blank($email)) {
+            return;
+        }
+
+        $mail = $estDemandeStage ? new AccuseReceptionCandidatMail($courrier) : new AccuseReceptionCourrierExterneMail($courrier);
+        $type = $estDemandeStage ? 'stagiaire.accuse_reception_guichet' : 'courrier.accuse_reception_guichet';
+
+        try {
+            $this->notifications->envoyerMail($email, $mail, $type, $courrier, $this->agentsReception());
+            $this->audit->enregistrer('courrier.accuse_reception_envoye', $courrier, null, [
+                'destinataire' => $email,
+                'type_notification' => 'accuse_reception_guichet',
+                'envoye_at' => now()->toISOString(),
+            ]);
+        } catch (Throwable $exception) {
+            Log::error("Échec de mise en file de l'accusé de réception guichet.", [
+                'courrier_id' => $courrier->id,
+                'exception' => $exception,
+            ]);
+            $this->audit->enregistrer('courrier.accuse_reception_echec', $courrier, null, [
+                'type_notification' => 'accuse_reception_guichet',
+            ]);
+        }
     }
 
     /**
@@ -142,7 +182,13 @@ class CourrierReceptionService
         });
 
         if ($courrier->candidat_email) {
-            $this->notifications->envoyerMail($courrier->candidat_email, new AccuseReceptionCandidatMail($courrier));
+            $this->notifications->envoyerMail(
+                $courrier->candidat_email,
+                new AccuseReceptionCandidatMail($courrier),
+                'stagiaire.accuse_reception_demande',
+                $courrier,
+                $this->agentsReception(),
+            );
         }
 
         return $courrier;
@@ -179,7 +225,13 @@ class CourrierReceptionService
 
         if ($courrier->expediteur_externe_email) {
             try {
-                $this->notifications->envoyerMail($courrier->expediteur_externe_email, new AccuseReceptionCourrierExterneMail($courrier));
+                $this->notifications->envoyerMail(
+                    $courrier->expediteur_externe_email,
+                    new AccuseReceptionCourrierExterneMail($courrier),
+                    'courrier.accuse_reception_externe',
+                    $courrier,
+                    $this->agentsReception(),
+                );
                 $this->audit->enregistrer('courrier.accuse_reception_envoye', $courrier, null, [
                     'dossier_id' => $courrier->dossier_id,
                     'destinataire' => $courrier->expediteur_externe_email,
@@ -276,10 +328,26 @@ class CourrierReceptionService
             ->get();
 
         foreach ($responsables as $responsable) {
-            $this->notifications->envoyerMail($responsable->email, new CourrierRecuMail($courrier));
+            $this->notifications->envoyerMail($responsable->email, new CourrierRecuMail($courrier), 'courrier.recu_direction', $courrier);
         }
 
         return $courrier;
+    }
+
+    /**
+     * Agents actuellement au poste Réception — destinataires de l'alerte
+     * interne quand un accusé de réception externe échoue définitivement
+     * (voir Modules\Kernel\Jobs\EnvoyerNotificationEmailJob::failed()).
+     *
+     * @return array<int, User>
+     */
+    private function agentsReception(): array
+    {
+        return User::query()
+            ->where('role', UserRole::AGENT_CIRCUIT_COURRIER)
+            ->where('poste', Poste::RECEPTION)
+            ->get()
+            ->all();
     }
 
     /**

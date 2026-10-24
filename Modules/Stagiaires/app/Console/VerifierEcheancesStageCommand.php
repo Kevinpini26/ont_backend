@@ -49,7 +49,7 @@ class VerifierEcheancesStageCommand extends Command
 
             foreach ($destinataires as $destinataire) {
                 $this->notifications->notifier($destinataire, new StageEcheanceProcheNotification($stagiaire));
-                $this->notifications->envoyerMail($destinataire->email, new StageEcheanceProcheMail($stagiaire));
+                $this->notifications->envoyerMail($destinataire->email, new StageEcheanceProcheMail($stagiaire), 'stagiaire.echeance_proche', $stagiaire);
             }
 
             $stagiaire->update(['alerte_echeance_envoyee_at' => now()]);

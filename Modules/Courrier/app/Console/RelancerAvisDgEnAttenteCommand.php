@@ -50,7 +50,7 @@ class RelancerAvisDgEnAttenteCommand extends Command
 
         foreach ($courriers as $courrier) {
             foreach ($dg as $destinataire) {
-                $this->notifications->envoyerMail($destinataire->email, new AvisDgEnAttenteMail($courrier));
+                $this->notifications->envoyerMail($destinataire->email, new AvisDgEnAttenteMail($courrier), 'courrier.avis_dg_relance', $courrier);
             }
 
             $courrier->update(['relance_avis_dg_envoyee_at' => now()]);

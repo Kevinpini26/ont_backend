@@ -136,6 +136,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/courriers/{courrier}/imprimer', [CourrierController::class, 'imprimer']);
     Route::post('/courriers/{courrier}/jeton-capture', [CourrierController::class, 'genererJetonCapture']);
     Route::get('/courriers/{courrier}/feuille-couverture', [CourrierController::class, 'feuilleCouverture']);
+    Route::get('/courriers/{courrier}/accuse-reception-guichet', [CourrierController::class, 'accuseReceptionGuichet']);
     Route::post('/courriers/{courrier}/sortir-original', [CourrierController::class, 'sortirOriginal']);
     Route::post('/courriers/{courrier}/restituer-original', [CourrierController::class, 'restituerOriginal']);
     Route::get('/courriers/{courrier}/lettre-stage', [CourrierController::class, 'telechargerLettreStage']);

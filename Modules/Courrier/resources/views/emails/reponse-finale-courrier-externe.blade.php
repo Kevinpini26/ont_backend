@@ -14,12 +14,16 @@ L’Office National du Tourisme vous informe qu’une réponse officielle a ét�
 **Numéro de départ :** {{ $reponse->numero_depart }}<br>
 @endif
 **Date :** {{ $reponse->date_envoi?->format('d/m/Y') ?? $reponse->signe_at?->format('d/m/Y') }}
+@if ($reponse->signataire)
+**Signataire :** {{ $reponse->signataire->name }}
+@endif
 
 <x-mail::button :url="$urlTelechargement">
 Consulter / Télécharger la réponse
 </x-mail::button>
 
-Pour des raisons de sécurité, ce lien est temporaire.
+Pour des raisons de sécurité, ce lien est temporaire. Le PDF officiel est
+également joint à cet email lorsque sa taille le permet.
 
 Cordialement,<br>
 **Office National du Tourisme**<br>

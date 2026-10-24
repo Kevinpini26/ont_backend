@@ -149,12 +149,13 @@ serveur de test, jamais la première fois lors d'un incident réel.
    pour identifier les actions effectuées pendant la période suspectée de
    compromission.
 
-## 8. Dépannage — six erreurs fréquentes
+## 8. Dépannage — sept erreurs fréquentes
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
 | Le conteneur `backend` boucle en redémarrage avec `password authentication failed for user` dans ses logs | `docker compose up` a été lancé sans `--env-file .env.docker.production` : Compose a résolu `${DB_PASSWORD}` depuis un `.env` local de développement (s'il en existe un dans ce dossier), pas depuis `.env.docker.production` — la base a alors été initialisée avec un mot de passe différent de celui transmis au backend | Toujours démarrer avec `docker compose --env-file .env.docker.production up -d --build` (voir §2) ; si la base a déjà été créée avec le mauvais mot de passe, `docker compose down -v` puis relancer avec la bonne commande (perte des données — normal seulement en tout premier démarrage) |
 | `docker compose up` échoue avec « BACKUP_DISK=backups-local en production » | `.env.docker.production` n'a pas `BACKUP_DISK=backups-s3` avec de vrais identifiants | Renseigner les variables `BACKUP_S3_*` (voir §5 de SECURITY.md) |
+| `docker compose up` échoue avec « MAIL_MAILER=log en production » | `.env.docker.production` a laissé `MAIL_MAILER=log` (valeur de développement) | Renseigner `MAIL_MAILER=smtp` (ou `ses`, `postmark`...) et les identifiants réels (voir §5) |
 | Le portail public s'affiche mais aucune action ne fonctionne (erreurs réseau) | `VITE_API_BASE_URL` ne pointe pas vers la bonne adresse de l'API, ou CORS refuse l'origine | Vérifier `VITE_API_BASE_URL` (build du frontend) et `FRONTEND_URL` (backend, CORS) — les deux doivent correspondre au domaine réel |
 | Aucun e-mail n'est jamais envoyé (accusé de réception, notification) | Configuration SMTP absente ou incorrecte, ou `queue-worker` arrêté | Vérifier `docker compose logs queue-worker` et les identifiants SMTP (§5) |
 | Une tâche planifiée (sauvegarde, relance, alerte d'échéance) ne s'exécute jamais | Le service `scheduler` n'est pas démarré ou a crashé | `docker compose ps` puis `docker compose restart scheduler` |

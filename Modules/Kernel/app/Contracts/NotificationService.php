@@ -3,7 +3,9 @@
 namespace Modules\Kernel\Contracts;
 
 use Illuminate\Contracts\Mail\Mailable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notification;
+use Modules\Kernel\Models\User;
 
 /**
  * Point d'extension : envoie une notification (email ou autre canal futur)
@@ -24,9 +26,17 @@ interface NotificationService
     /**
      * Met en file un Mailable à destination d'une adresse email brute (pas
      * de compte utilisateur associé, ex. accusé de réception à un candidat
-     * externe).
+     * externe). Chaque envoi est tracé dans la table `notifications_email`
+     * (voir Modules\Kernel\Models\NotificationEmail) : `$type` est une clé
+     * courte et stable (ex. "courrier.reponse_finale"), `$sujet` le modèle
+     * auquel rattacher l'envoi pour l'historique (facultatif), et
+     * `$alerterSiEchec` la liste des agents à prévenir en cloche si les
+     * tentatives échouent toutes (laisser vide pour un simple rappel
+     * interne sans conséquence opérationnelle si l'envoi se perd).
+     *
+     * @param  array<int, User>  $alerterSiEchec
      */
-    public function envoyerMail(string $email, Mailable $mailable): void;
+    public function envoyerMail(string $email, Mailable $mailable, string $type, ?Model $sujet = null, array $alerterSiEchec = []): void;
 
     /**
      * Envoie une Notification à un modèle Notifiable (ex. un utilisateur du

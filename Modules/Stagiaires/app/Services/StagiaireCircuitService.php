@@ -179,7 +179,7 @@ class StagiaireCircuitService
 
         foreach ($responsables as $responsable) {
             $this->notifications->notifier($responsable, new StagiaireAffecteNotification($stagiaire));
-            $this->notifications->envoyerMail($responsable->email, new StagiaireAffecteMail($stagiaire));
+            $this->notifications->envoyerMail($responsable->email, new StagiaireAffecteMail($stagiaire), 'stagiaire.affecte', $stagiaire);
         }
     }
 

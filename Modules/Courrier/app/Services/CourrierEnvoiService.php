@@ -22,6 +22,8 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Throwable;
@@ -174,7 +176,7 @@ class CourrierEnvoiService
 
             $destinataire = trim((string) $courrier->destinataire_externe_email);
             $origine = $this->originePourCourriel($courrier);
-            $ttl = max(1, (int) config('courrier.reponse_externe.lien_ttl_minutes', 10080));
+            $ttl = max(1, (int) Setting::valeur('courrier.lien_ttl_minutes', 10080));
             $url = URL::temporarySignedRoute(
                 'api.public.reponses.telecharger',
                 now()->addMinutes($ttl),
@@ -194,7 +196,7 @@ class CourrierEnvoiService
             if ($ancienStatut !== $courrier->statut) {
                 $this->helpers->tracerTransition($courrier, $utilisateur);
             }
-            $this->notifications->envoyerMail($destinataire, $mail);
+            $this->notifications->envoyerMail($destinataire, $mail, 'courrier.reponse_finale', $courrier, $this->agentsSecretariat2());
             $this->audit->enregistrer('courrier.courriel_envoye', $courrier, $utilisateur, [
                 'courriel_destinataire' => $destinataire,
                 'courriel_envoye_at' => $instantEnvoi->toISOString(),
@@ -426,7 +428,7 @@ class CourrierEnvoiService
             return;
         }
 
-        $ttl = max(1, (int) config('courrier.reponse_externe.lien_ttl_minutes', 10080));
+        $ttl = max(1, (int) Setting::valeur('courrier.lien_ttl_minutes', 10080));
         $url = URL::temporarySignedRoute(
             'api.public.reponses.telecharger',
             now()->addMinutes($ttl),
@@ -437,6 +439,9 @@ class CourrierEnvoiService
             $this->notifications->envoyerMail(
                 $origine->expediteur_externe_email,
                 new ReponseFinaleCourrierExterneMail($origine, $reponse, $url),
+                'courrier.reponse_finale',
+                $reponse,
+                $this->agentsSecretariat2(),
             );
             $this->audit->enregistrer('courrier.reponse_finale_notifiee', $reponse, $acteur, [
                 'dossier_id' => $reponse->dossier_id,
@@ -509,5 +514,22 @@ class CourrierEnvoiService
 
             return $courrier;
         });
+    }
+
+    /**
+     * Agents actuellement au poste Secrétariat 02 — destinataires de
+     * l'alerte interne quand l'envoi d'une réponse finale échoue
+     * définitivement (voir
+     * Modules\Kernel\Jobs\EnvoyerNotificationEmailJob::failed()).
+     *
+     * @return array<int, User>
+     */
+    private function agentsSecretariat2(): array
+    {
+        return User::query()
+            ->where('role', UserRole::AGENT_CIRCUIT_COURRIER)
+            ->where('poste', Poste::SECRETARIAT_2)
+            ->get()
+            ->all();
     }
 }

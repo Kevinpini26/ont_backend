@@ -5,7 +5,9 @@ namespace Modules\Stagiaires\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Enums\StagiaireStatut;
@@ -28,6 +30,7 @@ class VerrouDiffusionTest extends StagiaireTestCase
     public function test_aucun_canal_ne_soutre_avant_lapprobation_du_tableau_puis_tous_souvrent_apres(): void
     {
         Mail::fake();
+        Queue::fake();
         Notification::fake();
 
         $this->directionDfp();
@@ -95,7 +98,10 @@ class VerrouDiffusionTest extends StagiaireTestCase
 
         $this->assertDatabaseHas('stagiaire_documents', ['stagiaire_id' => $stagiaire->id, 'type' => 'note_affectation']);
 
-        Mail::assertQueued(StagiaireAffecteMail::class, fn ($mail) => $mail->hasTo($responsable->email));
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof StagiaireAffecteMail && $job->email === $responsable->email,
+        );
         Notification::assertSentTo($responsable, StagiaireAffecteNotification::class);
 
         // L'arrivée réelle, elle, s'ouvre désormais.

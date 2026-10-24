@@ -2,23 +2,18 @@
 
 namespace Modules\Courrier\Mail;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Queue\SerializesModels;
 use Modules\Courrier\Models\Courrier;
 
 /**
- * Envoyée à la direction destinataire d'un nouveau courrier. Toujours
- * dispatchée via Mail::queue() (jamais ->send()) : voir
- * CourrierCircuitService::creer().
+ * Envoyée à la direction destinataire d'un nouveau courrier. Toujours mise
+ * en file via Modules\Kernel\Contracts\NotificationService::envoyerMail()
+ * (jamais Mail:: directement) : voir CourrierReceptionService::creer().
  */
-class CourrierRecuMail extends Mailable implements ShouldQueue
+class CourrierRecuMail extends Mailable
 {
-    use Queueable, SerializesModels;
-
     public function __construct(public readonly Courrier $courrier) {}
 
     public function envelope(): Envelope

@@ -3,7 +3,9 @@
 namespace Modules\Kernel\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Modules\Kernel\Console\PrevisualiserEmailCommand;
 use Modules\Kernel\Console\RestaurerBaseDeDonneesCommand;
 use Modules\Kernel\Console\SauvegarderBaseDeDonneesCommand;
 use Modules\Kernel\Contracts\AuditLogger;
@@ -25,6 +27,7 @@ use Modules\Kernel\Support\DefaultDirectionScopeBypassResolver;
 use Modules\Kernel\Support\DompdfPdfGenerationService;
 use Modules\Kernel\Support\EndroidQrCodeService;
 use Modules\Kernel\Support\LaravelNotificationService;
+use Modules\Kernel\Support\MailProductionGuard;
 use Modules\Kernel\Support\SmsNotificationCanal;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -48,6 +51,7 @@ class KernelServiceProvider extends ModuleServiceProvider
     protected array $commands = [
         SauvegarderBaseDeDonneesCommand::class,
         RestaurerBaseDeDonneesCommand::class,
+        PrevisualiserEmailCommand::class,
     ];
 
     /**
@@ -77,6 +81,7 @@ class KernelServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         BackupDiskProductionGuard::verifier();
+        MailProductionGuard::verifier();
 
         Gate::policy(Direction::class, DirectionPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
@@ -98,5 +103,12 @@ class KernelServiceProvider extends ModuleServiceProvider
     protected function configureSchedules(Schedule $schedule): void
     {
         $schedule->command(SauvegarderBaseDeDonneesCommand::class)->dailyAt('03:00');
+
+        // Pouls du planificateur : seul moyen de savoir depuis l'API si
+        // "cron -> artisan schedule:run" tourne réellement en production,
+        // sans ça aucune tâche planifiée (sauvegarde, relances, alertes
+        // d'échéance...) ne s'exécute jamais sans que personne ne le voie
+        // (voir SupervisionController::index()).
+        $schedule->call(fn () => Cache::put('supervision.planificateur_dernier_tick', now()))->everyMinute();
     }
 }

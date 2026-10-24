@@ -5,12 +5,14 @@ namespace Modules\Public\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Tests\TestCase;
@@ -33,6 +35,7 @@ class DeposerCourrierExternePublicTest extends TestCase
     public function test_un_partenaire_peut_deposer_un_courrier_externe_sans_authentification(): void
     {
         Mail::fake();
+        Queue::fake();
         Storage::fake('local');
 
         $response = $this->post('/api/v1/public/courriers-externes', $this->payloadValide());
@@ -68,15 +71,16 @@ class DeposerCourrierExternePublicTest extends TestCase
         $this->assertNotNull($courrier->piece_jointe_chemin);
         Storage::disk('local')->assertExists($courrier->piece_jointe_chemin);
 
-        Mail::assertQueued(
-            AccuseReceptionCourrierExterneMail::class,
-            fn ($mail) => $mail->hasTo('contact@agence-exemple.cd')
-                && $mail->courrier->is($courrier)
-                && str_contains($mail->render(), 'Proposition de partenariat')
-                && str_contains($mail->render(), $courrier->numero_accuse_reception)
-                && ! str_contains($mail->render(), '2026-0001'),
-        );
-        Mail::assertQueued(AccuseReceptionCourrierExterneMail::class, 1);
+        $jobsAccuse = Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof AccuseReceptionCourrierExterneMail);
+        $this->assertCount(1, $jobsAccuse);
+        $jobAccuse = $jobsAccuse->first();
+        $this->assertSame('contact@agence-exemple.cd', $jobAccuse->email);
+        $this->assertTrue($jobAccuse->mailable->courrier->is($courrier));
+        $rendu = $jobAccuse->mailable->render();
+        $this->assertStringContainsString('Proposition de partenariat', $rendu);
+        $this->assertStringContainsString($courrier->numero_accuse_reception, $rendu);
+        $this->assertStringNotContainsString('2026-0001', $rendu);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.accuse_reception_envoye',
             'auditable_id' => $courrier->id,

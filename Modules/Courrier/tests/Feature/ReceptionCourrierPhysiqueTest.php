@@ -5,11 +5,14 @@ namespace Modules\Courrier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Mail\AccuseReceptionCandidatMail;
 use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\Direction;
 
 class ReceptionCourrierPhysiqueTest extends CourrierTestCase
@@ -20,6 +23,7 @@ class ReceptionCourrierPhysiqueTest extends CourrierTestCase
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
 
@@ -53,7 +57,62 @@ class ReceptionCourrierPhysiqueTest extends CourrierTestCase
         $this->assertCount(1, $courrier->transitions);
         $this->assertSame(Poste::RECEPTION->value, $courrier->transitions->first()->expediteur_poste);
         $this->assertSame(Poste::SECRETARIAT_1->value, $courrier->transitions->first()->destinataire_poste);
-        Mail::assertNotQueued(AccuseReceptionCourrierExterneMail::class);
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof AccuseReceptionCourrierExterneMail && $job->email === 'contact@entreprise-test.cd',
+        );
+    }
+
+    public function test_un_candidat_enregistre_au_guichet_avec_email_recoit_un_accuse_de_reception(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        Queue::fake();
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+
+        $this->actingAs($reception)->post('/api/v1/courriers', [
+            'objet' => 'Demande de stage académique',
+            'type' => CourrierType::DEMANDE_STAGE->value,
+            'candidat_nom' => 'Jean Kabila',
+            'candidat_email' => 'jean.kabila@example.test',
+            'candidat_contact' => '+243 900 000 002',
+            'candidat_etablissement' => 'Université de Kinshasa',
+            'periode_souhaitee_debut' => now()->addMonth()->toDateString(),
+            'periode_souhaitee_fin' => now()->addMonths(3)->toDateString(),
+            'mode_reception' => 'porteur',
+            'date_courrier' => '2026-09-26',
+            'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
+        ])->assertCreated();
+
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof AccuseReceptionCandidatMail && $job->email === 'jean.kabila@example.test',
+        );
+    }
+
+    public function test_un_expediteur_enregistre_au_guichet_sans_email_ne_recoit_aucun_mail_mais_peut_obtenir_la_fiche_imprimable(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        Queue::fake();
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+
+        $id = $this->actingAs($reception)->post('/api/v1/courriers', [
+            'objet' => 'Demande sans contact électronique',
+            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Entreprise Sans Email',
+            'mode_reception' => 'porteur',
+            'date_courrier' => '2026-09-26',
+            'piece_jointe' => UploadedFile::fake()->create('courrier.pdf', 100, 'application/pdf'),
+        ])->assertCreated()->json('data.id');
+
+        Queue::assertNothingPushed();
+
+        $reponse = $this->actingAs($reception)->get("/api/v1/courriers/{$id}/accuse-reception-guichet");
+        $reponse->assertOk();
+        $this->assertSame('application/pdf', $reponse->headers->get('Content-Type'));
     }
 
     public function test_une_correspondance_physique_exige_un_expediteur_et_un_mode_non_public(): void

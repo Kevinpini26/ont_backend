@@ -5,6 +5,7 @@ namespace Modules\Courrier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Modules\Courrier\Enums\CourrierStatut;
@@ -14,7 +15,9 @@ use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Mail\ReponseFinaleCourrierExterneMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
 
 class SortieCourrierTest extends CourrierTestCase
@@ -25,6 +28,7 @@ class SortieCourrierTest extends CourrierTestCase
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         [$courrier, $sec2, $dg, , $contenuPdf] = $this->courrierSigne();
 
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
@@ -59,18 +63,18 @@ class SortieCourrierTest extends CourrierTestCase
             'auditable_id' => $courrier->id,
             'user_id' => $sec2->id,
         ]);
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
-        $url = null;
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use (&$url): bool {
-            $url = $mail->urlTelechargement;
-
-            return $mail->hasTo('destinataire@example.test');
-        });
+        $jobsReponseFinale = Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail);
+        $this->assertCount(1, $jobsReponseFinale);
+        $job = $jobsReponseFinale->first();
+        $this->assertSame('destinataire@example.test', $job->email);
+        $url = $job->mailable->urlTelechargement;
         $this->get($url)->assertOk()->assertStreamedContent($contenuPdf);
         $this->assertSame(hash('sha256', $contenuPdf), $courrier->pdf_sha256);
 
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/envoyer-par-courriel")->assertUnprocessable();
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertCount(1, Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail));
     }
 
     public function test_selection_email_refuse_adresse_absente_pdf_absent_ou_hash_altere(): void
@@ -164,6 +168,7 @@ class SortieCourrierTest extends CourrierTestCase
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         [$courrier, $sec2] = $this->courrierSigne(origineMode: ModeReception::PORTEUR, origineEmail: null);
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
             'mode_sortie' => ModeSortie::COURRIEL_ET_RETRAIT->value,
@@ -191,13 +196,15 @@ class SortieCourrierTest extends CourrierTestCase
         $this->assertSame(CourrierStatut::REMIS, $courrier->statut);
         $this->assertSame(1, $courrier->transitions()->where('statut', CourrierStatut::REMIS)->count());
         $this->actingAs($sec2)->getJson('/api/v1/courriers?file_sorties_sec2=1')->assertJsonMissing(['id' => $courrier->id]);
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertCount(1, Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail));
     }
 
     public function test_email_en_premier_puis_retrait_garde_le_canal_physique_independant(): void
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         [$courrier, $sec2] = $this->courrierSigne(origineMode: ModeReception::PORTEUR, origineEmail: null);
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
             'mode_sortie' => ModeSortie::COURRIEL_ET_RETRAIT->value,
@@ -228,13 +235,15 @@ class SortieCourrierTest extends CourrierTestCase
         $this->assertSame('destinataire@example.test', $courrier->courriel_destinataire);
         $this->assertNotNull($courrier->remis_le);
         $this->assertSame('Jean Ilunga', $courrier->remis_a);
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, 1);
+        $this->assertCount(1, Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail));
     }
 
     public function test_canal_email_seul_pour_courrier_physique_est_explicite_et_non_substituable(): void
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         [$courrier, $sec2] = $this->courrierSigne(
             origineMode: ModeReception::PORTEUR,
             origineEmail: null,
@@ -245,13 +254,12 @@ class SortieCourrierTest extends CourrierTestCase
         ])->assertOk();
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/envoyer-par-courriel")->assertOk();
 
-        $url = null;
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use (&$url): bool {
-            $url = $mail->urlTelechargement;
-
-            return $mail->hasTo('nouveau.destinataire@example.test');
-        });
-        $this->get($url)->assertOk();
+        $jobsReponseFinale = Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail);
+        $this->assertCount(1, $jobsReponseFinale);
+        $job = $jobsReponseFinale->first();
+        $this->assertSame('nouveau.destinataire@example.test', $job->email);
+        $this->get($job->mailable->urlTelechargement)->assertOk();
         $this->assertNotNull($courrier->fresh()->courriel_envoye_at);
         $this->assertSame('nouveau.destinataire@example.test', $courrier->fresh()->courriel_destinataire);
     }
@@ -284,6 +292,47 @@ class SortieCourrierTest extends CourrierTestCase
         ])->assertOk();
         $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/rendre-disponible-retrait")->assertOk();
         $this->get($url)->assertNotFound();
+    }
+
+    public function test_le_pdf_officiel_est_joint_a_lemail_de_reponse_finale(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        Queue::fake();
+        $contenuPdf = "%PDF-1.7\nScan final valide\n%%EOF";
+        [$courrier, $sec2] = $this->courrierSigne(pdf: $contenuPdf);
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
+            'mode_sortie' => ModeSortie::COURRIEL->value,
+        ])->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/envoyer-par-courriel")->assertOk();
+
+        $job = Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail)
+            ->first();
+        $job->mailable->assertHasAttachedData($contenuPdf, "ONT-Reponse-{$courrier->numero_depart}.pdf", ['mime' => 'application/pdf']);
+        $job->mailable->assertSeeInHtml($courrier->signataire->name);
+        $job->mailable->assertSeeInHtml(config('ont.contact.email'));
+    }
+
+    public function test_le_pdf_surdimensionne_est_omis_et_lemail_part_quand_meme(): void
+    {
+        Setting::definir('courrier.piece_jointe_limite_octets', 10);
+        Storage::fake('local');
+        Mail::fake();
+        Queue::fake();
+        [$courrier, $sec2] = $this->courrierSigne(pdf: "%PDF-1.7\nContenu plus grand que dix octets\n%%EOF");
+
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/mode-sortie", [
+            'mode_sortie' => ModeSortie::COURRIEL->value,
+        ])->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$courrier->id}/envoyer-par-courriel")->assertOk();
+
+        $job = Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail)
+            ->first();
+        $job->mailable->assertHasNoAttachments();
+        $this->assertNotNull($courrier->fresh()->courriel_envoye_at);
     }
 
     private function courrierSigne(

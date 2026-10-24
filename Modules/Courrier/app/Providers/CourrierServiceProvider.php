@@ -8,6 +8,7 @@ use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Console\GenererRegistreCourrierCommand;
 use Modules\Courrier\Console\ReconcilerPdfOfficielDocumentAutonomeCommand;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
+use Modules\Courrier\Contracts\AccuseReceptionGuichetGenerator;
 use Modules\Courrier\Contracts\BordereauLotPdfGenerator;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Contracts\CourrierPdfGenerator;
@@ -30,6 +31,7 @@ use Modules\Courrier\Policies\TraitementDirectionPolicy;
 use Modules\Courrier\Support\ConfigCircuitTransitionRules;
 use Modules\Courrier\Support\DatabaseSequenceGenerator;
 use Modules\Courrier\Support\DefaultNumeroGenerator;
+use Modules\Courrier\Support\DompdfAccuseReceptionGuichetGenerator;
 use Modules\Courrier\Support\DompdfBordereauLotPdfGenerator;
 use Modules\Courrier\Support\DompdfCourrierPdfGenerator;
 use Modules\Courrier\Support\DompdfFeuilleCouvertureGenerator;
@@ -81,6 +83,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
         $this->app->bind(RegistreCourrierPdfGenerator::class, DompdfRegistreCourrierPdfGenerator::class);
         $this->app->bind(FeuilleCouvertureGenerator::class, DompdfFeuilleCouvertureGenerator::class);
         $this->app->bind(BordereauLotPdfGenerator::class, DompdfBordereauLotPdfGenerator::class);
+        $this->app->bind(AccuseReceptionGuichetGenerator::class, DompdfAccuseReceptionGuichetGenerator::class);
     }
 
     public function boot(): void

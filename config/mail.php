@@ -115,4 +115,23 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown Mail Settings
+    |--------------------------------------------------------------------------
+    |
+    | "paths" ci-dessous fait remonter resources/views/vendor/mail (en-tête
+    | et pied ONT communs aux 7 Mailables du projet, voir
+    | resources/views/vendor/mail/html/message.blade.php) avant les vues
+    | par défaut du framework.
+    |
+    */
+
+    'markdown' => [
+        'theme' => 'default',
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
+    ],
+
 ];

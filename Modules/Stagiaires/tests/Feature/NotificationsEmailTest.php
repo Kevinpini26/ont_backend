@@ -3,7 +3,8 @@
 namespace Modules\Stagiaires\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Console\VerifierEcheancesStageCommand;
@@ -18,7 +19,7 @@ class NotificationsEmailTest extends StagiaireTestCase
 
     public function test_laffectation_met_lenvoi_de_lemail_en_file_dattente(): void
     {
-        Mail::fake();
+        Queue::fake();
 
         $dfp = User::factory()->agentDfp()->create();
         $direction = Direction::factory()->create(['actif' => true]);
@@ -27,12 +28,15 @@ class NotificationsEmailTest extends StagiaireTestCase
 
         $this->affecterViaTableau($stagiaire, $direction, $dfp)->assertOk();
 
-        Mail::assertQueued(StagiaireAffecteMail::class, fn ($mail) => $mail->hasTo($responsable->email));
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof StagiaireAffecteMail && $job->email === $responsable->email,
+        );
     }
 
     public function test_lalerte_decheance_met_lenvoi_de_lemail_en_file_dattente(): void
     {
-        Mail::fake();
+        Queue::fake();
 
         $direction = Direction::factory()->create();
         $dfp = User::factory()->agentDfp()->create();
@@ -46,7 +50,13 @@ class NotificationsEmailTest extends StagiaireTestCase
 
         $this->artisan(VerifierEcheancesStageCommand::class)->assertSuccessful();
 
-        Mail::assertQueued(StageEcheanceProcheMail::class, fn ($mail) => $mail->hasTo($dfp->email));
-        Mail::assertQueued(StageEcheanceProcheMail::class, fn ($mail) => $mail->hasTo($responsable->email));
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof StageEcheanceProcheMail && $job->email === $dfp->email,
+        );
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof StageEcheanceProcheMail && $job->email === $responsable->email,
+        );
     }
 }

@@ -4,7 +4,7 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
 use Modules\Courrier\Enums\CourrierStatut;
@@ -13,6 +13,7 @@ use Modules\Courrier\Mail\AvisDgEnAttenteMail;
 use Modules\Courrier\Mail\CourrierRecuMail;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 
@@ -22,7 +23,7 @@ class NotificationsEmailTest extends CourrierTestCase
 
     public function test_la_creation_dun_courrier_adresse_a_une_direction_met_lenvoi_en_file_dattente(): void
     {
-        Mail::fake();
+        Queue::fake();
         Storage::fake('local');
 
         $direction = Direction::factory()->create();
@@ -38,12 +39,20 @@ class NotificationsEmailTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated();
 
-        Mail::assertQueued(CourrierRecuMail::class, fn ($mail) => $mail->hasTo($responsable->email));
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof CourrierRecuMail && $job->email === $responsable->email,
+        );
+        $this->assertDatabaseHas('notifications_email', [
+            'type' => 'courrier.recu_direction',
+            'destinataire' => $responsable->email,
+            'statut' => 'en_file',
+        ]);
     }
 
     public function test_la_relance_davis_dg_ne_seffectue_que_pour_les_courriers_en_attente_depuis_plus_de_48h(): void
     {
-        Mail::fake();
+        Queue::fake();
 
         $direction = Direction::factory()->create();
         $dg = User::factory()->agentCircuitCourrier(Poste::DG, $direction)->create();
@@ -64,14 +73,20 @@ class NotificationsEmailTest extends CourrierTestCase
 
         $this->artisan(RelancerAvisDgEnAttenteCommand::class)->assertSuccessful();
 
-        Mail::assertQueued(AvisDgEnAttenteMail::class, fn ($mail) => $mail->courrier->is($ancien) && $mail->hasTo($dg->email));
-        Mail::assertNotQueued(AvisDgEnAttenteMail::class, fn ($mail) => $mail->courrier->is($recent));
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof AvisDgEnAttenteMail && $job->mailable->courrier->is($ancien) && $job->email === $dg->email,
+        );
+        Queue::assertNotPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof AvisDgEnAttenteMail && $job->mailable->courrier->is($recent),
+        );
 
         $this->assertNotNull($ancien->fresh()->relance_avis_dg_envoyee_at);
 
         // Une seconde exécution ne doit pas relancer une seconde fois.
-        Mail::fake();
+        Queue::fake();
         $this->artisan(RelancerAvisDgEnAttenteCommand::class)->assertSuccessful();
-        Mail::assertNothingQueued();
+        Queue::assertNothingPushed();
     }
 }
