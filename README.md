@@ -41,7 +41,7 @@ PostgreSQL (paramétrable dans `.env` : `DB_CONNECTION=pgsql`). Les tests utilis
 php artisan test
 ```
 
-Plus de 850 tests couvrant : authentification, verrouillage de compte, changement/réinitialisation de mot de passe, filtrage par direction et journal d'audit (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence et tableau de bord statistique (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
+Plus de 900 tests couvrant : authentification, verrouillage/désactivation de compte, changement/réinitialisation de mot de passe, passation de poste unique, filtrage par direction, journal d'audit et supervision système (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence, tableau de bord statistique et notifications e-mail tracées (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
 
 ```bash
 ./vendor/bin/pint --test      # style de code (PSR-12 + règles Laravel)
@@ -51,6 +51,15 @@ Plus de 850 tests couvrant : authentification, verrouillage de compte, changemen
 ### Génération du PDF d'attestation
 
 Le module Stagiaires utilise `barryvdh/laravel-dompdf`. Le PDF est stocké sur le disque `local` (`storage/app/attestations/`).
+
+### Prévisualiser un email
+
+```bash
+php artisan mail:previsualiser --lister       # liste les 7 Mailables du projet
+php artisan mail:previsualiser <cle>           # génère storage/app/previsualisations-email/<cle>.html
+```
+
+Données fictives, dans une transaction toujours annulée (voir `Modules\Kernel\Console\PrevisualiserEmailCommand`) : aucune écriture réelle. Utile pour relire le gabarit commun (`resources/views/vendor/mail/html/`, en-tête et pied ONT partagés par les 7 Mailables) après une modification.
 
 ## Authentification
 
@@ -104,14 +113,25 @@ Détail exhaustif (schémas de requête/réponse, codes d'erreur) : `docs/openap
 | GET | `/api/v1/dg-disponibilite` | ✔ | Disponibilité déclarée de la DG (garde l'intérim dynamique de la DGA) |
 | POST | `/api/v1/dg-disponibilite` | ✔ dg | Déclare la DG indisponible/disponible |
 | GET | `/api/v1/rapports/periodique` | ✔ admin ou dfp | Génère le rapport PDF mensuel/annuel destiné à la tutelle |
-| GET | `/api/v1/users` | ✔ admin | Liste paginée des comptes |
-| POST | `/api/v1/users` | ✔ admin | Créer un compte (`role`, `poste?`, `direction_id?`) — `doit_changer_mot_de_passe` forcé à vrai |
-| GET | `/api/v1/users/{id}` | ✔ admin ou soi-même | Détail d'un compte |
+| GET | `/api/v1/users` | ✔ admin | Liste paginée des comptes, filtrable (`recherche`, `role`, `poste`, `direction_id`, `actif`, `verrouille`), triable, `par_page` |
+| POST | `/api/v1/users` | ✔ admin | Crée un compte par invitation (`role`, `poste?`, `direction_id?`) — aucun mot de passe saisi, un lien à usage unique est envoyé |
+| GET | `/api/v1/users/{id}` | ✔ admin ou soi-même | Détail d'un compte, dernière connexion et sessions actives |
 | PUT/PATCH | `/api/v1/users/{id}` | ✔ admin | Modifier un compte |
-| DELETE | `/api/v1/users/{id}` | ✔ admin | Supprimer un compte |
+| DELETE | `/api/v1/users/{id}` | ✔ admin | Supprimer un compte sans trace d'audit (sinon : désactiver) |
+| POST | `/api/v1/users/{id}/desactiver` | ✔ admin | Désactive un compte (bloque la connexion, révoque ses jetons) |
+| POST | `/api/v1/users/{id}/reactiver` | ✔ admin | Réactive un compte désactivé |
 | DELETE | `/api/v1/users/{id}/tokens` | ✔ admin | Révoque tous les jetons Sanctum du compte (compte compromis) |
+| DELETE | `/api/v1/users/{id}/tokens/{jeton}` | ✔ admin | Révoque une session précise (un seul appareil) |
+| POST | `/api/v1/postes-uniques/passation` | ✔ admin | Passation d'un poste unique (DG, DGA, Secrétariat 01/02, Réception) : désactive l'ancien titulaire, active le nouveau |
 | POST | `/api/v1/users/{id}/deverrouiller` | ✔ admin | Lève un verrouillage pour échecs de connexion avant les 15 minutes automatiques |
-| GET | `/api/v1/audit-logs` | ✔ admin | Journal d'audit (connexions, signatures, affectations, notations), filtrable par `action`, `user_id`, `depuis` |
+| GET | `/api/v1/audit-logs` | ✔ admin | Journal d'audit, filtrable par `action`, `user_id`, `sujet_type`, `sujet_id`, `recherche`, `depuis`, `jusqu_a` |
+| GET | `/api/v1/admin/tableau-de-bord` | ✔ admin | Comptes actifs/verrouillés, échecs d'e-mail du jour, jobs en échec, dernière sauvegarde, dernières actions sensibles |
+| GET | `/api/v1/supervision` | ✔ admin | File d'attente, planificateur, emails, dernière sauvegarde, espace disque |
+| GET/POST | `/api/v1/supervision/jobs-en-echec[/{uuid}/relancer]` | ✔ admin | Jobs en échec (`failed_jobs`) et relance (`queue:retry`) |
+| GET/POST | `/api/v1/supervision/emails-en-echec[/{id}/renvoyer]` | ✔ admin | Notifications e-mail en échec et renvoi via leur job d'origine |
+| POST | `/api/v1/supervision/email-test` | ✔ admin | Envoie un e-mail de test (mécanisme tracé standard) à l'appelant |
+| GET | `/api/v1/parametres` | ✔ admin | Paramètres de l'organisation (valeur actuelle et par défaut) |
+| PUT | `/api/v1/parametres/{cle}` | ✔ admin | Modifie un paramètre (audité) — voir `Modules\Kernel\Models\Setting` |
 
 ---
 
@@ -243,7 +263,7 @@ Aucune route de ce module n'exige d'authentification — c'est justement pourquo
 | POST | `/api/v1/public/liens/{token}/rapport-stage` | Soumission du rapport de stage par le stagiaire. |
 | POST | `/api/v1/public/liens/{token}/signer-engagement-confidentialite` | Signature de l'engagement de confidentialité, sans compte. |
 | GET | `/api/v1/public/capture/{token}` \| POST | Capture mobile de numérisation (dépôt de photos depuis le téléphone du candidat, voir le jeton généré par `POST /courriers/{id}/jeton-capture`). |
-| GET | `/api/v1/public/reponses/{courrier}/pdf` | Téléchargement de la réponse officielle via un lien signé à durée limitée (`reponse_externe.lien_ttl_minutes`), envoyé au demandeur externe. |
+| GET | `/api/v1/public/reponses/{courrier}/pdf` | Téléchargement de la réponse officielle via un lien signé à durée limitée (`Setting::valeur('courrier.lien_ttl_minutes')`, voir « Paramètres de l'organisation »), envoyé au demandeur externe. |
 | GET | `/api/v1/public/statistiques` | Chiffres publics (volumétrie, délais moyens) pour la page d'accueil institutionnelle. |
 | GET | `/api/v1/public/mention-information` | Texte de la mention d'information RGPD-like affichée avant tout dépôt public. |
 
@@ -261,5 +281,8 @@ Aucune de ces routes ne renvoie jamais les annotations internes, l'avis DG ou la
 | `Modules\Stagiaires\Contracts\AffectationRules` | Directions éligibles à l'affectation | `ActiveDirectionsAffectationRules` (directions `actif=true`) |
 | `Modules\Stagiaires\Contracts\CalculateurNoteFinale` | Critère de calcul de la note finale | `MoyenneCalculateurNoteFinale` |
 | `Modules\Stagiaires\Contracts\AttestationGenerator` | Génération du PDF d'attestation | `DompdfAttestationGenerator` |
+| `Modules\Kernel\Contracts\NotificationService` | Seul point de contact autorisé avec les façades Mail/Notification | `LaravelNotificationService` + `Modules\Kernel\Jobs\EnvoyerNotificationEmailJob` (suivi dans `notifications_email`, 3 tentatives, alerte interne si échec définitif) |
+| `Modules\Courrier\Contracts\AccuseReceptionGuichetGenerator` | Fiche imprimable de secours (courrier enregistré au guichet sans e-mail) | `DompdfAccuseReceptionGuichetGenerator` |
+| `Modules\Kernel\Models\Setting` (pas une interface, mais le même rôle) | Paramètres de l'organisation modifiables en production (nom, contacts, formats, délais d'alerte, TTL des liens, taille max des pièces jointes) | Table `settings` clé/valeur, cache invalidé à l'écriture, repli sur `config()` si jamais modifié — voir l'écran « Paramètres de l'organisation » |
 
 Chaque interface est bindée dans le `register()` du `ServiceProvider` de son module — aucune logique métier codée en dur dans les contrôleurs.

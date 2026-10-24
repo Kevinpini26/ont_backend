@@ -30,10 +30,19 @@ obligatoires avant mise en ligne ».
       `BackupDiskProductionGuard`)
 - [ ] `FRONTEND_URL` pointe vers le domaine réel du frontend, un seul
 - [ ] `VITE_API_BASE_URL` (build frontend) pointe vers l'API réelle en HTTPS
-- [ ] Identifiants SMTP réels renseignés et testés (voir
-      `INSTALLATION.md`, §5) — sans ça, aucun accusé de réception, aucune
-      notification, aucune réinitialisation de mot de passe ne part
-      réellement
+- [ ] `MAIL_MAILER` pointe vers un mailer réel (`smtp`, `ses`,
+      `postmark`...), jamais `log` (le backend refuse de démarrer sinon,
+      voir `MailProductionGuard`), avec des identifiants SMTP réels
+      renseignés et testés (voir `INSTALLATION.md`, §5) — sans ça, aucun
+      accusé de réception, aucune notification, aucune réinitialisation de
+      mot de passe ne part réellement
+- [ ] Coordonnées réelles de l'ONT renseignées depuis l'écran
+      "Paramètres de l'organisation" (`organisation.adresse`,
+      `organisation.contact_email`, `organisation.contact_telephone`) —
+      affichées dans le pied de tous les emails sortants. Les variables
+      `ONT_CONTACT_*` ne servent plus que de repli tant qu'aucun de ces
+      paramètres n'a été modifié depuis cet écran (voir
+      `Modules\Kernel\Models\Setting`, `docs/questions-ont.md`)
 - [ ] `SANCTUM_TOKEN_EXPIRATION` et `AUTH_PASSWORD_RESET_EXPIRE` conformes
       à la politique de l'ONT (valeurs par défaut : 480 min / 30 min)
 - [ ] HTTPS actif en amont (reverse proxy) sur les deux domaines (API et

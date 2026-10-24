@@ -310,6 +310,11 @@ return [
         // Durée de validité du lien signé envoyé au demandeur externe.
         // Le PDF reste privé et n'est jamais exposé par son chemin de stockage.
         'lien_ttl_minutes' => config('ont.courrier_reponse_externe.lien_ttl_minutes', 10080),
+        // Taille maximale (en octets) du PDF officiel joint à l'email de
+        // réponse finale. Au-delà, ou si le fichier est absent/altéré,
+        // l'email part quand même mais sans pièce jointe : le lien signé
+        // reste le seul moyen de récupération (voir ReponseFinaleCourrierExterneMail).
+        'piece_jointe_limite_octets' => config('ont.courrier_reponse_externe.piece_jointe_limite_octets', 10 * 1024 * 1024),
     ],
 
     'signature_physique' => [

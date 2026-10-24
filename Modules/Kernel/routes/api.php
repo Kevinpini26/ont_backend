@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Kernel\Http\Controllers\Api\AdminDashboardController;
 use Modules\Kernel\Http\Controllers\Api\AgentCircuitCourrierController;
 use Modules\Kernel\Http\Controllers\Api\AuditLogController;
 use Modules\Kernel\Http\Controllers\Api\AuthController;
@@ -11,7 +12,9 @@ use Modules\Kernel\Http\Controllers\Api\NotificationCompteurController;
 use Modules\Kernel\Http\Controllers\Api\NotificationController;
 use Modules\Kernel\Http\Controllers\Api\PasswordController;
 use Modules\Kernel\Http\Controllers\Api\RapportPeriodiqueController;
+use Modules\Kernel\Http\Controllers\Api\SettingController;
 use Modules\Kernel\Http\Controllers\Api\SiteController;
+use Modules\Kernel\Http\Controllers\Api\SupervisionController;
 use Modules\Kernel\Http\Controllers\Api\UserController;
 use Modules\Kernel\Http\Middleware\EnsureMotDePasseAJour;
 
@@ -80,9 +83,25 @@ Route::prefix('v1')->group(function () {
 
             Route::apiResource('users', UserController::class);
             Route::delete('/users/{user}/tokens', [UserController::class, 'revoquerJetons']);
+            Route::delete('/users/{user}/tokens/{jeton}', [UserController::class, 'revoquerJeton']);
             Route::post('/users/{user}/deverrouiller', [UserController::class, 'deverrouiller']);
+            Route::post('/users/{user}/desactiver', [UserController::class, 'desactiver']);
+            Route::post('/users/{user}/reactiver', [UserController::class, 'reactiver']);
+            Route::post('/postes-uniques/passation', [UserController::class, 'passationDePoste']);
 
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
+
+            Route::get('/supervision', [SupervisionController::class, 'index']);
+            Route::get('/supervision/jobs-en-echec', [SupervisionController::class, 'jobsEnEchec']);
+            Route::post('/supervision/jobs-en-echec/{uuid}/relancer', [SupervisionController::class, 'relancerJobEnEchec']);
+            Route::get('/supervision/emails-en-echec', [SupervisionController::class, 'emailsEnEchec']);
+            Route::post('/supervision/emails-en-echec/{notification}/renvoyer', [SupervisionController::class, 'renvoyerEmailEnEchec']);
+            Route::post('/supervision/email-test', [SupervisionController::class, 'envoyerEmailTest']);
+
+            Route::get('/parametres', [SettingController::class, 'index']);
+            Route::put('/parametres/{cle}', [SettingController::class, 'update']);
+
+            Route::get('/admin/tableau-de-bord', [AdminDashboardController::class, 'index']);
         });
     });
 });

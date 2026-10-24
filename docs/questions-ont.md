@@ -636,3 +636,60 @@ prêté à confusion dans les commentaires de code.)
   comme avant ce lot — aucune répartition du travail entre les quatre
   assistants (par direction, par type de courrier...) n'est imposée. À
   préciser si la pratique réelle attribue les dossiers différemment.
+
+## Lot Administration/Email — professionnalisation (Phase 1)
+
+- **Coordonnées officielles de l'ONT (email, téléphone, adresse) affichées
+  dans le pied des emails sortants aux partenaires externes.** Aucune
+  valeur officielle n'existait dans le projet avant ce lot. Provisoire :
+  `config('ont.contact')`, valeurs d'exemple clairement identifiables
+  (`contact@exemple-ont.cd`, `+243 000 000 000`) tant que les vraies
+  coordonnées ne sont pas fournies — voir `.env.example`
+  (`ONT_CONTACT_EMAIL`/`ONT_CONTACT_TELEPHONE`/`ONT_CONTACT_ADRESSE`). À
+  renseigner avec les coordonnées réelles avant tout déploiement en
+  production (le déploiement n'est pas bloqué par un garde-fou dédié,
+  contrairement à `MAIL_MAILER`/`BACKUP_DISK` : une adresse de contact
+  erronée n'est pas une panne technique, juste une information à corriger).
+
+## Lot Administration — professionnalisation (Phase 2)
+
+- **Rapport périodique de tutelle : la consigne dit "va chez la DG et la
+  DFP", mais `Gate::genererRapportTutelle` (déjà en place avant ce lot,
+  volontairement non modifié) n'autorise que `ADMINISTRATEUR` et
+  `AGENT_DFP`, jamais `DG`.** L'entrée de navigation a été retirée de
+  l'administration et ajoutée côté DFP (où elle fonctionne réellement) ;
+  aucune entrée n'a été ajoutée côté DG, puisqu'elle mènerait à un 403 (la
+  route frontend reflète exactement le Gate actuel : administrateur et
+  DFP). Si le DG doit effectivement y avoir accès, il manque une
+  modification du Gate lui-même, qui n'a pas été faite ici pour ne pas
+  étendre une autorisation sans confirmation explicite. À confirmer avec
+  la Direction : le DG doit-il vraiment accéder à ce rapport, et si oui,
+  avec quel périmètre (son autorité institutionnelle couvre-t-elle cette
+  action comme les autres, voir DgAuthorityResolver) ?
+
+- **Paramètres `organisation.logo_url` et `organisation.signataire_defaut_id`
+  (écran "Paramètres de l'organisation") : stockés et modifiables, mais
+  non branchés à un usage métier.** `logo_url` n'est lu par aucune vue ni
+  PDF (le logo reste celui codé en dur dans
+  `Modules/Courrier/resources/ONT.png` et le SVG inline de
+  `OntLogoSvg`/`entete.blade.php`) — y brancher un vrai logo uploadé
+  demanderait une gestion de fichier (upload, stockage, remplacement) non
+  construite ici. `signataire_defaut_id` n'est présélectionné dans aucun
+  formulaire (chaque document garde un `signataire_id` choisi au cas par
+  cas, voir `Courrier::signataire_id`). Les deux restent exposés dans
+  l'écran par cohérence avec la liste demandée, en attendant de préciser
+  l'usage réel attendu.
+
+## Lot Élagage (Phase 3)
+
+- **`POST /stagiaires/{stagiaire}/jeton-capture`
+  (`StagiaireController::genererJetonCapture()`) : aucun appelant trouvé
+  côté frontend.** Son commentaire renvoie explicitement vers
+  `CourrierController::genererJetonCapture()`, « même mécanisme,
+  généralisé au dossier stagiaire » — l'équivalent côté Courrier EST câblé
+  au frontend (`NumerisationPanel.jsx`), celui-ci ne l'est pas. Plutôt que
+  du code mort issu d'une fonctionnalité retirée, ceci ressemble à un
+  développement commencé puis non terminé (capture mobile pour les
+  pièces d'un dossier stagiaire). Non supprimé : à confirmer avec la
+  Direction s'il faut finir de le câbler (écran stagiaire équivalent à
+  `NumerisationPanel`) ou le retirer.

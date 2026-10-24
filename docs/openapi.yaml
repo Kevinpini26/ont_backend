@@ -405,6 +405,22 @@ paths:
       responses:
         '201': { description: Créée. }
 
+  /courriers/{courrier}/accuse-reception-guichet:
+    get:
+      tags: [Courrier]
+      summary: Fiche imprimable d'accusé de réception (courrier enregistré au guichet)
+      description: >-
+        Secours à défaut d'adresse email : contrairement à l'accusé de
+        réception public (dépôt en ligne), ce courrier n'a pas de
+        numero_accuse_reception traçable publiquement, donc pas de bouton
+        de suivi ni de code-barres sur cette fiche. Voir
+        CourrierReceptionService::creer(), qui envoie un email à la place
+        dès qu'une adresse est disponible.
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: PDF de la fiche d'accusé de réception. }
+
   /courriers/{courrier}/sortir-original:
     post:
       tags: [Courrier]
@@ -816,3 +832,222 @@ paths:
                 properties:
                   numero_accuse_reception: { type: string }
         '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /supervision:
+    get:
+      tags: [Administration]
+      summary: "Santé du système (file d'attente, planificateur, emails, sauvegarde, disque)"
+      responses:
+        '200': { description: OK. }
+        '403': { $ref: '#/components/responses/NonAutorise' }
+
+  /supervision/jobs-en-echec:
+    get:
+      tags: [Administration]
+      summary: Jobs en échec (table failed_jobs, 100 plus récents)
+      responses:
+        '200': { description: OK. }
+
+  /supervision/jobs-en-echec/{uuid}/relancer:
+    post:
+      tags: [Administration]
+      summary: Relancer un job en échec (queue:retry)
+      parameters:
+        - { name: uuid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK. }
+        '404': { description: Job introuvable. }
+
+  /supervision/emails-en-echec:
+    get:
+      tags: [Administration]
+      summary: Notifications email en échec (table notifications_email)
+      responses:
+        '200': { description: OK. }
+
+  /supervision/emails-en-echec/{notification}/renvoyer:
+    post:
+      tags: [Administration]
+      summary: Renvoyer un email en échec (via son job d'origine dans failed_jobs)
+      parameters:
+        - { name: notification, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /supervision/email-test:
+    post:
+      tags: [Administration]
+      summary: Envoyer un email de test à l'administrateur appelant
+      description: >-
+        Passe par le même mécanisme tracé que tout autre email du projet
+        (voir Modules\Kernel\Contracts\NotificationService::envoyerMail()) :
+        visible dans ce même tableau de supervision s'il échoue.
+      responses:
+        '200': { description: Mis en file. }
+
+  /admin/tableau-de-bord:
+    get:
+      tags: [Administration]
+      summary: "Tableau de bord administrateur (comptes, échecs, sauvegarde, dernières actions)"
+      description: >-
+        Compteurs techniques uniquement : aucune donnée métier (contenu de
+        courrier, etc.) — voir CourrierPolicy::consulterContenu().
+      responses:
+        '200': { description: OK. }
+        '403': { $ref: '#/components/responses/NonAutorise' }
+
+  /parametres:
+    get:
+      tags: [Administration]
+      summary: Liste des paramètres de l'organisation (valeur actuelle et par défaut)
+      description: >-
+        Remplace à l'exécution les valeurs codées en dur qui relèvent de
+        l'organisation (nom, contacts, formats, délais d'alerte...) — voir
+        SettingController::DEFINITIONS pour la liste exacte des clés.
+      responses:
+        '200': { description: OK. }
+        '403': { $ref: '#/components/responses/NonAutorise' }
+
+  /parametres/{cle}:
+    put:
+      tags: [Administration]
+      summary: Modifier un paramètre de l'organisation (audité)
+      parameters:
+        - { name: cle, in: path, required: true, schema: { type: string }, example: organisation.nom }
+      responses:
+        '200': { description: OK. }
+        '404': { description: Clé de paramètre inconnue. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /directions/{direction}:
+    put:
+      tags: [Administration]
+      summary: Modifier une direction (code, nom, actif, opérationnelle, capacité, site)
+      description: >-
+        Désactiver une direction (actif=false) est refusé si elle a des
+        courriers en cours (statut non terminal) — voir
+        DirectionController::assertAucunCourrierEnCours().
+      parameters:
+        - { name: direction, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /users:
+    get:
+      tags: [Administration]
+      summary: Liste des comptes (réservé à l'administrateur)
+      description: >-
+        Filtres : recherche (nom/e-mail), role, poste, direction_id, actif,
+        verrouille. Tri : tri (name|email|role|poste|created_at), ordre
+        (asc|desc). Pagination : par_page (max 200).
+      responses:
+        '200': { description: OK, paginé. }
+        '403': { $ref: '#/components/responses/NonAutorise' }
+    post:
+      tags: [Administration]
+      summary: Créer un compte par invitation
+      description: >-
+        Aucun mot de passe n'est saisi par l'administrateur : un e-mail
+        avec un lien à usage unique est envoyé au titulaire pour qu'il
+        définisse le sien (même mécanisme que la réinitialisation de mot
+        de passe). Refusé si le poste demandé est un poste unique déjà
+        occupé par un titulaire actif (voir Poste::estUnique()).
+      responses:
+        '201': { description: Créé. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /users/{user}:
+    get:
+      tags: [Administration]
+      summary: Fiche d'un compte (dernière connexion, sessions actives, détail)
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+    put:
+      tags: [Administration]
+      summary: Modifier un compte
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+    delete:
+      tags: [Administration]
+      summary: Supprimer un compte sans trace métier
+      description: >-
+        Refusé si ce compte a au moins une entrée dans le journal d'audit
+        (voir UserController::destroy()) : désactiver (ci-dessous) plutôt
+        que supprimer dans ce cas.
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: Supprimé. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /users/{user}/desactiver:
+    post:
+      tags: [Administration]
+      summary: Désactiver un compte (bloque la connexion, révoque ses jetons)
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+        '422': { description: Déjà désactivé, ou compte de l'appelant lui-même. }
+
+  /users/{user}/reactiver:
+    post:
+      tags: [Administration]
+      summary: Réactiver un compte désactivé
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+        '422': { description: Déjà actif, ou poste unique déjà occupé. }
+
+  /users/{user}/tokens/{jeton}:
+    delete:
+      tags: [Administration]
+      summary: Révoquer une session précise (un seul appareil)
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+        - { name: jeton, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK. }
+        '404': { description: Jeton introuvable pour ce compte. }
+
+  /postes-uniques/passation:
+    post:
+      tags: [Administration]
+      summary: Passation d'un poste unique (DG, DGA, Secrétariat 01/02, Réception)
+      description: >-
+        Désactive le titulaire actif actuel du poste (s'il y en a un) et
+        affecte le poste au nouveau titulaire, en une seule action tracée.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [poste, nouveau_titulaire_id]
+              properties:
+                poste: { type: string }
+                nouveau_titulaire_id: { type: integer }
+      responses:
+        '200': { description: OK. }
+        '422': { $ref: '#/components/responses/ErreurValidation' }
+
+  /audit-logs:
+    get:
+      tags: [Administration]
+      summary: Journal d'audit (réservé à l'administrateur, lecture seule)
+      description: >-
+        Filtres : action, user_id, sujet_type, sujet_id, recherche (action
+        ou description), depuis, jusqu_a. Pagination : par_page (max 200).
+        Aucune route de modification ou de suppression n'existe pour ce
+        modèle.
+      responses:
+        '200': { description: OK, paginé. }
+        '403': { $ref: '#/components/responses/NonAutorise' }

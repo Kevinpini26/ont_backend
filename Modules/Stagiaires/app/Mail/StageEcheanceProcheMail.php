@@ -2,18 +2,13 @@
 
 namespace Modules\Stagiaires\Mail;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Queue\SerializesModels;
 use Modules\Stagiaires\Models\Stagiaire;
 
-class StageEcheanceProcheMail extends Mailable implements ShouldQueue
+class StageEcheanceProcheMail extends Mailable
 {
-    use Queueable, SerializesModels;
-
     public function __construct(public readonly Stagiaire $stagiaire) {}
 
     public function envelope(): Envelope
