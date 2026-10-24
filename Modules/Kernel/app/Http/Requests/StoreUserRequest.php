@@ -6,7 +6,6 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
-use Modules\Kernel\Support\PasswordPolicy;
 
 class StoreUserRequest extends FormRequest
 {
@@ -35,8 +34,9 @@ class StoreUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'initiales_reference' => ['nullable', 'string', 'max:12', 'regex:/\A[A-Z]{1,12}\z/'],
+            // Création par invitation : jamais de mot de passe saisi par
+            // l'administrateur, voir UserController::store().
             'email' => ['required', 'email', 'unique:users,email'],
-            'password' => ['required', 'string', PasswordPolicy::regle()],
             'role' => ['required', Rule::enum(UserRole::class)],
             'poste' => [
                 Rule::requiredIf(fn () => $this->input('role') === UserRole::AGENT_CIRCUIT_COURRIER->value),

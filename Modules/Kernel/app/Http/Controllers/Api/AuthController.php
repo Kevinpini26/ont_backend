@@ -40,6 +40,14 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($utilisateur && ! $utilisateur->actif) {
+            $this->audit->enregistrer('auth.tentative_compte_desactive', $utilisateur, contexte: ['email' => $email]);
+
+            throw ValidationException::withMessages([
+                'email' => ['Ce compte a été désactivé. Contactez un administrateur.'],
+            ]);
+        }
+
         if (! Auth::attempt(['email' => $email, 'password' => $credentials['password']])) {
             // On ne journalise jamais le mot de passe fourni, uniquement
             // l'e-mail tenté, utile pour détecter un bruteforce ciblé.

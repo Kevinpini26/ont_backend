@@ -41,4 +41,14 @@ enum Poste: string
     {
         return $this === self::PROTOCOLE || $this === self::ASSISTANT_PROTOCOLE;
     }
+
+    /**
+     * Un seul titulaire actif à la fois (voir UserController::passationDePoste()) :
+     * contrairement aux postes d'assistant, où plusieurs comptes peuvent
+     * coexister sans ambiguïté sur qui agit en leur nom.
+     */
+    public function estUnique(): bool
+    {
+        return in_array($this, [self::DG, self::DGA, self::SECRETARIAT_1, self::SECRETARIAT_2, self::RECEPTION], true);
+    }
 }

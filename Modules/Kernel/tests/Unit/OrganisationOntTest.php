@@ -31,4 +31,14 @@ class OrganisationOntTest extends TestCase
             )),
         );
     }
+
+    public function test_seuls_dg_dga_secretariat_1_secretariat_2_et_reception_sont_des_postes_uniques(): void
+    {
+        $uniques = array_values(array_map(
+            fn (Poste $poste) => $poste->value,
+            array_filter(Poste::cases(), fn (Poste $poste) => $poste->estUnique()),
+        ));
+
+        $this->assertEqualsCanonicalizing(['dg', 'dga', 'secretariat_1', 'secretariat_2', 'reception'], $uniques);
+    }
 }

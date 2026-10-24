@@ -27,6 +27,7 @@ class User extends Authenticatable
         'direction_id',
         'dg_disponible',
         'doit_changer_mot_de_passe',
+        'actif',
     ];
 
     protected $hidden = [
@@ -43,6 +44,7 @@ class User extends Authenticatable
             'poste' => Poste::class,
             'dg_disponible' => 'boolean',
             'doit_changer_mot_de_passe' => 'boolean',
+            'actif' => 'boolean',
             'verrouille_jusqu_a' => 'datetime',
         ];
     }

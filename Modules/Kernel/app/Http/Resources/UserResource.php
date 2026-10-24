@@ -35,6 +35,12 @@ class UserResource extends JsonResource
             'direction' => new DirectionResource($this->whenLoaded('direction')),
             'direction_id' => $this->direction_id,
             'doit_changer_mot_de_passe' => $this->doit_changer_mot_de_passe,
+            // Même garde que initiales_reference ci-dessous : l'état actif
+            // d'un autre compte n'intéresse que l'administrateur.
+            'actif' => $this->when(
+                $request->user()?->role === UserRole::ADMINISTRATEUR || $request->user()?->id === $this->id,
+                $this->actif,
+            ),
             // Même garde que initiales_reference ci-dessus : un verrouillage
             // n'intéresse que l'administrateur qui gère les comptes (voir
             // AuthController::compteVerrouille(), même logique ici).
