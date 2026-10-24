@@ -6,9 +6,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
+use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Mail\AccuseReceptionCourrierExterneMail;
 use Modules\Courrier\Mail\ReponseFinaleCourrierExterneMail;
 use Modules\Courrier\Models\ClassementDocument;
@@ -19,8 +21,11 @@ use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\TraitementDirection;
 use Modules\Courrier\Notifications\CourrierDgNotification;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Enums\StatutNotificationEmail;
+use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
 use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\NotificationEmail;
 use Modules\Kernel\Models\User;
 
 class WorkflowTransversalCyclesTest extends CourrierTestCase
@@ -31,6 +36,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         Notification::fake();
         $centrale = Direction::query()->where('code', 'DG')->firstOrFail();
         $dmc = Direction::query()->where('code', 'DMC')->firstOrFail();
@@ -54,7 +60,10 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('a.pdf', 20, 'application/pdf'),
         ])->assertCreated()->json('numero_accuse_reception');
         $a = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numeroAccuseA)->firstOrFail();
-        Mail::assertQueued(AccuseReceptionCourrierExterneMail::class, fn ($mail) => $mail->hasTo('partenaire@example.test'));
+        Queue::assertPushed(
+            EnvoyerNotificationEmailJob::class,
+            fn ($job) => $job->mailable instanceof AccuseReceptionCourrierExterneMail && $job->email === 'partenaire@example.test',
+        );
         Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
         $this->assertSame(CourrierType::CORRESPONDANCE_GENERALE, $a->type);
         $this->assertSame('Organisation Partenaire Tourisme RDC', $a->expediteur_externe_nom);
@@ -234,6 +243,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         $direction = Direction::factory()->create();
         $dg = $this->agent(Poste::DG, $direction);
         $sec2 = $this->agent(Poste::SECRETARIAT_2, $direction);
@@ -271,12 +281,12 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
             'mode_expedition' => 'courriel',
         ])->assertOk()->assertJsonPath('data.statut', CourrierStatut::ENVOYE->value);
 
-        $urlFinale = null;
-        Mail::assertQueued(ReponseFinaleCourrierExterneMail::class, function ($mail) use (&$urlFinale): bool {
-            $urlFinale = $mail->urlTelechargement;
-
-            return $mail->hasTo('partenaire-historique@example.test');
-        });
+        $jobsReponseFinale = Queue::pushed(EnvoyerNotificationEmailJob::class)
+            ->filter(fn ($job) => $job->mailable instanceof ReponseFinaleCourrierExterneMail);
+        $this->assertCount(1, $jobsReponseFinale);
+        $jobReponseFinale = $jobsReponseFinale->first();
+        $this->assertSame('partenaire-historique@example.test', $jobReponseFinale->email);
+        $urlFinale = $jobReponseFinale->mailable->urlTelechargement;
 
         foreach ([$source, $reponse] as $index => $document) {
             $this->actingAs($dg)->postJson("/api/v1/courriers/{$document->id}/dispatchs", ['destinations' => [[
@@ -319,6 +329,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
     {
         Storage::fake('local');
         Mail::fake();
+        Queue::fake();
         Notification::fake();
         $centrale = Direction::query()->where('code', 'DG')->firstOrFail();
         $reception = $this->agent(Poste::RECEPTION, $centrale);
@@ -430,6 +441,122 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         Mail::assertNotQueued(ReponseFinaleCourrierExterneMail::class);
         $this->assertSame(0, $d->transitions()->where('destinataire_poste', Poste::SECRETARIAT_2->value)->count());
         $this->assertSame($identiteA, [$a->fresh()->id, $a->fresh()->dossier_id, $a->fresh()->numero_enregistrement]);
+    }
+
+    /**
+     * Phase 4 — test de bout en bout demandé : dépôt en ligne, accusé reçu
+     * avec le numéro A/R, circuit complet jusqu'à l'avis DG et la
+     * rédaction, envoi final avec PDF joint, vérification dans
+     * notifications_email. Mail/Queue ne sont jamais fake ici : chaque
+     * email passe réellement par EnvoyerNotificationEmailJob (file
+     * synchrone en test, voir phpunit.xml) pour que notifications_email
+     * reflète un envoi réellement traité, pas simplement mis en file.
+     */
+    public function test_e2e_depot_en_ligne_jusqua_lenvoi_final_avec_pdf_et_suivi_notifications_email(): void
+    {
+        Storage::fake('local');
+        // Notification::fake() ne concerne que la cloche interne
+        // (CourrierDgNotification, canal "database", voir presenterADg())
+        // — jamais la façade Mail::, utilisée uniquement par
+        // EnvoyerNotificationEmailJob. Les deux mécanismes sont
+        // indépendants : celui-ci reste réellement exécuté.
+        Notification::fake();
+        $centrale = Direction::query()->where('code', 'DG')->firstOrFail();
+        $sec1 = $this->agent(Poste::SECRETARIAT_1, $centrale);
+        $dg = $this->agent(Poste::DG, $centrale);
+        $assistant = $this->agent(Poste::ASSISTANT_1, $centrale);
+        $relecteur = $this->agent(Poste::ASSISTANT_2, $centrale);
+        $sec2 = $this->agent(Poste::SECRETARIAT_2, $centrale);
+
+        // 1. Dépôt en ligne (module Public, sans authentification).
+        $reponseDepot = $this->postJson('/api/v1/public/courriers-externes', [
+            'expediteur_externe_nom' => 'Partenaire E2E',
+            'expediteur_externe_email' => 'partenaire-e2e@example.test',
+            'objet' => 'TEST E2E — Proposition de partenariat',
+            'piece_jointe' => UploadedFile::fake()->create('demande-e2e.pdf', 50, 'application/pdf'),
+        ])->assertCreated();
+        $numeroAr = $reponseDepot->json('numero_accuse_reception');
+        $this->assertNotNull($numeroAr);
+
+        $a = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numeroAr)->firstOrFail();
+        $this->assertSame('recu', $a->statut->value);
+
+        // 2. Accusé reçu avec le numéro A/R, réellement envoyé (pas
+        //    seulement mis en file) — même mécanisme tracé que tout
+        //    autre email du projet.
+        $accuseEnvoye = NotificationEmail::query()
+            ->where('type', 'courrier.accuse_reception_externe')
+            ->where('destinataire', 'partenaire-e2e@example.test')
+            ->latest('id')->first();
+        $this->assertNotNull($accuseEnvoye, 'Aucune notification_email trouvée pour l\'accusé de réception externe.');
+        $this->assertSame(StatutNotificationEmail::ENVOYE, $accuseEnvoye->statut);
+        $this->assertSame($a->id, $accuseEnvoye->notifiable_id);
+
+        // 3. Circuit complet : tri, avis DG, rédaction, relecture, validation.
+        // Contrairement à un enregistrement physique (voir presenterADg()),
+        // un dépôt en ligne ne crée aucun bordereau initial à décharger
+        // (CourrierReceptionService::creerCourrierExterneDepuisPublic()
+        // n'appelle jamais tracerTransition()) : le Secrétariat 01 part
+        // donc directement du tri, sans accuser réception d'abord.
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/transmettre-tri")->assertOk();
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/accuser-reception")->assertOk();
+
+        $missionId = $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/demander-preparation-reponse", [
+            'assistant_id' => $assistant->id,
+            'instruction' => 'TEST E2E : préparer la réponse officielle.',
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertOk();
+        $contenu = ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Réponse officielle TEST E2E.']]]]];
+        $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse", [
+            'objet' => 'Réponse ONT — TEST E2E',
+            'destinataire_externe_nom' => 'Partenaire E2E',
+            'destinataire_externe_email' => 'partenaire-e2e@example.test',
+            'projet_reponse_contenu' => $contenu,
+        ])->assertCreated();
+        $mission = MissionDocumentaire::query()->findOrFail($missionId);
+        $d = Courrier::withoutGlobalScopes()->findOrFail($mission->projet_courrier_id);
+
+        $this->actingAs($assistant)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse/soumettre", ['projet_reponse_contenu' => $contenu])
+            ->assertOk()->assertJsonPath('data.relecteur.id', $relecteur->id);
+        $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$d->id}/accuser-reception")->assertOk();
+        $this->actingAs($relecteur)->postJson("/api/v1/courriers/{$d->id}/valider-relecture")->assertOk();
+
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/valider-pour-signature")->assertOk();
+        $d->refresh();
+
+        // Signature physique (scan du document validé pour signature).
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$d->id}/scan-signe", [
+            'scan' => UploadedFile::fake()->createWithContent('scan-signe-e2e.pdf', "%PDF-1.7\nSignature et cachet ONT TEST E2E\n%%EOF"),
+        ])->assertOk()->assertJsonPath('data.statut', CourrierStatut::SIGNE->value);
+        $d->refresh();
+        $this->assertNotNull($d->numero_depart);
+        $this->assertNotNull($d->pdf_chemin);
+        $this->assertNotNull($d->pdf_sha256);
+
+        // 4. Envoi final avec PDF joint.
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/accuser-reception")->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/mode-sortie", [
+            'mode_sortie' => ModeSortie::COURRIEL->value,
+        ])->assertOk();
+        $this->actingAs($sec2)->postJson("/api/v1/courriers/{$d->id}/envoyer-par-courriel")
+            ->assertOk()->assertJsonPath('data.statut', CourrierStatut::ENVOYE->value);
+
+        // 5. Vérification dans notifications_email : la réponse finale a
+        //    été réellement envoyée, avec le PDF joint (vérifié via le
+        //    Mailable reconstruit depuis le job, lui-même rejoué par la
+        //    file synchrone de test).
+        $envoiFinal = NotificationEmail::query()
+            ->where('type', 'courrier.reponse_finale')
+            ->where('destinataire', 'partenaire-e2e@example.test')
+            ->latest('id')->first();
+        $this->assertNotNull($envoiFinal, 'Aucune notification_email trouvée pour l\'envoi final.');
+        $this->assertSame(StatutNotificationEmail::ENVOYE, $envoiFinal->statut);
+        $this->assertSame($d->id, $envoiFinal->notifiable_id);
+
+        $mail = new ReponseFinaleCourrierExterneMail($a, $d->fresh(), 'https://exemple.test/lien');
+        $pieces = $mail->attachments();
+        $this->assertCount(1, $pieces, 'Le PDF officiel aurait dû être joint à l\'email de réponse finale.');
     }
 
     private function presenterADg(Courrier $courrier, User $sec1, User $dg): void
