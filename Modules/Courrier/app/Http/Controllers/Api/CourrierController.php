@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Modules\Courrier\Contracts\AccuseReceptionGuichetGenerator;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierClassification;
@@ -67,6 +68,7 @@ class CourrierController extends Controller
         private readonly QrCodeService $qrCode,
         private readonly NotificationService $notifications,
         private readonly FeuilleCouvertureGenerator $feuilleCouvertureGenerator,
+        private readonly AccuseReceptionGuichetGenerator $accuseReceptionGuichet,
         private readonly GestionnaireDocumentNumerise $gestionnaire,
         private readonly DocumentProduitScanOfficielService $scanOfficiel,
     ) {}
@@ -525,6 +527,25 @@ class CourrierController extends Controller
     }
 
     /**
+     * Fiche imprimable à remettre en main ou à poster à l'expéditeur/au
+     * candidat enregistré au guichet sans adresse email saisie — seul
+     * moyen de lui confirmer la réception (voir
+     * CourrierReceptionService::creer(), qui envoie un email à la place
+     * dès qu'une adresse est disponible).
+     */
+    public function accuseReceptionGuichet(Courrier $courrier)
+    {
+        $this->authorize('view', $courrier);
+
+        $pdf = $this->accuseReceptionGuichet->generer($courrier);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"accuse-reception-{$courrier->numero_enregistrement}.pdf\"",
+        ]);
+    }
+
+    /**
      * Impression groupée pour toute une file : une feuille par page, dans
      * un seul PDF — permet de numériser vingt courriers d'affilée sans
      * rien ressaisir entre deux.
@@ -629,7 +650,7 @@ class CourrierController extends Controller
 
     public function telechargerPdf(Courrier $courrier)
     {
-        $this->authorize('view', $courrier);
+        $this->authorize('consulterContenu', $courrier);
 
         abort_unless($courrier->pdf_chemin, 404);
 
@@ -643,7 +664,7 @@ class CourrierController extends Controller
 
     public function telechargerLettreStage(Courrier $courrier)
     {
-        $this->authorize('view', $courrier);
+        $this->authorize('consulterContenu', $courrier);
 
         abort_unless($courrier->lettre_stage_chemin, 404);
 
@@ -663,7 +684,7 @@ class CourrierController extends Controller
      */
     public function telechargerPieceCandidat(Courrier $courrier, string $piece)
     {
-        $this->authorize('view', $courrier);
+        $this->authorize('consulterContenu', $courrier);
 
         $colonne = match ($piece) {
             'cv' => 'cv_chemin',
@@ -684,7 +705,7 @@ class CourrierController extends Controller
 
     public function telechargerPieceJointe(Courrier $courrier)
     {
-        $this->authorize('view', $courrier);
+        $this->authorize('consulterContenu', $courrier);
 
         abort_unless($courrier->piece_jointe_chemin, 404);
 
@@ -703,7 +724,7 @@ class CourrierController extends Controller
      */
     public function telechargerPiece(Courrier $courrier, CourrierPieceJointe $piece)
     {
-        $this->authorize('view', $courrier);
+        $this->authorize('consulterContenu', $courrier);
 
         abort_unless($piece->courrier_id === $courrier->id, 404);
 
@@ -724,7 +745,7 @@ class CourrierController extends Controller
      */
     public function telechargerNumerisation(Request $request, Courrier $courrier, DocumentNumerise $document)
     {
-        $this->authorize('view', $courrier);
+        $this->authorize('consulterContenu', $courrier);
 
         abort_unless(
             $document->numerisable_type === $courrier->getMorphClass() && $document->numerisable_id === $courrier->id,

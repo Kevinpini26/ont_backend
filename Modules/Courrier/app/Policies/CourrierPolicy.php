@@ -5,6 +5,7 @@ namespace Modules\Courrier\Policies;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\ModeSortie;
+use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CycleDecisionnelService;
@@ -52,6 +53,33 @@ class CourrierPolicy
         }
 
         return $this->visibility->peutVoir($user, $courrier);
+    }
+
+    /**
+     * L'administrateur garde la vision institutionnelle de la liste (voir
+     * CourrierVisibilityService::aVisionInstitutionnelle()) mais pas du
+     * contenu d'un courrier confidentiel ou secret : rôle technique
+     * (comptes, structure, paramètres, supervision), pas un rôle métier
+     * habilité à lire le fond des dossiers sensibles. Tout autre acteur
+     * qui a légitimement accès au courrier (circuit, DG/DGA en autorité
+     * institutionnelle) garde l'accès complet au contenu. Voir
+     * CourrierResource, qui masque contenu/pièces jointes/numérisations
+     * quand cette méthode retourne false.
+     *
+     * Ne revérifie pas la visibilité de base (contrairement à view()) : le
+     * $courrier reçu ici a toujours déjà traversé CourrierDirectionScope,
+     * le même filtre, appliqué automatiquement par le modèle lui-même
+     * (liaison de route, relations chargées) — la revérifier ici ajouterait
+     * une requête de visibilité complète par ligne dans les réponses de
+     * liste, pour un résultat déjà garanti.
+     */
+    public function consulterContenu(User $user, Courrier $courrier): bool
+    {
+        if ($user->role === UserRole::ADMINISTRATEUR) {
+            return $courrier->niveau_confidentialite === NiveauConfidentialite::ORDINAIRE;
+        }
+
+        return true;
     }
 
     /** La Réception est l'unique point d'entrée du courrier entrant. */

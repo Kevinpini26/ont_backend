@@ -191,4 +191,76 @@ class ConfidentialiteCourrierTest extends CourrierTestCase
         $this->actingAs($assistant2)->getJson("/api/v1/courriers/{$projetSansMission->id}")->assertNotFound();
         $this->actingAs($assistantDga)->getJson("/api/v1/courriers/{$projetSansMission->id}")->assertNotFound();
     }
+
+    public function test_ladministrateur_voit_un_courrier_confidentiel_dans_la_liste_mais_sans_son_contenu(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $courrier = Courrier::factory()->create([
+            'niveau_confidentialite' => 'confidentiel',
+            'contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Secret']]]]],
+        ]);
+        $courrier->piecesJointes()->create(['libelle' => 'Annexe', 'chemin' => 'courriers/annexe.pdf']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/courriers')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $courrier->id]);
+
+        $this->actingAs($admin)
+            ->getJson("/api/v1/courriers/{$courrier->id}")
+            ->assertOk()
+            ->assertJsonPath('data.contenu', null)
+            ->assertJsonPath('data.contenu_restreint', true)
+            ->assertJsonPath('data.pieces_jointes', null)
+            ->assertJsonPath('data.numerisations', null);
+    }
+
+    public function test_ladministrateur_voit_le_contenu_complet_dun_courrier_ordinaire(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $courrier = Courrier::factory()->create([
+            'niveau_confidentialite' => 'ordinaire',
+            'contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Public']]]]],
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson("/api/v1/courriers/{$courrier->id}")
+            ->assertOk()
+            ->assertJsonPath('data.contenu_restreint', false)
+            ->assertJsonPath('data.contenu.type', 'doc');
+    }
+
+    public function test_ladministrateur_ne_peut_pas_telecharger_la_piece_jointe_dun_courrier_confidentiel(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $courrier = Courrier::factory()->create([
+            'niveau_confidentialite' => 'secret',
+            'piece_jointe_chemin' => 'courriers/piece.pdf',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson("/api/v1/courriers/{$courrier->id}/piece-jointe")
+            ->assertForbidden();
+    }
+
+    public function test_un_poste_du_circuit_avec_acces_legitime_garde_le_contenu_complet_dun_courrier_confidentiel(): void
+    {
+        $courrier = Courrier::factory()->create([
+            'niveau_confidentialite' => 'confidentiel',
+            'contenu' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Visible du circuit']]]]],
+        ]);
+        $reception = $this->agent(Poste::RECEPTION, Direction::factory()->create());
+        $courrier->transitions()->create([
+            'statut' => $courrier->statut,
+            'nouveau_statut' => $courrier->statut,
+            'destinataire_poste' => Poste::RECEPTION,
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($reception)
+            ->getJson("/api/v1/courriers/{$courrier->id}")
+            ->assertOk()
+            ->assertJsonPath('data.contenu_restreint', false)
+            ->assertJsonPath('data.contenu.type', 'doc');
+    }
 }

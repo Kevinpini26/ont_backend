@@ -25,6 +25,7 @@ class CourrierResource extends JsonResource
             && ! app(DelegationResolver::class)->utilisateurHabilite($request->user(), [Poste::DG, Poste::DGA])
             && $this->relecteur_id !== $request->user()->id;
         $masquerProjet = $masquerProjetSec1 || $masquerProjetSec2;
+        $peutConsulterContenu = $request->user() !== null && Gate::forUser($request->user())->allows('consulterContenu', $this->resource);
 
         return [
             'id' => $this->id,
@@ -49,7 +50,7 @@ class CourrierResource extends JsonResource
             // Généré uniquement à la signature (voir CourrierCircuitService::
             // signer()). Les dossiers courts historiques peuvent donc être
             // enregistrés sans disposer d'un PDF signé.
-            'pdf_disponible' => filled($this->pdf_chemin),
+            'pdf_disponible' => $peutConsulterContenu && filled($this->pdf_chemin),
             'numerisation_statut' => $this->numerisation_statut?->value,
             'numerisation_statut_label' => $this->numerisation_statut?->label(),
             'trouve_dans_contenu_numerise' => (bool) ($this->trouve_dans_contenu_numerise ?? false),
@@ -113,7 +114,10 @@ class CourrierResource extends JsonResource
                     ]),
             ),
             'objet' => $this->objet,
-            'contenu' => $this->contenu,
+            'contenu' => $peutConsulterContenu ? $this->contenu : null,
+            // Permet au frontend de distinguer "pas de contenu" de "contenu
+            // masqué, courrier confidentiel" (voir CourrierPolicy::consulterContenu()).
+            'contenu_restreint' => ! $peutConsulterContenu,
             'date_courrier' => $this->date_courrier?->toDateString(),
             'reference_expediteur' => $this->reference_expediteur,
             'qualite_expediteur' => $this->qualite_expediteur,
@@ -136,7 +140,7 @@ class CourrierResource extends JsonResource
             'expediteur_externe_nom' => $this->expediteur_externe_nom,
             'expediteur_externe_email' => $this->expediteur_externe_email,
             'expediteur_externe_telephone' => $this->expediteur_externe_telephone,
-            'piece_jointe_disponible' => filled($this->piece_jointe_chemin),
+            'piece_jointe_disponible' => $peutConsulterContenu && filled($this->piece_jointe_chemin),
             'candidat' => $this->when($this->type?->value === 'demande_stage', fn () => [
                 'nom' => $this->candidat_nom,
                 'contact' => $this->candidat_contact,
@@ -145,11 +149,11 @@ class CourrierResource extends JsonResource
                 'periode_souhaitee_fin' => $this->periode_souhaitee_fin?->toDateString(),
                 'type_stage' => $this->type_stage,
                 'type_stage_label' => $this->type_stage === 'professionnel' ? 'Stage professionnel' : ($this->type_stage === 'academique' ? 'Stage académique' : null),
-                'lettre_stage_disponible' => filled($this->lettre_stage_chemin),
-                'cv_disponible' => filled($this->cv_chemin),
-                'diplome_etat_disponible' => filled($this->diplome_etat_chemin),
-                'dernier_diplome_disponible' => filled($this->dernier_diplome_chemin),
-                'lettre_demande_disponible' => filled($this->lettre_demande_chemin),
+                'lettre_stage_disponible' => $peutConsulterContenu && filled($this->lettre_stage_chemin),
+                'cv_disponible' => $peutConsulterContenu && filled($this->cv_chemin),
+                'diplome_etat_disponible' => $peutConsulterContenu && filled($this->diplome_etat_chemin),
+                'dernier_diplome_disponible' => $peutConsulterContenu && filled($this->dernier_diplome_chemin),
+                'lettre_demande_disponible' => $peutConsulterContenu && filled($this->lettre_demande_chemin),
             ]),
             'avis_dg' => $this->avis_dg?->value,
             'avis_dg_commentaire' => $masquerProjet ? null : $this->avis_dg_commentaire,
@@ -159,7 +163,7 @@ class CourrierResource extends JsonResource
             // fois traité, voir CourrierCircuitService::rendreAvisDg().
             'avis_dg_rendu_en_interim' => $this->avis_dg_rendu_en_interim,
             'anonymise_at' => $this->anonymise_at,
-            'projet_reponse_contenu' => $masquerProjet ? null : $this->projet_reponse_contenu,
+            'projet_reponse_contenu' => ($masquerProjet || ! $peutConsulterContenu) ? null : $this->projet_reponse_contenu,
             'relecteur' => new UserResource($this->whenLoaded('relecteur')),
             'relecture_validee_at' => $this->relecture_validee_at,
             'relecture_commentaire' => $masquerProjetSec2 ? null : $this->relecture_commentaire,
@@ -236,7 +240,7 @@ class CourrierResource extends JsonResource
                 'archive_par' => $this->classement->archivePar?->name, 'archive_at' => $this->classement->archive_at,
             ] : null),
             'pieces_jointes' => $this->when(
-                $this->relationLoaded('piecesJointes'),
+                $peutConsulterContenu && $this->relationLoaded('piecesJointes'),
                 fn () => $this->piecesJointes->map(fn ($piece) => [
                     'id' => $piece->id,
                     'libelle' => $piece->libelle,
@@ -245,7 +249,7 @@ class CourrierResource extends JsonResource
                 ]),
             ),
             'numerisations' => $this->when(
-                $this->relationLoaded('numerisations'),
+                $peutConsulterContenu && $this->relationLoaded('numerisations'),
                 fn () => $this->numerisations->map(fn ($doc) => [
                     'id' => $doc->id,
                     'version' => $doc->version,
