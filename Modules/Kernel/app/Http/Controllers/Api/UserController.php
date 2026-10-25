@@ -145,7 +145,18 @@ class UserController extends Controller
     {
         $this->authorize('delete', $user);
 
-        if (AuditLog::query()->where('user_id', $user->id)->exists()) {
+        // Une trace existe si ce compte a agi lui-même (user_id, ex. une
+        // connexion) OU si une action a été faite SUR lui par quelqu'un
+        // d'autre (auditable_id, ex. création, modification,
+        // désactivation par un administrateur) — se limiter à user_id
+        // laisserait supprimable tout compte géré uniquement par un tiers
+        // et qui ne s'est jamais connecté lui-même.
+        $aUneTrace = AuditLog::query()
+            ->where('user_id', $user->id)
+            ->orWhere(fn ($q) => $q->where('auditable_type', $user->getMorphClass())->where('auditable_id', $user->id))
+            ->exists();
+
+        if ($aUneTrace) {
             throw ValidationException::withMessages([
                 'user' => ['Ce compte a déjà agi dans le système (voir le journal d\'audit) : il ne peut plus être supprimé, seulement désactivé.'],
             ]);

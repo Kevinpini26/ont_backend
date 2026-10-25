@@ -87,6 +87,22 @@ class AdminGestionUtilisateursTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $cible->id]);
     }
 
+    /**
+     * Trouvé par un test manuel en direct : un compte géré uniquement par
+     * un administrateur (jamais connecté lui-même) a sa trace d'audit
+     * sous auditable_id (il est la cible, pas l'auteur) — se limiter à
+     * user_id laissait ce cas passer à travers la garde.
+     */
+    public function test_la_suppression_est_refusee_si_seul_un_tiers_a_agi_sur_ce_compte(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $cible = User::factory()->agentDfp()->create();
+        $this->actingAs($admin)->postJson("/api/v1/users/{$cible->id}/desactiver")->assertOk();
+
+        $this->actingAs($admin)->deleteJson("/api/v1/users/{$cible->id}")->assertUnprocessable();
+        $this->assertDatabaseHas('users', ['id' => $cible->id]);
+    }
+
     public function test_la_suppression_reste_possible_pour_un_compte_sans_trace_metier(): void
     {
         $admin = User::factory()->administrateur()->create();
