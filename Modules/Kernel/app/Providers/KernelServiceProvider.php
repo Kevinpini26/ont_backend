@@ -5,6 +5,7 @@ namespace Modules\Kernel\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Modules\Kernel\Console\PreparerDemonstrationCommand;
 use Modules\Kernel\Console\PrevisualiserEmailCommand;
 use Modules\Kernel\Console\RestaurerBaseDeDonneesCommand;
 use Modules\Kernel\Console\SauvegarderBaseDeDonneesCommand;
@@ -50,6 +51,7 @@ class KernelServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         SauvegarderBaseDeDonneesCommand::class,
+        PreparerDemonstrationCommand::class,
         RestaurerBaseDeDonneesCommand::class,
         PrevisualiserEmailCommand::class,
     ];
