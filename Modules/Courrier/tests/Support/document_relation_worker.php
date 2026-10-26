@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Validation\ValidationException;
+use Modules\Courrier\Enums\DocumentRelationType;
+use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\DocumentRelationService;
 
 define('LARAVEL_START', microtime(true));
 
@@ -20,7 +25,7 @@ if (getenv('APP_ENV') !== 'testing' || getenv('DB_DATABASE') !== 'ont_testing') 
 require dirname(__DIR__, 4).'/vendor/autoload.php';
 
 $app = require dirname(__DIR__, 4).'/bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Kernel::class)->bootstrap();
 
 if ($app->environment() !== 'testing'
     || $app['config']->get('database.default') !== 'pgsql'
@@ -48,12 +53,12 @@ if (! file_exists($barriere.'/start')) {
 }
 
 try {
-    $source = Modules\Courrier\Models\Courrier::withoutGlobalScopes()->findOrFail((int) $sourceId);
-    $cible = Modules\Courrier\Models\Courrier::withoutGlobalScopes()->findOrFail((int) $cibleId);
+    $source = Courrier::withoutGlobalScopes()->findOrFail((int) $sourceId);
+    $cible = Courrier::withoutGlobalScopes()->findOrFail((int) $cibleId);
     if ($source->dossier_id === null || $source->dossier_id !== $cible->dossier_id) {
         throw new RuntimeException('Les fixtures source et cible ne partagent pas le même dossier.');
     }
-    $relation = app(Modules\Courrier\Services\DocumentRelationService::class)->relier($source, $cible, Modules\Courrier\Enums\DocumentRelationType::SUITE_DE, null);
+    $relation = app(DocumentRelationService::class)->relier($source, $cible, DocumentRelationType::SUITE_DE, null);
     $resultat = [
         'status' => 'ok',
         'worker' => $numero,
@@ -64,7 +69,7 @@ try {
         'app_env' => $app->environment(),
         'database' => $app['config']->get('database.connections.pgsql.database'),
     ];
-} catch (Illuminate\Validation\ValidationException $e) {
+} catch (ValidationException $e) {
     $resultat = [
         'status' => 'refused',
         'worker' => $numero,

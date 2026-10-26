@@ -18,6 +18,7 @@ use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Courrier\Support\TipTapHtmlRenderer;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\PdfGenerationService;
@@ -87,7 +88,17 @@ class DocumentProduitRedactionService
             }
             $directeur = $this->directeurs->resolve($direction->id);
 
-            $courrier = Courrier::withoutGlobalScopes()->create([
+            // Direction destinataire souhaitée : facultative (la DG décide en dernier ressort).
+            $destinationId = isset($donnees['direction_destination_souhaitee_id']) ? (int) $donnees['direction_destination_souhaitee_id'] : null;
+            if ($destinationId !== null
+                && ($destinationId === $direction->id
+                    || ! Direction::query()->whereKey($destinationId)->where('actif', true)->where('est_operationnelle', true)->exists())) {
+                throw ValidationException::withMessages([
+                    'direction_destination_souhaitee_id' => 'Choisissez une autre direction, active et opérationnelle, comme destinataire.',
+                ]);
+            }
+
+            $courrier = Courrier::sansDossierInitial(fn () => Courrier::withoutGlobalScopes()->create([
                 'dossier_id' => null,
                 'numero_accuse_reception' => null,
                 'numero_enregistrement' => null,
@@ -101,13 +112,14 @@ class DocumentProduitRedactionService
                 'necessite_avis_dg' => false,
                 'initie_par_dg' => false,
                 'created_by' => $secretariat->id,
-            ]);
+            ]));
             $document = DocumentProduitDirection::query()->create([
                 'origine' => DocumentProduitOrigine::AUTONOME,
                 'traitement_direction_id' => null,
                 'courrier_id' => $courrier->id,
                 'document_source_id' => null,
                 'direction_id' => $direction->id,
+                'direction_destination_souhaitee_id' => $destinationId,
                 'directeur_id' => $directeur->id,
                 'version_contenu' => 1,
                 'statut' => DocumentProduitStatut::BROUILLON,
@@ -239,7 +251,7 @@ class DocumentProduitRedactionService
                         || $document->correction_demandee_at === null
                         || $document->pdf_officiel_version_contenu === null
                         || $document->version_contenu <= $document->pdf_officiel_version_contenu
-                        || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1) {
+                        || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)) {
                         throw ValidationException::withMessages([
                             'document' => 'La référence documentaire existante ne peut pas être remplacée et cette nouvelle validation ne possède pas une correction recevable.',
                         ]);

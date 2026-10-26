@@ -4,8 +4,8 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\ClassementDocumentStatut;
@@ -226,6 +226,7 @@ class ClassementInstitutionnelTest extends CourrierTestCase
         $this->assertSame(DispatchStatut::EXECUTE, $dispatch->statut);
         $this->assertSame(ClassementDocumentStatut::CLASSE, $courrier->classement()->sole()->statut);
     }
+
     public function test_un_courrier_courriel_envoye_peut_etre_classe_sans_perdre_son_statut_de_livraison(): void
     {
         Storage::fake('local');

@@ -462,6 +462,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         // indépendants : celui-ci reste réellement exécuté.
         Notification::fake();
         $centrale = Direction::query()->where('code', 'DG')->firstOrFail();
+        $reception = $this->agent(Poste::RECEPTION, $centrale);
         $sec1 = $this->agent(Poste::SECRETARIAT_1, $centrale);
         $dg = $this->agent(Poste::DG, $centrale);
         $assistant = $this->agent(Poste::ASSISTANT_1, $centrale);
@@ -492,12 +493,17 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertSame(StatutNotificationEmail::ENVOYE, $accuseEnvoye->statut);
         $this->assertSame($a->id, $accuseEnvoye->notifiable_id);
 
-        // 3. Circuit complet : tri, avis DG, rédaction, relecture, validation.
-        // Contrairement à un enregistrement physique (voir presenterADg()),
-        // un dépôt en ligne ne crée aucun bordereau initial à décharger
-        // (CourrierReceptionService::creerCourrierExterneDepuisPublic()
-        // n'appelle jamais tracerTransition()) : le Secrétariat 01 part
-        // donc directement du tri, sans accuser réception d'abord.
+        // 3. Circuit complet : tout document reçu passe d'abord par la
+        //    Réception (numéro d'enregistrement, transmission à SEC1) ; SEC1
+        //    ne peut pas trier un dépôt que la Réception n'a pas enregistré.
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/transmettre-tri")->assertUnprocessable();
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$a->id}/enregistrer", [
+            'classification' => 'externe',
+        ])->assertOk();
+        $this->assertNotNull($a->fresh()->numero_enregistrement);
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/transmettre-tri")->assertUnprocessable();
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$a->id}/transmettre-sec1")->assertOk();
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/accuser-reception")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/transmettre-tri")->assertOk();
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$a->id}/transmettre-avis-dg", ['degre_urgence' => 'urgent'])->assertOk();
         $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/accuser-reception")->assertOk();

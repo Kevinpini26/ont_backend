@@ -47,6 +47,23 @@ class CourrierTriDispatchService
     {
         return DB::transaction(function () use ($courrier, $utilisateur, $instruction) {
             $courrier = $this->helpers->lockCourrierFrais($courrier);
+
+            // Tout document reçu passe par la Réception, qui l'enregistre
+            // (numéro d'enregistrement) puis le transmet à SEC1 : un dépôt
+            // en ligne ne peut pas être trié avant.
+            if ($courrier->statut === CourrierStatut::RECU && $courrier->mode_reception === ModeReception::DEPOT_EN_LIGNE) {
+                if ($courrier->numero_enregistrement === null) {
+                    throw ValidationException::withMessages([
+                        'courrier' => 'Ce dépôt doit d’abord être enregistré par la Réception avant d’être trié.',
+                    ]);
+                }
+                if (! $courrier->transitions()->exists()) {
+                    throw ValidationException::withMessages([
+                        'courrier' => 'Ce dépôt doit d’abord être transmis à SEC1 par la Réception.',
+                    ]);
+                }
+            }
+
             $this->helpers->assertTransitionAutorisee($courrier, $utilisateur, CourrierStatut::EN_ATTENTE_TRI, ['type' => $courrier->type->value]);
 
             $courrier->statut = CourrierStatut::EN_ATTENTE_TRI;

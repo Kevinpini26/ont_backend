@@ -6,8 +6,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Enums\DocumentRelationType;
 use Modules\Courrier\Models\Courrier;
-use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Models\DocumentRelation;
+use Modules\Courrier\Models\Dossier;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Models\User;
 

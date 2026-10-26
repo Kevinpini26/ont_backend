@@ -693,3 +693,39 @@ prêté à confusion dans les commentaires de code.)
   pièces d'un dossier stagiaire). Non supprimé : à confirmer avec la
   Direction s'il faut finir de le câbler (écran stagiaire équivalent à
   `NumerisationPanel`) ou le retirer.
+
+## Alignement sur le schéma « Circuit de traitement des documents » (octobre 2026)
+
+- **Le DGA est une étape du circuit : la DG lui confie un dossier « pour
+  instruction ».** Implémenté (`ConfiageDgaService`, table `confiages_dga`) :
+  en attente d'avis, la DG titulaire confie le dossier au DGA avec une
+  consigne ; le DGA (qui ne voit le dossier qu'à ce moment) l'instruit,
+  peut missionner l'assistant DGA, puis le retourne à la DG avec une
+  recommandation. La DG peut aussi le reprendre. Le statut du courrier ne
+  change pas. **Choix de conception** : la DG reste la seule décideuse en
+  temps normal (l'autorité DG est unique et vérifiée à ~35 endroits) ; la
+  décision par le DGA lui-même reste réservée à l'intérim DG et à la
+  délégation, mécanismes déjà en place. À confirmer avec la Direction :
+  faut-il aussi une « confiance avec pouvoir de décision » (le DGA décide
+  et dispatche sans repasser par la DG), distincte de l'intérim ?
+- **Tout document reçu passe par la Réception, en ligne ou non.** Dépôt
+  en ligne (courrier externe ou demande de stage) : accusé de réception
+  immédiat avec le numéro de suivi, mais enregistrement (numéro
+  d'enregistrement) et transmission à SEC1 par la Réception ; SEC1 ne
+  peut pas trier avant. Les notes de service initiées par la DG ne sont
+  pas « reçues » et ne passent pas par la Réception : à confirmer.
+- **Format de la référence d'un document produit par une direction :
+  `NNN/ONT/<code direction>/AAAA`** (ex. `001/ONT/DMC/2026`), sans les
+  initiales du directeur.
+- **Document interne autonome (case 2 du schéma) : parcours complet
+  désormais exécutable de bout en bout** (direction productrice →
+  Réception → SEC1 → DG → SEC2 → direction destinataire → traitement →
+  classement/archivage, test `DocumentInterneCircuitCentralTest`). Choix :
+  (1) le document n'a **pas de dossier** avant son dispatch — SEC2 en ouvre
+  un en le distribuant, ce qui permet ensuite une nouvelle décision DG, le
+  classement et l'archivage ; (2) la **direction destinataire souhaitée**
+  est facultative à la création (la DG décide en dernier ressort ; un motif
+  n'est exigé que si elle s'écarte d'une préférence exprimée) ; (3) un
+  document autonome n'est visible des postes centraux qu'une fois accepté
+  par la Réception, et de la direction destinataire qu'une fois le dispatch
+  exécuté par SEC2.

@@ -3,6 +3,8 @@
 namespace Modules\Courrier\Console;
 
 use Illuminate\Console\Command;
+use Modules\Courrier\Enums\AvisDg;
+use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\AnonymiserCandidatureService;
 
@@ -30,8 +32,8 @@ class AnonymiserCandidaturesNonRetenuesCommand extends Command
 
         $candidatures = Courrier::query()
             ->withoutGlobalScopes()
-            ->where('type', \Modules\Courrier\Enums\CourrierType::DEMANDE_STAGE)
-            ->where('avis_dg', \Modules\Courrier\Enums\AvisDg::DEFAVORABLE)
+            ->where('type', CourrierType::DEMANDE_STAGE)
+            ->where('avis_dg', AvisDg::DEFAVORABLE)
             ->whereNull('anonymise_at')
             ->where('avis_dg_rendu_at', '<=', $limite)
             ->get();

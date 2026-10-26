@@ -18,7 +18,9 @@ use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Notifications\DispatchCourrierNotification;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
@@ -164,7 +166,7 @@ class DispatchCourrierService
                 || $courrier->statut !== CourrierStatut::EN_ATTENTE_AVIS_DG
                 || ! $courrier->necessite_avis_dg
                 || ! is_string($courrier->reference_documentaire)
-                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
                 || ! is_string($courrier->numero_enregistrement)
                 || trim($courrier->numero_enregistrement) === ''
                 || $courrier->dispatchs()->exists()
@@ -183,19 +185,20 @@ class DispatchCourrierService
                 throw ValidationException::withMessages(['direction_id' => 'La direction destinataire doit être active et opérationnelle.']);
             }
             $motif = trim((string) ($decision['motif_reorientation'] ?? ''));
-            if ($direction->id !== $destinationSouhaiteeId && $motif === '') {
+            $reoriente = $destinationSouhaiteeId !== null && $direction->id !== $destinationSouhaiteeId;
+            if ($reoriente && $motif === '') {
                 throw ValidationException::withMessages(['motif_reorientation' => 'Un motif est obligatoire pour changer la direction destinataire souhaitée.']);
             }
-            if ($destinationSouhaiteeId === null
-                || ! Direction::query()->whereKey($destinationSouhaiteeId)->where('actif', true)->where('est_operationnelle', true)->exists()) {
+            if ($destinationSouhaiteeId !== null
+                && ! Direction::query()->whereKey($destinationSouhaiteeId)->where('actif', true)->where('est_operationnelle', true)->exists()) {
                 throw ValidationException::withMessages(['direction_id' => 'La direction souhaitée doit être active et opérationnelle.']);
             }
 
             $ancienStatut = $courrier->statut;
             $dateDecision = now();
-            $instruction = $direction->id === $destinationSouhaiteeId
-                ? 'Destination souhaitée confirmée par la DG/DGA.'
-                : $motif;
+            $instruction = $reoriente
+                ? $motif
+                : ($destinationSouhaiteeId === null ? 'Destination décidée par la DG/DGA.' : 'Destination souhaitée confirmée par la DG/DGA.');
             $dispatch = DispatchCourrier::query()->create([
                 'courrier_id' => $courrier->id,
                 'dossier_id' => null,
@@ -223,7 +226,7 @@ class DispatchCourrierService
                 'dispatch_id' => $dispatch->id,
                 'direction_destination_souhaitee_id' => $destinationSouhaiteeId,
                 'direction_destination_id' => $direction->id,
-                'motif_reorientation' => $direction->id === $destinationSouhaiteeId ? null : $motif,
+                'motif_reorientation' => $reoriente ? $motif : null,
                 'autorite_poste' => $autorite->value,
                 'source_autorite' => $sourceAutorite,
             ]);
@@ -233,7 +236,7 @@ class DispatchCourrierService
                 'reference_documentaire' => $courrier->reference_documentaire,
                 'numero_enregistrement' => $courrier->numero_enregistrement,
                 'direction_destination_id' => $direction->id,
-                'motif_reorientation' => $direction->id === $destinationSouhaiteeId ? null : $motif,
+                'motif_reorientation' => $reoriente ? $motif : null,
                 'decide_at' => $dateDecision->toIso8601String(),
             ]);
         });
@@ -342,6 +345,15 @@ class DispatchCourrierService
             $this->audit->enregistrer('dispatch.execute', $dispatch, $acteur, ['reference' => $reference, 'preuve_piece_jointe_id' => $piece?->id]);
 
             $courrier = Courrier::withoutGlobalScopes()->lockForUpdate()->findOrFail($dispatch->courrier_id);
+            // Un document interne autonome n'a pas de dossier avant son dispatch :
+            // il en reçoit un dès que SEC2 l'a distribué à la direction destinataire,
+            // pour pouvoir ensuite être décidé de nouveau, classé et archivé.
+            if ($courrier->dossier_id === null) {
+                $dossier = Dossier::query()->create(['libelle' => $courrier->objet, 'created_by' => $courrier->created_by]);
+                $courrier->update(['dossier_id' => $dossier->id]);
+                DispatchCourrier::query()->where('courrier_id', $courrier->id)->whereNull('dossier_id')->update(['dossier_id' => $dossier->id]);
+                $dispatch->dossier_id = $dossier->id;
+            }
             if (! $courrier->dispatchs()->where('statut', DispatchStatut::EN_ATTENTE)->exists()) {
                 if (! $courrier->estCycleClassementApresSortieCompletee()) {
                     $ancien = $courrier->statut;

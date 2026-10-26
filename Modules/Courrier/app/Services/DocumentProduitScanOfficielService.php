@@ -18,6 +18,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\DocumentProduitScanOfficiel;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\QualiteDocumentNumerise;
@@ -259,7 +260,7 @@ class DocumentProduitScanOfficielService
             || ! $étatAttendu
             || ! is_numeric($document->scan_officiel_document_id)
             || $document->courrier_id === null
-            || (! $accepteSec1 && ! $attenteDg && ($document->recu_par_id !== null || $document->recu_at !== null))) {
+            || (! $accepteSec1 && ! $attenteDg && ! $autonomeSec2 && ($document->recu_par_id !== null || $document->recu_at !== null))) {
             abort(404);
         }
 
@@ -316,7 +317,7 @@ class DocumentProduitScanOfficielService
             || (($transmisReception || $accepteSec1 || $attenteDg || $autonomeSec2 || $document->transmis_reception_at !== null) && (
                 $courrier->reference_documentaire === null
                 || trim($courrier->reference_documentaire) === ''
-                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
             ))
             || (($accepteSec1 || $attenteDg || $autonomeSec2)
                 ? $courrier->numero_enregistrement === null || trim($courrier->numero_enregistrement) === ''

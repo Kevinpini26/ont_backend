@@ -11,6 +11,7 @@ use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 
+/** Référence d'un document produit par une direction : NNN/ONT/<code direction>/AAAA (ex. 001/ONT/DMC/2026). */
 class ReferenceDocumentInterneService
 {
     public function __construct(
@@ -45,13 +46,6 @@ class ReferenceDocumentInterneService
                 ]);
             }
 
-            $initiales = mb_strtoupper(trim((string) $directeur->initiales_reference));
-            if (preg_match('/\A[A-Z]{1,12}\z/', $initiales) !== 1) {
-                throw ValidationException::withMessages([
-                    'initiales_reference' => 'Le Directeur désigné doit disposer d’initiales institutionnelles valides avant attribution de la référence.',
-                ]);
-            }
-
             $sigle = mb_strtoupper(trim($direction->code));
             if (preg_match('/\A[A-Z0-9]{1,20}\z/', $sigle) !== 1) {
                 throw ValidationException::withMessages([
@@ -61,7 +55,7 @@ class ReferenceDocumentInterneService
 
             $annee = Date::now()->year;
             $numero = $this->sequences->suivantPourDirection('reference_documentaire', $annee, $direction->id);
-            $document->reference_documentaire = sprintf('%03d/%s/%s/ONT/%d', $numero, $initiales, $sigle, $annee);
+            $document->reference_documentaire = sprintf('%03d/ONT/%s/%d', $numero, $sigle, $annee);
             $document->save();
 
             $this->audit->enregistrer('courrier.reference_documentaire_interne_attribuee', $document, $directeur, [
@@ -70,7 +64,6 @@ class ReferenceDocumentInterneService
                 'direction_id' => $direction->id,
                 'direction_code' => $sigle,
                 'directeur_id' => $directeur->id,
-                'initiales_reference' => $initiales,
                 'attribuee_at' => now()->toISOString(),
             ]);
 

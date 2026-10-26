@@ -59,6 +59,41 @@ class VerificationDossierPublicTest extends TestCase
             ->assertJsonPath('data.statut_simplifie', 'Traité');
     }
 
+    public function test_lexpediteur_suit_quatre_jalons_puis_voit_la_reponse_envoyee_sans_fuite_interne(): void
+    {
+        $courrier = Courrier::factory()->create([
+            'numero_accuse_reception' => 'AR-2026-000044',
+            'numero_enregistrement' => null,
+            'statut' => CourrierStatut::RECU,
+            'expediteur_externe_nom' => 'Partenaire Jalons SA',
+        ]);
+
+        $this->verifier('AR-2026-000044', 'Partenaire Jalons SA')
+            ->assertOk()
+            ->assertJsonPath('data.etapes.0.atteinte', true)
+            ->assertJsonPath('data.etapes.1.atteinte', false)
+            ->assertJsonPath('data.etapes.3.atteinte', false);
+
+        $courrier->update(['numero_enregistrement' => '2026-9901', 'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        $this->verifier('AR-2026-000044', 'Partenaire Jalons SA')
+            ->assertJsonPath('data.etapes.1.atteinte', true)
+            ->assertJsonPath('data.etapes.2.atteinte', true)
+            ->assertJsonPath('data.etapes.3.atteinte', false)
+            ->assertJsonPath('data.statut_simplifie', 'En cours de traitement');
+
+        Courrier::factory()->create([
+            'en_reponse_a_courrier_id' => $courrier->id,
+            'sens' => 'sortant',
+            'date_envoi' => '2026-10-26',
+        ]);
+        $reponse = $this->verifier('AR-2026-000044', 'Partenaire Jalons SA')
+            ->assertOk()
+            ->assertJsonPath('data.statut_simplifie', 'Réponse envoyée')
+            ->assertJsonPath('data.date_reponse', '2026-10-26')
+            ->assertJsonPath('data.etapes.3.atteinte', true);
+        $this->assertStringNotContainsString('tri', strtolower($reponse->json('data.statut_simplifie')));
+    }
+
     /**
      * Pour une demande de stage, le statut interne du circuit (huit
      * étapes) ne doit jamais fuiter vers le candidat : seul un statut

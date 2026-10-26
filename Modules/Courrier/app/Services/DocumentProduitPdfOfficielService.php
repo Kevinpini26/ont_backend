@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Kernel\Enums\Poste;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -52,7 +53,7 @@ class DocumentProduitPdfOfficielService
             || $courrier->direction_origine_id !== $document->direction_id
             || ! in_array($courrier->statut, [CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_AVIS_DG], true)
             || $courrier->reference_documentaire === null
-            || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
             || $courrier->numero_enregistrement === null
             || trim($courrier->numero_enregistrement) === ''
             || ! $courrier->transitions()->where('nouveau_statut', CourrierStatut::RECU->value)
@@ -83,7 +84,7 @@ class DocumentProduitPdfOfficielService
             || $courrier->direction_origine_id !== $document->direction_id
             || ! in_array($courrier->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::EN_DISPATCH], true)
             || $courrier->reference_documentaire === null
-            || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
             || $courrier->numero_enregistrement === null
             || trim($courrier->numero_enregistrement) === ''
             || ! $courrier->transitions()->where('nouveau_statut', CourrierStatut::EN_ATTENTE_AVIS_DG->value)

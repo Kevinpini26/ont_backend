@@ -8,8 +8,8 @@ use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Enums\NiveauConfidentialite;
 use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
-use Modules\Courrier\Services\CycleDecisionnelService;
 use Modules\Courrier\Services\CourrierVisibilityService;
+use Modules\Courrier\Services\CycleDecisionnelService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
@@ -271,6 +271,29 @@ class CourrierPolicy
         return $courrier->statut === CourrierStatut::EN_ATTENTE_SIGNATURE
             && $this->autoriteDg->estAutoritePourTeleverserScanSigne($user)
             && $this->view($user, $courrier);
+    }
+
+    public function confierAuDga(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::EN_ATTENTE_AVIS_DG
+            && $user->poste === Poste::DG
+            && $this->autoriteDg->source($user) === 'titulaire'
+            && $courrier->confiageDgaEnCours() === null;
+    }
+
+    public function reprendreDuDga(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::EN_ATTENTE_AVIS_DG
+            && $user->poste === Poste::DG
+            && $this->autoriteDg->source($user) === 'titulaire'
+            && $courrier->confiageDgaEnCours() !== null;
+    }
+
+    public function retournerAuDg(User $user, Courrier $courrier): bool
+    {
+        return $courrier->statut === CourrierStatut::EN_ATTENTE_AVIS_DG
+            && $user->poste === Poste::DGA
+            && $courrier->confiageDgaEnCours() !== null;
     }
 
     public function annoter(User $user, Courrier $courrier): bool

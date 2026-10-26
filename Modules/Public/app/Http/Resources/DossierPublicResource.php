@@ -33,6 +33,8 @@ class DossierPublicResource extends JsonResource
             'objet' => $this->objet,
             'type' => $this->type?->value,
             'statut_simplifie' => $estDemandeStage ? $this->statutSimplifieDemandeStage() : $this->statutSimplifieCourrier(),
+            'etapes' => $estDemandeStage ? null : $this->etapesCourrier(),
+            'date_reponse' => $estDemandeStage ? null : $this->reponseEnvoyee()?->date_envoi?->toDateString(),
             'date_reception' => $this->created_at?->toDateString(),
             'stagiaire' => (! $estDemandeStage && $this->stagiaire) ? [
                 'statut' => $this->stagiaire->statut?->value,
@@ -62,6 +64,39 @@ class DossierPublicResource extends JsonResource
      */
     private function statutSimplifieCourrier(): string
     {
+        if ($this->reponseEnvoyee() !== null) {
+            return 'Réponse envoyée';
+        }
+
         return $this->statut === CourrierStatut::ENREGISTRE ? 'Traité' : 'En cours de traitement';
+    }
+
+    /**
+     * Progression grossière destinée à l'expéditeur : quatre jalons, sans
+     * jamais nommer un poste, une étape interne ou un agent.
+     *
+     * @return array<int, array{libelle: string, atteinte: bool}>
+     */
+    private function etapesCourrier(): array
+    {
+        $enregistre = filled($this->numero_enregistrement);
+        $examen = $enregistre && ! in_array($this->statut, [CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_TRI], true);
+        $reponse = $this->reponseEnvoyee() !== null;
+
+        return [
+            ['libelle' => 'Reçu', 'atteinte' => true],
+            ['libelle' => 'Enregistré', 'atteinte' => $enregistre],
+            ['libelle' => 'En cours d’examen', 'atteinte' => $examen || $reponse],
+            ['libelle' => 'Réponse envoyée', 'atteinte' => $reponse],
+        ];
+    }
+
+    private function reponseEnvoyee(): ?Courrier
+    {
+        return Courrier::withoutGlobalScopes()
+            ->where('en_reponse_a_courrier_id', $this->id)
+            ->whereNotNull('date_envoi')
+            ->latest('date_envoi')
+            ->first();
     }
 }

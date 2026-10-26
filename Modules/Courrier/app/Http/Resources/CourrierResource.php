@@ -222,6 +222,24 @@ class CourrierResource extends JsonResource
                         && Gate::forUser($request->user())->allows('view', $mission))
                     ->values(),
             )),
+            'confiage_dga' => $this->whenLoaded('confiagesDga', function () {
+                $confiage = $this->confiagesDga->first();
+
+                return $confiage === null ? null : [
+                    'id' => $confiage->id,
+                    'statut' => $confiage->statut->value,
+                    'statut_label' => $confiage->statut->label(),
+                    'consigne' => $confiage->consigne,
+                    'confie_at' => $confiage->confie_at,
+                    'confie_par' => $confiage->confiePar?->name,
+                    'dga' => $confiage->dga?->name,
+                    'recommandation' => $confiage->recommandation,
+                    'retourne_at' => $confiage->retourne_at,
+                ];
+            }),
+            'peut_confier_au_dga' => $request->user() !== null && Gate::forUser($request->user())->allows('confierAuDga', $this->resource),
+            'peut_retourner_au_dg' => $request->user() !== null && Gate::forUser($request->user())->allows('retournerAuDg', $this->resource),
+            'peut_reprendre_du_dga' => $request->user() !== null && Gate::forUser($request->user())->allows('reprendreDuDga', $this->resource),
             'dispatchs' => DispatchCourrierResource::collection($this->whenLoaded('dispatchs')),
             'peut_ouvrir_nouveau_cycle' => in_array($this->statut, [CourrierStatut::EN_ATTENTE_AVIS_DG, CourrierStatut::DISPATCH_EXECUTE], true)
                 && app(CycleDecisionnelService::class)->peutOuvrir($this->resource),

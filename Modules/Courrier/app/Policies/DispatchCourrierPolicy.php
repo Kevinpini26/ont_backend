@@ -10,6 +10,7 @@ use Modules\Courrier\Enums\DocumentProduitOrigine;
 use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\ModeSortie;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
@@ -64,7 +65,7 @@ class DispatchCourrierPolicy
             || $document->recu_par_id === null
             || $document->recu_at === null
             || ! is_string($courrier->reference_documentaire)
-            || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
             || blank($courrier->numero_enregistrement)) {
             return false;
         }

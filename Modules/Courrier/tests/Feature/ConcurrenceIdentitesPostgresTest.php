@@ -132,7 +132,7 @@ class ConcurrenceIdentitesPostgresTest extends TestCase
         $this->assertSame(2, $references->unique()->count());
 
         $numeros = $references->map(function (string $reference) use ($direction): string {
-            $motif = '/\A(\d{3})\/(?:ABC|XYZ)\/'.preg_quote($direction->code, '/').'\/ONT\/'.now()->year.'\z/';
+            $motif = '/\A(\d{3})\/ONT\/'.preg_quote($direction->code, '/').'\/'.now()->year.'\z/';
             $this->assertSame(1, preg_match($motif, $reference, $correspondance));
 
             return $correspondance[1];
@@ -178,7 +178,10 @@ class ConcurrenceIdentitesPostgresTest extends TestCase
                 ->delete();
             DocumentProduitDirection::query()->findOrFail($id)->delete();
             Courrier::withoutGlobalScopes()->findOrFail($courrierId)->delete();
-            Dossier::query()->findOrFail($dossierId)->delete();
+            // Un document autonome n'a pas de dossier avant son dispatch.
+            if ($dossierId !== null) {
+                Dossier::query()->findOrFail($dossierId)->delete();
+            }
         }
     }
 
@@ -278,7 +281,7 @@ class ConcurrenceIdentitesPostgresTest extends TestCase
         );
         $premiereReference = DocumentProduitDirection::query()->findOrFail($historiqueId)
             ->courrier()->withoutGlobalScopes()->firstOrFail()->reference_documentaire;
-        $this->assertSame('001/ABC/HIS/ONT/'.now()->year, $premiereReference);
+        $this->assertSame('001/ONT/HIS/'.now()->year, $premiereReference);
 
         $ids = [
             $this->creerEtSoumettreAutonome($secretariat),
@@ -289,7 +292,7 @@ class ConcurrenceIdentitesPostgresTest extends TestCase
         $references = $courriers->pluck('reference_documentaire');
         $numeros = $references->map(function (?string $reference): int {
             $this->assertNotNull($reference);
-            $this->assertSame(1, preg_match('/\A(\d{3})\/ABC\/HIS\/ONT\/'.now()->year.'\z/', $reference, $match));
+            $this->assertSame(1, preg_match('/\A(\d{3})\/ONT\/HIS\/'.now()->year.'\z/', $reference, $match));
 
             return (int) $match[1];
         });

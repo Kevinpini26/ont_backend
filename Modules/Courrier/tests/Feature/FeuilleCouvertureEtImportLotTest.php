@@ -12,10 +12,10 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\NumerisationStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
-use Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob;
-use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
+use Modules\Kernel\Jobs\ExtraireTexteDocumentNumeriseJob;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\DocumentNumerise;
 
 /**
  * Lot 3a (feuille de couverture) + import par lot depuis une clé USB —

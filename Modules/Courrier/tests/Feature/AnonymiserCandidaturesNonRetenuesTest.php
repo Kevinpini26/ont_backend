@@ -8,7 +8,6 @@ use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierType;
-use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierAnnotation;
 use Modules\Kernel\Models\User;

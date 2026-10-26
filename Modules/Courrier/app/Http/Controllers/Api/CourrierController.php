@@ -43,6 +43,7 @@ use Modules\Courrier\Http\Resources\CourrierResource;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Models\DocumentProduitScanOfficiel;
+use Modules\Courrier\Services\ConfiageDgaService;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
@@ -71,6 +72,7 @@ class CourrierController extends Controller
         private readonly AccuseReceptionGuichetGenerator $accuseReceptionGuichet,
         private readonly GestionnaireDocumentNumerise $gestionnaire,
         private readonly DocumentProduitScanOfficielService $scanOfficiel,
+        private readonly ConfiageDgaService $confiages,
     ) {}
 
     public function index(Request $request)
@@ -325,6 +327,32 @@ class CourrierController extends Controller
     public function imputer(ImputerCourrierRequest $request, Courrier $courrier)
     {
         throw ValidationException::withMessages(['imputations' => 'Les nouvelles orientations doivent être décidées par le dispatch institutionnel. Les imputations historiques restent consultables sans modification.']);
+    }
+
+    public function confierAuDga(Request $request, Courrier $courrier)
+    {
+        $this->authorize('confierAuDga', $courrier);
+        $donnees = $request->validate(['consigne' => ['required', 'string', 'max:5000']]);
+        $this->confiages->confier($courrier, $request->user(), $donnees['consigne']);
+
+        return $this->ressource($courrier->refresh());
+    }
+
+    public function retournerAuDg(Request $request, Courrier $courrier)
+    {
+        $this->authorize('retournerAuDg', $courrier);
+        $donnees = $request->validate(['recommandation' => ['required', 'string', 'max:5000']]);
+        $this->confiages->retourner($courrier, $request->user(), $donnees['recommandation']);
+
+        return $this->ressource($courrier->refresh());
+    }
+
+    public function reprendreDuDga(Request $request, Courrier $courrier)
+    {
+        $this->authorize('reprendreDuDga', $courrier);
+        $this->confiages->reprendre($courrier, $request->user());
+
+        return $this->ressource($courrier->refresh());
     }
 
     public function transmettreTri(TransmettreCourrierRequest $request, Courrier $courrier)
@@ -932,6 +960,7 @@ class CourrierController extends Controller
         return new CourrierResource($courrier->load([
             'directionOrigine', 'directionDestination', 'relecteur', 'valideSignaturePar', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
+            'confiagesDga.confiePar', 'confiagesDga.dga', 'confiagesDga.retournePar',
             'missionsDocumentaires.demandeur', 'missionsDocumentaires.assistant', 'missionsDocumentaires.annuleePar', 'missionsDocumentaires.projetCourrier',
             'dispatchs.direction', 'dispatchs.decisionnaire', 'dispatchs.executePar', 'dispatchs.accuseReceptionPar',
             'dispatchs.traitementDirection.directeur',

@@ -23,6 +23,7 @@ class DeciderDocumentAutonomeDgRequest extends FormRequest
                 ->where('est_operationnelle', true)],
             'motif_reorientation' => [
                 Rule::requiredIf(fn (): bool => $document instanceof DocumentProduitDirection
+                    && $document->direction_destination_souhaitee_id !== null
                     && (int) $this->input('direction_id') !== (int) $document->direction_destination_souhaitee_id),
                 'nullable',
                 'string',

@@ -22,6 +22,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\InstructionCourrierDg;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
@@ -163,7 +164,10 @@ class CourrierReceptionService
                 ...$donnees,
                 'type' => CourrierType::DEMANDE_STAGE,
                 'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
+                // Comme tout dépôt en ligne : l'enregistrement administratif
+                // (numéro d'enregistrement) et la transmission à SEC1 sont
+                // faits par la Réception, jamais automatiquement.
+                'numero_enregistrement' => null,
                 'statut' => CourrierStatut::RECU,
                 // Une demande de stage suit structurellement le circuit central.
                 'necessite_avis_dg' => true,
@@ -175,8 +179,10 @@ class CourrierReceptionService
                 'mode_reception' => ModeReception::DEPOT_EN_LIGNE,
             ]);
 
-            $this->helpers->tracerTransition($courrier, null);
-            $this->helpers->auditerIdentite($courrier, null, 'numero_enregistrement', $courrier->numero_enregistrement);
+            $this->audit->enregistrer('courrier.depot_public', $courrier, null, [
+                'numero_accuse_reception' => $courrier->numero_accuse_reception,
+                'depose_at' => now()->toISOString(),
+            ]);
 
             return $courrier;
         });
@@ -424,7 +430,9 @@ class CourrierReceptionService
                 throw TransitionNonAutoriseeException::sautDetape();
             }
 
-            if ($courrier->dossier_id === null) {
+            // Un document interne autonome n'a pas de dossier avant son dispatch :
+            // seul l'accusé de SEC2 (statut en_dispatch) exige un dispatch unique.
+            if ($courrier->dossier_id === null && $courrier->statut === CourrierStatut::EN_DISPATCH) {
                 $dispatchs = $courrier->dispatchs()->lockForUpdate()->get();
                 if ($dispatchs->count() !== 1) {
                     throw TransitionNonAutoriseeException::sautDetape();
@@ -586,7 +594,7 @@ class CourrierReceptionService
             || $courrier->numero_enregistrement === null
             || trim($courrier->numero_enregistrement) === ''
             || ! is_string($courrier->reference_documentaire)
-            || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+            || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
             || $courrier->dispatchs()->exists()) {
             throw new ConflictHttpException('Le document autonome n’est plus dans un état cohérent pour une action de SEC1.');
         }

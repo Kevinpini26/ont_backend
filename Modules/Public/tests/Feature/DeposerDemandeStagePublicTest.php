@@ -10,7 +10,10 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Mail\AccuseReceptionCandidatMail;
 use Modules\Courrier\Models\Courrier;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Jobs\EnvoyerNotificationEmailJob;
+use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Models\DisponibiliteDemandesStage;
 use Tests\TestCase;
 
@@ -61,6 +64,29 @@ class DeposerDemandeStagePublicTest extends TestCase
                 && $job->email === 'jean.kabila@example.com'
                 && $job->mailable->courrier->is($courrier),
         );
+    }
+
+    public function test_la_demande_de_stage_passe_par_la_reception_avant_le_tri_par_sec1(): void
+    {
+        Mail::fake();
+        Queue::fake();
+        Storage::fake('local');
+        $direction = Direction::factory()->create();
+        $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create();
+        $sec1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1, $direction)->create();
+
+        $numero = $this->post('/api/v1/public/demandes-stage', $this->payloadValide())->assertCreated()->json('numero_accuse_reception');
+        $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->firstOrFail();
+        $this->assertNull($courrier->numero_enregistrement);
+
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertUnprocessable();
+
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", ['classification' => 'externe'])->assertOk();
+        $this->assertNotNull($courrier->fresh()->numero_enregistrement);
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-sec1")->assertOk();
+
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/accuser-reception")->assertOk();
+        $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertOk();
     }
 
     public function test_les_champs_obligatoires_sont_valides(): void

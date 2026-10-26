@@ -13,6 +13,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Database\Factories\CourrierFactory;
 use Modules\Courrier\Enums\AvisDg;
+use Modules\Courrier\Enums\ConfiageDgaStatut;
 use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
@@ -177,7 +178,7 @@ class Courrier extends Model implements Numerisable
         // dérivés peuvent fournir dossier_id dès leur création afin de
         // rejoindre l'affaire existante sans créer un dossier intermédiaire.
         static::created(function (Courrier $courrier): void {
-            if ($courrier->dossier_id !== null) {
+            if ($courrier->dossier_id !== null || ! self::$ouvertureDossierAutomatique) {
                 return;
             }
 
@@ -188,6 +189,21 @@ class Courrier extends Model implements Numerisable
             $courrier->dossier_id = $dossier->id;
             $courrier->saveQuietly();
         });
+    }
+
+    /** Désactivé le temps de créer un document interne autonome : il n'a pas de dossier avant son dispatch (voir DispatchCourrierService). */
+    private static bool $ouvertureDossierAutomatique = true;
+
+    public static function sansDossierInitial(callable $creation): mixed
+    {
+        $precedent = self::$ouvertureDossierAutomatique;
+        self::$ouvertureDossierAutomatique = false;
+
+        try {
+            return $creation();
+        } finally {
+            self::$ouvertureDossierAutomatique = $precedent;
+        }
     }
 
     protected static function newFactory(): CourrierFactory
@@ -458,6 +474,18 @@ class Courrier extends Model implements Numerisable
     public function instructionDg(): HasOne
     {
         return $this->hasOne(InstructionCourrierDg::class, 'courrier_id');
+    }
+
+    /** @return HasMany<ConfiageDga, $this> */
+    public function confiagesDga(): HasMany
+    {
+        return $this->hasMany(ConfiageDga::class)->orderByDesc('id');
+    }
+
+    /** Confiage au DGA actuellement ouvert (au plus un à la fois, voir ConfiageDgaService). */
+    public function confiageDgaEnCours(): ?ConfiageDga
+    {
+        return $this->confiagesDga()->where('statut', ConfiageDgaStatut::EN_COURS->value)->first();
     }
 
     /** @return HasMany<DispatchCourrier, $this> */

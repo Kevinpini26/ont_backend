@@ -19,7 +19,15 @@ class DocumentProduitDirectionTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_creation_autonome_cree_un_dossier_et_ne_fabrique_aucun_courrier_source(): void
+    /**
+     * Comportement volontairement modifié (l'ancienne version de ce test exigeait
+     * un dossier dès la création) : un document interne autonome n'a pas de
+     * dossier avant son dispatch, car les étapes DG et SEC2 qui suivent
+     * (DispatchCourrierService, DocumentProduitScanOfficielService) reposent
+     * sur « dossier_id nul » ; SEC2 ouvre le dossier en l'exécutant (voir
+     * DocumentInterneCircuitCentralTest).
+     */
+    public function test_creation_autonome_ne_cree_pas_de_dossier_avant_le_dispatch_et_ne_fabrique_aucun_courrier_source(): void
     {
         $direction = Direction::factory()->create(['code' => 'AUT']);
         $secretariat = User::factory()->secretariatDirection($direction)->create();
@@ -47,9 +55,9 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->assertNull($courrier->numero_enregistrement);
         $this->assertNull($courrier->reference_documentaire);
         $this->assertSame($secretariat->id, $courrier->created_by);
-        $this->assertSame($secretariat->id, $courrier->dossier->created_by);
+        $this->assertNull($courrier->dossier_id);
         $this->assertDatabaseCount('courriers', 1);
-        $this->assertDatabaseCount('dossiers', 1);
+        $this->assertDatabaseCount('dossiers', 0);
         $this->assertDatabaseCount('dispatchs_courrier', 0);
         $this->assertDatabaseCount('traitements_direction', 0);
         $this->assertDatabaseCount('document_relations', 0);
@@ -577,7 +585,7 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         ])->assertOk();
         $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
             ->assertOk()->assertJsonPath('data.statut', 'valide')
-            ->assertJsonPath('data.courrier.reference_documentaire', sprintf('001/ABC/AUT/ONT/%d', now()->year))
+            ->assertJsonPath('data.courrier.reference_documentaire', sprintf('001/ONT/AUT/%d', now()->year))
             ->assertJsonPath('data.tracabilite.createur.id', $secretariat->id)
             ->assertJsonPath('data.tracabilite.dernier_editeur.id', $collaborateur->id)
             ->assertJsonPath('data.tracabilite.soumis_par.id', $secretariat->id)
@@ -601,7 +609,7 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $courrier = Courrier::withoutGlobalScopes()->findOrFail($courrierId);
         $this->assertSame(3, $document->version_contenu);
         $this->assertSame('Note corrigée', $courrier->objet);
-        $this->assertSame('001/ABC/AUT/ONT/'.now()->year, $courrier->reference_documentaire);
+        $this->assertSame('001/ONT/AUT/'.now()->year, $courrier->reference_documentaire);
         $this->assertNull($courrier->numero_enregistrement);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'document_direction.correction_demandee',
@@ -727,7 +735,7 @@ class DocumentProduitDirectionTest extends CourrierTestCase
         $this->actingAs($secretariat)->postJson("/api/v1/documents-produits-direction/{$id}/soumettre", ['contenu' => $this->contenu('Version corrigée')])->assertOk();
         $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertOk()->assertJsonPath('data.statut', 'valide');
         $reference = $validation->json('data.courrier.reference_documentaire');
-        $this->assertSame(sprintf('001/ABC/%s/ONT/%d', $traitement->direction->code, now()->year), $reference);
+        $this->assertSame(sprintf('001/ONT/%s/%d', $traitement->direction->code, now()->year), $reference);
         $produit = DocumentProduitDirection::findOrFail($id);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.reference_documentaire_interne_attribuee',
@@ -750,18 +758,21 @@ class DocumentProduitDirectionTest extends CourrierTestCase
     }
 
     /** @return array{Courrier, TraitementDirection, User, User, User} */
-    public function test_le_directeur_sans_initiales_ne_peut_pas_attribuer_de_reference(): void
+    /**
+     * Le format du schéma ONT (NNN/ONT/<code direction>/AAAA) ne comporte pas
+     * les initiales du Directeur : leur absence ne bloque plus la validation
+     * (l'ancien test exigeait un refus avec le format NNN/INITIALES/SIGLE/ONT/AAAA).
+     */
+    public function test_le_directeur_sans_initiales_peut_attribuer_une_reference_au_format_du_schema(): void
     {
         $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
         [$source, $traitement, $secretariat, $directeur] = $this->traitementTermine('retour_a_preparer', $direction, null);
         $id = $this->creerEtSoumettreDocument($traitement, $secretariat);
 
-        $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")
-            ->assertUnprocessable()->assertJsonValidationErrors('initiales_reference');
+        $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertOk();
 
-        $document = DocumentProduitDirection::findOrFail($id);
-        $this->assertSame('soumis_directeur', $document->statut->value);
-        $this->assertNull($document->courrier->reference_documentaire);
+        $this->assertSame('001/ONT/DMC/'.now()->year, $validation->json('data.courrier.reference_documentaire'));
+        $this->assertSame('valide', DocumentProduitDirection::findOrFail($id)->statut->value);
     }
 
     public function test_la_reference_reste_celle_de_la_direction_productrice_meme_si_le_destinataire_est_la_dg(): void
@@ -775,7 +786,7 @@ class DocumentProduitDirectionTest extends CourrierTestCase
 
         $validation = $this->actingAs($directeur)->postJson("/api/v1/documents-produits-direction/{$id}/valider")->assertOk();
 
-        $this->assertSame('001/ABC/DMC/ONT/'.now()->year, $validation->json('data.courrier.reference_documentaire'));
+        $this->assertSame('001/ONT/DMC/'.now()->year, $validation->json('data.courrier.reference_documentaire'));
         $this->assertSame('ABC', $directeur->fresh()->initiales_reference);
         $this->assertSame('SEC', $secretariat->fresh()->initiales_reference);
     }
@@ -837,10 +848,10 @@ class DocumentProduitDirectionTest extends CourrierTestCase
             $this->travelTo(Carbon::parse('2027-06-01 10:00:00'));
             $premierDmc2027 = $this->produireEtValider($directionDmc);
 
-            $this->assertSame('001/ABC/DMC/ONT/2026', $premierDmc);
-            $this->assertSame('002/ABC/DMC/ONT/2026', $deuxiemeDmc);
-            $this->assertSame('001/ABC/DFP/ONT/2026', $premierDfp);
-            $this->assertSame('001/ABC/DMC/ONT/2027', $premierDmc2027);
+            $this->assertSame('001/ONT/DMC/2026', $premierDmc);
+            $this->assertSame('002/ONT/DMC/2026', $deuxiemeDmc);
+            $this->assertSame('001/ONT/DFP/2026', $premierDfp);
+            $this->assertSame('001/ONT/DMC/2027', $premierDmc2027);
         } finally {
             $this->travelBack();
         }

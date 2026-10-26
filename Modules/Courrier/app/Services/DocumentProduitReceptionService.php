@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Support\ReferenceDocumentaire;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
@@ -91,7 +92,7 @@ class DocumentProduitReceptionService
             if ($courrier->direction_origine_id !== $document->direction_id
                 || $courrier->reference_documentaire === null
                 || trim($courrier->reference_documentaire) === ''
-                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
                 || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
                 || $courrier->numero_enregistrement !== null
                 || $courrier->transitions()->exists()
@@ -144,7 +145,7 @@ class DocumentProduitReceptionService
             if ($courrier->direction_origine_id !== $document->direction_id
                 || $courrier->statut !== CourrierStatut::BROUILLON_DIRECTION
                 || $courrier->reference_documentaire === null
-                || preg_match('/\A\d{3,}\/[A-Z]{1,12}\/[A-Z0-9]{1,20}\/ONT\/\d{4}\z/', $courrier->reference_documentaire) !== 1
+                || ! ReferenceDocumentaire::estValide($courrier->reference_documentaire)
                 || $courrier->numero_enregistrement !== null
                 || $courrier->transitions()->exists()
                 || $courrier->dispatchs()->exists()) {

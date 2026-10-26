@@ -85,6 +85,9 @@ class MissionDocumentaireTest extends CourrierTestCase
             'created_at' => now(),
         ]);
 
+        // Le DGA n'instruit que ce que la DG lui a confié « pour instruction ».
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$courrierDga->id}/confier-au-dga", ['consigne' => 'Instruire.'])->assertOk();
+
         $mission = $this->actingAs($dga)->postJson("/api/v1/courriers/{$courrierDga->id}/missions", [
             'assistant_id' => $assistantDga->id,
             'instruction' => 'Vérifier les éléments.',
@@ -245,6 +248,7 @@ class MissionDocumentaireTest extends CourrierTestCase
     {
         Notification::fake();
         $direction = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $direction);
         $dga = $this->agent(Poste::DGA, $direction);
         $assistant = $this->agent(Poste::ASSISTANT_DGA, $direction);
         $a = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'A missionné']);
@@ -252,6 +256,7 @@ class MissionDocumentaireTest extends CourrierTestCase
         $c = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'C confidentiel']);
         $d = Courrier::factory()->create(['dossier_id' => $a->dossier_id, 'niveau_confidentialite' => NiveauConfidentialite::SECRET, 'objet' => 'D confidentiel']);
         $a->transitions()->create(['statut' => $a->statut, 'nouveau_statut' => $a->statut, 'destinataire_poste' => Poste::DGA, 'created_at' => now()]);
+        $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/confier-au-dga", ['consigne' => 'Instruire A.'])->assertOk();
         $missionId = $this->actingAs($dga)->postJson("/api/v1/courriers/{$a->id}/missions", [
             'assistant_id' => $assistant->id, 'instruction' => 'Analyser uniquement A.',
         ])->assertCreated()->json('data.id');

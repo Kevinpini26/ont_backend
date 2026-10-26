@@ -31,6 +31,24 @@ class CourrierVisibilityService
             $visibiliteAutonome
                 ->whereDoesntHave('documentProduitDirection', fn (Builder $document) => DocumentProduitDirection::appliquerFiltreAutonome($document))
                 ->orWhereHas('documentProduitDirection', fn (Builder $document) => DocumentProduitDirection::appliquerVisibilitePour($document, $user));
+
+            // Une fois le document interne accepté par la Réception, il est
+            // entré dans le circuit central : Réception, SEC1, SEC2, DG... le
+            // voient (selon leurs autres règles) ; avant, il reste privé à sa
+            // direction productrice.
+            // La direction destinataire voit le document dès que SEC2 a exécuté
+            // le dispatch vers elle (jamais avant : toute distribution passe par SEC2).
+            if ($this->estDirectionProductrice($user)) {
+                $visibiliteAutonome->orWhereHas('dispatchs', fn (Builder $dispatch) => $dispatch
+                    ->where('type_destination', 'direction')
+                    ->where('statut', 'execute')
+                    ->where('direction_id', $user->direction_id));
+            }
+
+            if ($this->estPosteCentralCircuit($user)) {
+                $visibiliteAutonome->orWhereHas('documentProduitDirection', fn (Builder $document) => DocumentProduitDirection::appliquerFiltreAutonome($document)
+                    ->whereIn('statut', ['transmis_reception', 'entre_circuit']));
+            }
         });
 
         if (! $this->estDirectionProductrice($user)) {
@@ -80,6 +98,13 @@ class CourrierVisibilityService
             Courrier::withoutGlobalScopes()->whereKey($courrier->getKey()),
             $user,
         )->exists();
+    }
+
+    private function estPosteCentralCircuit(User $user): bool
+    {
+        return $user->role === UserRole::AGENT_CIRCUIT_COURRIER
+            && $user->poste !== null
+            && in_array($user->poste->value, config('kernel.circuit_courrier_central_postes', []), true);
     }
 
     private function aVisionInstitutionnelle(User $user): bool
@@ -183,6 +208,10 @@ class CourrierVisibilityService
                     ->where('courriers.statut', CourrierStatut::TABLEAU_CHEZ_RECEPTION))
                 ->orWhereHas('documentProduitDirection', fn (Builder $document) => $document
                     ->whereIn('statut', ['transmis_reception', 'entre_circuit']));
+        }
+
+        if ($poste === Poste::DGA) {
+            $query->orWhereHas('confiagesDga');
         }
 
         if ($poste === Poste::SECRETARIAT_2) {

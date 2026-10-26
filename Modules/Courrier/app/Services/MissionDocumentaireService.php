@@ -49,6 +49,9 @@ class MissionDocumentaireService
             }
             $this->cycles->assertReceptionDg($courrier);
             $this->cycles->assertPeutOuvrir($courrier);
+            if ($autorite === Poste::DGA && $courrier->confiageDgaEnCours() === null) {
+                throw ValidationException::withMessages(['courrier' => 'Ce dossier ne vous a pas été confié par la DG.']);
+            }
             if ($courrier->missionsDocumentaires()->where('autorite_poste', $autorite)->whereIn('statut', [
                 MissionDocumentaireStatut::ASSIGNEE,
                 MissionDocumentaireStatut::EN_COURS,

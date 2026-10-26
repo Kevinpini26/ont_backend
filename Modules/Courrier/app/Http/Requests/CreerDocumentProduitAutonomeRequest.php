@@ -17,6 +17,7 @@ class CreerDocumentProduitAutonomeRequest extends FormRequest
         return [
             'objet' => ['required', 'string', 'max:255'],
             'contenu' => ['required', 'array'],
+            'direction_destination_souhaitee_id' => ['nullable', 'integer', 'exists:directions,id'],
         ];
     }
 }
