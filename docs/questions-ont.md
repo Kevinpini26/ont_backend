@@ -729,3 +729,10 @@ prêté à confusion dans les commentaires de code.)
   document autonome n'est visible des postes centraux qu'une fois accepté
   par la Réception, et de la direction destinataire qu'une fois le dispatch
   exécuté par SEC2.
+
+## Fonctions de courrier d'entreprise ajoutées (copie, échéance, relance, tri normal)
+
+- **Copie pour information (ampliation)** : la DG peut mettre une ou plusieurs directions en copie d'un courrier en circuit. Elles le consultent (lecture seule), sont notifiées, mais n'ont aucun traitement à faire ; le statut du courrier ne change pas. Une direction déjà destinataire n'est pas mise en copie. *À confirmer : le DGA ou SEC1 doivent-ils aussi pouvoir ajouter des copies ?* (aujourd'hui : seule l'autorité DG.)
+- **Échéance** : la DG peut fixer, par destination, une date limite (« à traiter avant le »). Dépassée sans traitement terminé, le dispatch est signalé « en retard ».
+- **Relance des directions** : chaque jour à 08:00, une relance (une seule par dispatch) part vers les secrétariats/directeurs de la direction et vers la DG si l'échéance est dépassée, ou, sans échéance, après `COURRIER_RELANCE_DIRECTION_JOURS` jours (défaut : **7**, valeur provisoire à confirmer).
+- **Courrier « normal » après tri SEC1** : par défaut il attend au classeur d'attente de SEC1 (SEC1 décide de le transmettre à la DG). Réglage `COURRIER_TRI_NORMAL_VERS_CLASSEUR=false` : il va directement à la DG comme un courrier urgent. *À confirmer avec l'entreprise.*

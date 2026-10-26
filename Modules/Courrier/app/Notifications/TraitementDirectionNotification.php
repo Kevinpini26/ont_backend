@@ -23,6 +23,8 @@ class TraitementDirectionNotification extends Notification
             'type' => 'traitement_direction', 'evenement' => $this->evenement,
             'traitement_id' => $this->traitement->id, 'courrier_id' => $this->traitement->courrier_id,
             'direction_id' => $this->traitement->direction_id,
+            'message' => 'Un courrier de votre direction vous est transmis pour traitement.',
+            'lien' => "/courriers/{$this->traitement->courrier_id}",
         ];
     }
 }

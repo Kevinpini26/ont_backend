@@ -183,6 +183,7 @@ class CourrierVisibilityService
                 ->where('statut', 'execute')
                 ->where('direction_id', $directionId))
             ->orWhereHas('traitementsDirection', fn (Builder $traitement) => $traitement->where('direction_id', $directionId))
+            ->orWhereHas('copies', fn (Builder $copie) => $copie->where('direction_id', $directionId))
             ->orWhereHas('documentProduitDirection', fn (Builder $document) => $document->where('direction_id', $directionId));
     }
 

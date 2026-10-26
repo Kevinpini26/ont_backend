@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
+use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -21,6 +22,7 @@ class DispatchCourrier extends Model
         'decisionnaire_id', 'decisionnaire_poste', 'autorite_poste', 'decide_at',
         'statut', 'execute_par_id', 'execute_at', 'reference_transmission',
         'preuve_piece_jointe_id', 'accuse_reception_par_id', 'accuse_reception_at',
+        'echeance_at', 'relance_direction_envoyee_at',
     ];
 
     protected function casts(): array
@@ -34,6 +36,8 @@ class DispatchCourrier extends Model
             'decide_at' => 'datetime',
             'execute_at' => 'datetime',
             'accuse_reception_at' => 'datetime',
+            'echeance_at' => 'date',
+            'relance_direction_envoyee_at' => 'datetime',
         ];
     }
 
@@ -71,6 +75,19 @@ class DispatchCourrier extends Model
     public function accuseReceptionPar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'accuse_reception_par_id');
+    }
+
+    /** Échéance dépassée alors que la direction n'a pas terminé son traitement. */
+    public function estEnRetard(): bool
+    {
+        if ($this->echeance_at === null || $this->type_destination !== DispatchTypeDestination::DIRECTION
+            || $this->statut === DispatchStatut::ANNULE) {
+            return false;
+        }
+        $traitement = $this->relationLoaded('traitementDirection') ? $this->traitementDirection : $this->traitementDirection()->first();
+
+        return $this->echeance_at->lt(now()->startOfDay())
+            && $traitement?->statut !== TraitementDirectionStatut::TERMINE_DIRECTEUR;
     }
 
     public function traitementDirection(): HasOne

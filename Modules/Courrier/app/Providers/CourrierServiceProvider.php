@@ -8,6 +8,7 @@ use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Console\GenererRegistreCourrierCommand;
 use Modules\Courrier\Console\ReconcilerPdfOfficielDocumentAutonomeCommand;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
+use Modules\Courrier\Console\RelancerDirectionsEnRetardCommand;
 use Modules\Courrier\Contracts\AccuseReceptionGuichetGenerator;
 use Modules\Courrier\Contracts\BordereauLotPdfGenerator;
 use Modules\Courrier\Contracts\CircuitTransitionRules;
@@ -57,6 +58,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         RelancerAvisDgEnAttenteCommand::class,
+        RelancerDirectionsEnRetardCommand::class,
         AnonymiserCandidaturesNonRetenuesCommand::class,
         GenererRegistreCourrierCommand::class,
         ReconcilerPdfOfficielDocumentAutonomeCommand::class,
@@ -104,6 +106,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
     protected function configureSchedules(Schedule $schedule): void
     {
         $schedule->command(RelancerAvisDgEnAttenteCommand::class)->hourly();
+        $schedule->command(RelancerDirectionsEnRetardCommand::class)->dailyAt('08:00');
         $schedule->command(AnonymiserCandidaturesNonRetenuesCommand::class)->daily();
         $schedule->command(ReconcilerPdfOfficielDocumentAutonomeCommand::class)->dailyAt('02:00')->withoutOverlapping();
     }

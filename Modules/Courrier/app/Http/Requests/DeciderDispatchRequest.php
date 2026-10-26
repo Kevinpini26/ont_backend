@@ -21,6 +21,7 @@ class DeciderDispatchRequest extends FormRequest
             'destinations.*.direction_id' => ['nullable', 'integer', 'exists:directions,id'],
             'destinations.*.destinataire_externe_nom' => ['nullable', 'string', 'max:255'],
             'destinations.*.destinataire_externe_email' => ['nullable', 'email', 'max:255'],
+            'destinations.*.echeance' => ['nullable', 'date', 'after_or_equal:today'],
             'destinations.*.instruction' => ['required', 'string', 'max:5000'],
         ];
     }

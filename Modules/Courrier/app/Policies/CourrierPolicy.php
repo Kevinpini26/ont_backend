@@ -137,6 +137,17 @@ class CourrierPolicy
             && $this->autoriteDg->estAutorite($user);
     }
 
+    /** Mise en copie pour information : même autorité que la décision, tant que le courrier est en circuit. */
+    public function ajouterCopies(User $user, Courrier $courrier): bool
+    {
+        return in_array($courrier->statut, [
+            CourrierStatut::EN_ATTENTE_AVIS_DG,
+            CourrierStatut::EN_DISPATCH,
+            CourrierStatut::DISPATCH_EXECUTE,
+            CourrierStatut::ENVOYE,
+        ], true) && $this->autoriteDg->estAutorite($user);
+    }
+
     public function deciderClassement(User $user, Courrier $courrier): bool
     {
         if ($courrier->dossier_id === null

@@ -96,6 +96,7 @@ class DispatchCourrierService
                     'destinataire_externe_nom' => $type === DispatchTypeDestination::EXTERIEUR ? $destination['destinataire_externe_nom'] : null,
                     'destinataire_externe_email' => $type === DispatchTypeDestination::EXTERIEUR ? ($destination['destinataire_externe_email'] ?? null) : null,
                     'instruction' => $destination['instruction'],
+                    'echeance_at' => $destination['echeance'] ?? null,
                     'decisionnaire_id' => $acteur->id,
                     'decisionnaire_poste' => $acteur->poste,
                     'autorite_poste' => $autorite,

@@ -44,6 +44,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Courrier\Services\ConfiageDgaService;
+use Modules\Courrier\Services\CopieCourrierService;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
@@ -73,6 +74,7 @@ class CourrierController extends Controller
         private readonly GestionnaireDocumentNumerise $gestionnaire,
         private readonly DocumentProduitScanOfficielService $scanOfficiel,
         private readonly ConfiageDgaService $confiages,
+        private readonly CopieCourrierService $copies,
     ) {}
 
     public function index(Request $request)
@@ -327,6 +329,19 @@ class CourrierController extends Controller
     public function imputer(ImputerCourrierRequest $request, Courrier $courrier)
     {
         throw ValidationException::withMessages(['imputations' => 'Les nouvelles orientations doivent être décidées par le dispatch institutionnel. Les imputations historiques restent consultables sans modification.']);
+    }
+
+    public function ajouterCopies(Request $request, Courrier $courrier)
+    {
+        $this->authorize('ajouterCopies', $courrier);
+        $donnees = $request->validate([
+            'direction_ids' => ['required', 'array', 'min:1', 'max:20'],
+            'direction_ids.*' => ['integer', 'exists:directions,id'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $this->copies->ajouter($courrier, $request->user(), $donnees['direction_ids'], $donnees['note'] ?? null);
+
+        return $this->ressource($courrier->refresh());
     }
 
     public function confierAuDga(Request $request, Courrier $courrier)
@@ -960,6 +975,7 @@ class CourrierController extends Controller
         return new CourrierResource($courrier->load([
             'directionOrigine', 'directionDestination', 'relecteur', 'valideSignaturePar', 'signataire', 'createur', 'avisDgRenduPar', 'urgenceTrieePar', 'projetRenvoyePar',
             'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar',
+            'copies.direction', 'copies.ajoutePar',
             'confiagesDga.confiePar', 'confiagesDga.dga', 'confiagesDga.retournePar',
             'missionsDocumentaires.demandeur', 'missionsDocumentaires.assistant', 'missionsDocumentaires.annuleePar', 'missionsDocumentaires.projetCourrier',
             'dispatchs.direction', 'dispatchs.decisionnaire', 'dispatchs.executePar', 'dispatchs.accuseReceptionPar',

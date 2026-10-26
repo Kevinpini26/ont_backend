@@ -51,6 +51,8 @@ class DispatchCourrierResource extends JsonResource
             'destinataire_externe_nom' => $this->destinataire_externe_nom,
             'destinataire_externe_email' => $this->destinataire_externe_email,
             'instruction' => $this->instruction,
+            'echeance_at' => $this->echeance_at?->toDateString(),
+            'en_retard' => $this->estEnRetard(),
             'decisionnaire' => new UserResource($this->whenLoaded('decisionnaire')),
             'decisionnaire_poste' => $this->decisionnaire_poste?->value,
             'autorite_poste' => $this->autorite_poste?->value,

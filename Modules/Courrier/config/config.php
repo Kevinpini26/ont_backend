@@ -334,6 +334,22 @@ return [
      */
     'tri' => [
         'delai_alerte_heures' => 4,
+        /**
+         * Vrai : un courrier de degré « normal » attend au classeur d'attente de
+         * SEC1, qui le transmet à la DG quand il le juge utile. Faux : il va
+         * directement à la DG comme les courriers urgents. Choix ONT à
+         * confirmer — voir docs/questions-ont.md.
+         */
+        'normal_vers_classeur' => (bool) env('COURRIER_TRI_NORMAL_VERS_CLASSEUR', true),
+    ],
+
+    /**
+     * Relance des directions : un courrier dispatché sans échéance fixée est
+     * relancé après ce nombre de jours sans traitement terminé.
+     * Valeur par défaut raisonnable, à confirmer — voir docs/questions-ont.md.
+     */
+    'relance_direction' => [
+        'delai_jours_sans_echeance' => (int) env('COURRIER_RELANCE_DIRECTION_JOURS', 7),
     ],
 
     /**

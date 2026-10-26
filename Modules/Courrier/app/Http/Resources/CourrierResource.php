@@ -237,6 +237,14 @@ class CourrierResource extends JsonResource
                     'retourne_at' => $confiage->retourne_at,
                 ];
             }),
+            'copies' => $this->whenLoaded('copies', fn () => $this->copies->map(fn ($copie) => [
+                'id' => $copie->id,
+                'direction' => ['id' => $copie->direction_id, 'nom' => $copie->direction?->nom, 'code' => $copie->direction?->code],
+                'ajoute_par' => $copie->ajoutePar?->name,
+                'note' => $copie->note,
+                'created_at' => $copie->created_at,
+            ])->values()),
+            'peut_ajouter_copies' => $request->user() !== null && Gate::forUser($request->user())->allows('ajouterCopies', $this->resource),
             'peut_confier_au_dga' => $request->user() !== null && Gate::forUser($request->user())->allows('confierAuDga', $this->resource),
             'peut_retourner_au_dg' => $request->user() !== null && Gate::forUser($request->user())->allows('retournerAuDg', $this->resource),
             'peut_reprendre_du_dga' => $request->user() !== null && Gate::forUser($request->user())->allows('reprendreDuDga', $this->resource),

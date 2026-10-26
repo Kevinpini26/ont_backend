@@ -204,9 +204,16 @@ class CourrierTriDispatchService
 
             $statutCible = match ($degreUrgence) {
                 DegreUrgence::URGENT, DegreUrgence::TRES_URGENT => CourrierStatut::EN_ATTENTE_AVIS_DG,
-                DegreUrgence::NORMAL => CourrierStatut::EN_ATTENTE_CLASSEUR,
+                DegreUrgence::NORMAL => config('courrier.tri.normal_vers_classeur', true)
+                    ? CourrierStatut::EN_ATTENTE_CLASSEUR
+                    : CourrierStatut::EN_ATTENTE_AVIS_DG,
             };
-            $this->helpers->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, ['degre_urgence' => $degreUrgence->value]);
+            // Réglage courrier.tri.normal_vers_classeur désactivé : un degré normal
+            // suit le même chemin qu'un courrier signalé (le degré enregistré reste « normal »).
+            $degrePourLaRegle = $statutCible === CourrierStatut::EN_ATTENTE_AVIS_DG && $degreUrgence === DegreUrgence::NORMAL
+                ? DegreUrgence::URGENT
+                : $degreUrgence;
+            $this->helpers->assertTransitionAutorisee($courrier, $utilisateur, $statutCible, ['degre_urgence' => $degrePourLaRegle->value]);
 
             $courrier->degre_urgence = $degreUrgence;
             $courrier->urgence_triee_at = now();

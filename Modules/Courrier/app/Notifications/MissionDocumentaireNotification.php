@@ -28,6 +28,11 @@ class MissionDocumentaireNotification extends Notification
             'mission_id' => $this->mission->id,
             'courrier_id' => $this->mission->courrier_id,
             'objet' => $this->mission->courrier?->objet,
+            'message' => match ($this->evenement) {
+                'retournee' => "Une mission de rédaction vous est retournée : {$this->mission->courrier?->objet}",
+                default => "Une mission de rédaction vous est assignée : {$this->mission->courrier?->objet}",
+            },
+            'lien' => "/courriers/{$this->mission->courrier_id}",
         ];
     }
 }

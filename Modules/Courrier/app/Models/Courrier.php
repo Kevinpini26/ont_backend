@@ -476,6 +476,12 @@ class Courrier extends Model implements Numerisable
         return $this->hasOne(InstructionCourrierDg::class, 'courrier_id');
     }
 
+    /** @return HasMany<CourrierCopie, $this> */
+    public function copies(): HasMany
+    {
+        return $this->hasMany(CourrierCopie::class)->orderBy('id');
+    }
+
     /** @return HasMany<ConfiageDga, $this> */
     public function confiagesDga(): HasMany
     {
