@@ -43,6 +43,7 @@ class ConcurrenceDepotScanOfficielPostgresTest extends TestCase
         $this->assertSame(DocumentProduitStatut::VALIDE, $document->statut);
 
         $fichierScan = null;
+        $repertoireAPurger = null;
         $barriere = null;
         $cles = [(string) Str::uuid(), (string) Str::uuid()];
         $processus = [];
@@ -50,6 +51,8 @@ class ConcurrenceDepotScanOfficielPostgresTest extends TestCase
         try {
             $repertoireScans = "documents-internes/scans-officiels/{$document->id}";
             $this->assertSame([], Storage::disk('local')->allFiles($repertoireScans), 'Le répertoire de scans doit être vierge avant le test.');
+            // Vérifié vierge : tout ce qui s'y trouvera ensuite a été écrit par ce test, il doit le retirer.
+            $repertoireAPurger = $repertoireScans;
 
             $fichierScan = tempnam(sys_get_temp_dir(), 'ont-scan-officiel-');
             $this->assertNotFalse($fichierScan);
@@ -112,6 +115,12 @@ class ConcurrenceDepotScanOfficielPostgresTest extends TestCase
                 ->where('est_actif', true)
                 ->count());
         } finally {
+            if ($repertoireAPurger !== null) {
+                Storage::disk('local')->deleteDirectory($repertoireAPurger);
+            }
+            if ($document->pdf_officiel_chemin !== null) {
+                Storage::disk('local')->delete($document->pdf_officiel_chemin);
+            }
             foreach ($processus as $process) {
                 if ($process->isRunning()) {
                     $process->stop();
@@ -154,7 +163,7 @@ class ConcurrenceDepotScanOfficielPostgresTest extends TestCase
             throw new RuntimeException('Le test de concurrence exige une configuration PostgreSQL testing résolue vers ont_testing avec DB_URL vide.');
         }
 
-        foreach ([
+        $tablesRequises = [
             'documents_produits_direction',
             'courriers',
             'document_produit_scans_officiels',
@@ -162,9 +171,20 @@ class ConcurrenceDepotScanOfficielPostgresTest extends TestCase
             'users',
             'audit_logs',
             'directions',
-        ] as $table) {
+        ];
+
+        // Ce test ne peut pas passer par RefreshDatabase (ses workers lisent la base
+        // depuis d'autres processus : les données doivent être validées). Dans la suite
+        // complète il s'exécute avant tout test qui prépare le schéma, d'où un échec
+        // dépendant de l'ordre. La garde ci-dessus a établi qu'on est bien sur
+        // ont_testing : on y applique les migrations si une table manque.
+        if (collect($tablesRequises)->contains(fn (string $table) => ! Schema::hasTable($table))) {
+            $this->artisan('migrate', ['--force' => true]);
+        }
+
+        foreach ($tablesRequises as $table) {
             if (! Schema::hasTable($table)) {
-                throw new RuntimeException("Schéma prérequis absent : {$table}. Aucune migration automatique n’est exécutée.");
+                throw new RuntimeException("Schéma prérequis absent : {$table} (migration de la base de test impossible).");
             }
         }
     }
