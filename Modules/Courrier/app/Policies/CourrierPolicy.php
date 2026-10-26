@@ -137,6 +137,39 @@ class CourrierPolicy
             && $this->autoriteDg->estAutorite($user);
     }
 
+    private const STATUTS_ANNULABLES = [
+        CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_TRI, CourrierStatut::EN_ATTENTE_CLASSEUR, CourrierStatut::EN_ATTENTE_AVIS_DG,
+    ];
+
+    private function peutGererEtat(User $user): bool
+    {
+        return $this->delegations->utilisateurHabilite($user, [Poste::RECEPTION, Poste::SECRETARIAT_1, Poste::DG, Poste::DGA])
+            || $this->autoriteDg->estAutorite($user);
+    }
+
+    /** Annulation d'un enregistrement par erreur : tant que le courrier n'a pas été décidé ni dispatché. */
+    public function annuler(User $user, Courrier $courrier): bool
+    {
+        return ! $courrier->estAnnule()
+            && $courrier->sens === SensCourrier::ENTRANT
+            && $courrier->documentProduitDirection === null
+            && in_array($courrier->statut, self::STATUTS_ANNULABLES, true)
+            && $this->peutGererEtat($user);
+    }
+
+    public function suspendre(User $user, Courrier $courrier): bool
+    {
+        return ! $courrier->estAnnule() && ! $courrier->estSuspendu()
+            && $courrier->documentProduitDirection === null
+            && ! in_array($courrier->statut, [CourrierStatut::ENVOYE, CourrierStatut::REMIS, CourrierStatut::DISPONIBLE_RETRAIT, CourrierStatut::DISPATCH_EXECUTE], true)
+            && $this->peutGererEtat($user);
+    }
+
+    public function reprendreSuspension(User $user, Courrier $courrier): bool
+    {
+        return ! $courrier->estAnnule() && $courrier->estSuspendu() && $this->peutGererEtat($user);
+    }
+
     /** Mise en copie pour information : même autorité que la décision, tant que le courrier est en circuit. */
     public function ajouterCopies(User $user, Courrier $courrier): bool
     {

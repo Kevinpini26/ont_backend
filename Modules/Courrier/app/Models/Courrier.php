@@ -117,6 +117,7 @@ class Courrier extends Model implements Numerisable
         'enregistre_at',
         'created_by',
         'relance_avis_dg_envoyee_at',
+        'annule_at', 'annule_par_id', 'motif_annulation', 'suspendu_at', 'suspendu_par_id', 'motif_suspension',
         'anonymise_at',
         'date_courrier',
         'reference_expediteur',
@@ -234,6 +235,8 @@ class Courrier extends Model implements Numerisable
             'signe_at' => 'datetime',
             'enregistre_at' => 'datetime',
             'relance_avis_dg_envoyee_at' => 'datetime',
+            'annule_at' => 'datetime',
+            'suspendu_at' => 'datetime',
             'avis_dg_rendu_at' => 'datetime',
             'anonymise_at' => 'datetime',
             'date_courrier' => 'date',
@@ -474,6 +477,16 @@ class Courrier extends Model implements Numerisable
     public function instructionDg(): HasOne
     {
         return $this->hasOne(InstructionCourrierDg::class, 'courrier_id');
+    }
+
+    public function estAnnule(): bool
+    {
+        return $this->annule_at !== null;
+    }
+
+    public function estSuspendu(): bool
+    {
+        return $this->suspendu_at !== null;
     }
 
     /** @return HasMany<CourrierCopie, $this> */

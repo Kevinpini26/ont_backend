@@ -74,6 +74,9 @@ class DispatchCourrierService
                     'courrier' => 'La sortie de ce courrier n’est pas entièrement terminée pour autoriser une décision de classement.',
                 ]);
             }
+            if ($courrier->estAnnule() || $courrier->estSuspendu()) {
+                throw ValidationException::withMessages(['courrier' => $courrier->estAnnule() ? 'Ce courrier a été annulé.' : 'Ce courrier est mis en attente : reprenez-le avant de décider.']);
+            }
             $this->cycles->assertReceptionDg($courrier);
             $this->cycles->assertPeutOuvrir($courrier);
             $cycle = $this->cycles->prochainNumero($courrier);

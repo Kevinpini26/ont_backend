@@ -736,3 +736,8 @@ prêté à confusion dans les commentaires de code.)
 - **Échéance** : la DG peut fixer, par destination, une date limite (« à traiter avant le »). Dépassée sans traitement terminé, le dispatch est signalé « en retard ».
 - **Relance des directions** : chaque jour à 08:00, une relance (une seule par dispatch) part vers les secrétariats/directeurs de la direction et vers la DG si l'échéance est dépassée, ou, sans échéance, après `COURRIER_RELANCE_DIRECTION_JOURS` jours (défaut : **7**, valeur provisoire à confirmer).
 - **Courrier « normal » après tri SEC1** : par défaut il attend au classeur d'attente de SEC1 (SEC1 décide de le transmettre à la DG). Réglage `COURRIER_TRI_NORMAL_VERS_CLASSEUR=false` : il va directement à la DG comme un courrier urgent. *À confirmer avec l'entreprise.*
+
+## Annulation et mise en attente d'un courrier
+
+- **Annulation** (enregistrement par erreur : doublon, mauvais expéditeur) : possible pour la Réception, SEC1 et la DG, tant que le courrier entrant n'a pas été dispatché (statuts reçu, en attente de tri, au classeur, en attente d'avis DG). Motif obligatoire. Le courrier n'est jamais supprimé : il reste au registre, marqué « Annulé », avec auteur, date et motif (journal d'audit). Il sort des files de travail et ne peut plus avancer. *À confirmer : qui doit pouvoir annuler, et jusqu'à quelle étape ?*
+- **Mise en attente** (pièce manquante, complément demandé) : même habilitation ; bloque toute étape du circuit jusqu'à la reprise ; motif obligatoire, reprise tracée. Non disponible pour un courrier déjà envoyé, remis ou dispatché. Les documents internes des directions suivent leur propre circuit et ne sont pas concernés.

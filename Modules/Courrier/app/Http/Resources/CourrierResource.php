@@ -237,6 +237,15 @@ class CourrierResource extends JsonResource
                     'retourne_at' => $confiage->retourne_at,
                 ];
             }),
+            'annule' => $this->annule_at !== null,
+            'annule_at' => $this->annule_at,
+            'motif_annulation' => $this->motif_annulation,
+            'suspendu' => $this->suspendu_at !== null,
+            'suspendu_at' => $this->suspendu_at,
+            'motif_suspension' => $this->motif_suspension,
+            'peut_annuler' => $request->user() !== null && Gate::forUser($request->user())->allows('annuler', $this->resource),
+            'peut_suspendre' => $request->user() !== null && Gate::forUser($request->user())->allows('suspendre', $this->resource),
+            'peut_reprendre_suspension' => $request->user() !== null && Gate::forUser($request->user())->allows('reprendreSuspension', $this->resource),
             'copies' => $this->whenLoaded('copies', fn () => $this->copies->map(fn ($copie) => [
                 'id' => $copie->id,
                 'direction' => ['id' => $copie->direction_id, 'nom' => $copie->direction?->nom, 'code' => $copie->direction?->code],

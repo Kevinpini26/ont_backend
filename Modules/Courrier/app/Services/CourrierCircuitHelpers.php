@@ -110,7 +110,21 @@ class CourrierCircuitHelpers
      */
     public function lockCourrierFrais(Courrier $courrier): Courrier
     {
-        return Courrier::query()->lockForUpdate()->findOrFail($courrier->id);
+        $frais = Courrier::query()->lockForUpdate()->findOrFail($courrier->id);
+        $this->assertCourrierActif($frais);
+
+        return $frais;
+    }
+
+    /** Un courrier annulé ou mis en attente ne peut plus avancer dans le circuit. */
+    public function assertCourrierActif(Courrier $courrier): void
+    {
+        if ($courrier->estAnnule()) {
+            throw ValidationException::withMessages(['courrier' => 'Ce courrier a été annulé : il ne peut plus avancer dans le circuit.']);
+        }
+        if ($courrier->estSuspendu()) {
+            throw ValidationException::withMessages(['courrier' => 'Ce courrier est mis en attente : reprenez-le avant de continuer.']);
+        }
     }
 
     public function auditerIdentite(Courrier $courrier, ?User $acteur, string $type, string $valeur): void
@@ -139,6 +153,7 @@ class CourrierCircuitHelpers
      */
     public function assertTransitionAutorisee(Courrier $courrier, User $utilisateur, CourrierStatut $statutCible, array $contexte = []): void
     {
+        $this->assertCourrierActif($courrier);
         $this->assertDechargeDonnee($courrier);
 
         $estSortant = $courrier->sens === SensCourrier::SORTANT;

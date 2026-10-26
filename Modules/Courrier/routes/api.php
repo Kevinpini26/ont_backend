@@ -97,6 +97,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/courriers/{courrier}/missions', [MissionDocumentaireController::class, 'store']);
     Route::post('/courriers/{courrier}/demander-preparation-reponse', [MissionDocumentaireController::class, 'demanderPreparationReponse']);
     Route::post('/courriers/{courrier}/copies', [CourrierController::class, 'ajouterCopies']);
+    Route::post('/courriers/{courrier}/annuler', [CourrierController::class, 'annuler']);
+    Route::post('/courriers/{courrier}/suspendre', [CourrierController::class, 'suspendre']);
+    Route::post('/courriers/{courrier}/reprendre-suspension', [CourrierController::class, 'reprendreSuspension']);
     Route::post('/courriers/{courrier}/confier-au-dga', [CourrierController::class, 'confierAuDga']);
     Route::post('/courriers/{courrier}/retourner-au-dg', [CourrierController::class, 'retournerAuDg']);
     Route::post('/courriers/{courrier}/reprendre-du-dga', [CourrierController::class, 'reprendreDuDga']);

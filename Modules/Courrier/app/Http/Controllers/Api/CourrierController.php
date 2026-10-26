@@ -46,6 +46,7 @@ use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Courrier\Services\ConfiageDgaService;
 use Modules\Courrier\Services\CopieCourrierService;
 use Modules\Courrier\Services\CourrierCircuitService;
+use Modules\Courrier\Services\CourrierEtatService;
 use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Courrier\Services\DocumentProduitScanOfficielService;
 use Modules\Courrier\Services\PdfOfficielIntegrity;
@@ -75,6 +76,7 @@ class CourrierController extends Controller
         private readonly DocumentProduitScanOfficielService $scanOfficiel,
         private readonly ConfiageDgaService $confiages,
         private readonly CopieCourrierService $copies,
+        private readonly CourrierEtatService $etats,
     ) {}
 
     public function index(Request $request)
@@ -82,6 +84,9 @@ class CourrierController extends Controller
         $this->authorize('viewAny', Courrier::class);
 
         $query = Courrier::query()->with(['directionOrigine', 'directionDestination', 'transitions']);
+        if (! $request->boolean('inclure_annules')) {
+            $query->whereNull('annule_at');
+        }
         if ($request->filled('sens')) {
             $request->validate(['sens' => ['in:entrant,sortant']]);
             $query->where('sens', $request->string('sens')->toString());
@@ -329,6 +334,32 @@ class CourrierController extends Controller
     public function imputer(ImputerCourrierRequest $request, Courrier $courrier)
     {
         throw ValidationException::withMessages(['imputations' => 'Les nouvelles orientations doivent être décidées par le dispatch institutionnel. Les imputations historiques restent consultables sans modification.']);
+    }
+
+    public function annuler(Request $request, Courrier $courrier)
+    {
+        $this->authorize('annuler', $courrier);
+        $donnees = $request->validate(['motif' => ['required', 'string', 'min:5', 'max:2000']]);
+        $this->etats->annuler($courrier, $request->user(), $donnees['motif']);
+
+        return $this->ressource($courrier->refresh());
+    }
+
+    public function suspendre(Request $request, Courrier $courrier)
+    {
+        $this->authorize('suspendre', $courrier);
+        $donnees = $request->validate(['motif' => ['required', 'string', 'min:5', 'max:2000']]);
+        $this->etats->suspendre($courrier, $request->user(), $donnees['motif']);
+
+        return $this->ressource($courrier->refresh());
+    }
+
+    public function reprendreSuspension(Request $request, Courrier $courrier)
+    {
+        $this->authorize('reprendreSuspension', $courrier);
+        $this->etats->reprendre($courrier, $request->user());
+
+        return $this->ressource($courrier->refresh());
     }
 
     public function ajouterCopies(Request $request, Courrier $courrier)
