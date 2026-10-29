@@ -97,6 +97,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // L'application écrit ses heures en UTC (config app.timezone) : sans ceci, PostgreSQL
+            // interprète les colonnes « timestamptz » dans le fuseau du serveur (décalage d'une heure à Kinshasa).
+            'timezone' => 'UTC',
         ],
 
         'sqlsrv' => [
