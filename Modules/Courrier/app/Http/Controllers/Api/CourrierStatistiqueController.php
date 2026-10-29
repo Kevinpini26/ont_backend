@@ -152,7 +152,7 @@ class CourrierStatistiqueController extends Controller
         $seuilJours = $request->integer('seuil_jours', 5);
         $periode = new PeriodeStatistique($request->string('periode', '30j')->toString());
 
-        $enAttenteDecision = Courrier::query()
+        $enAttenteAvis = Courrier::query()
             ->withoutGlobalScopes()
             ->exclureAutonomesAvantTransmission()
             ->where('statut', CourrierStatut::EN_ATTENTE_AVIS_DG)
@@ -165,6 +165,10 @@ class CourrierStatistiqueController extends Controller
             ->exclureAutonomesAvantTransmission()
             ->whereIn('statut', [CourrierStatut::EN_RELECTURE, CourrierStatut::PROJET_A_VALIDER])
             ->whereNotNull('relecture_validee_at')->count();
+
+        // « En attente de ma décision » = avis à rendre + projets prêts à signer
+        // (relecture validée) : ce que la DG doit réellement traiter.
+        $enAttenteDecision = $enAttenteAvis + $aSigner;
 
         // Courriers dont la dernière transition remonte à plus de
         // `seuil_jours`, tous statuts non clôturés confondus — signal
