@@ -154,4 +154,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     Route::get('/courriers/{courrier}/annotations', [CourrierAnnotationController::class, 'index']);
     Route::post('/courriers/{courrier}/annotations', [CourrierAnnotationController::class, 'store']);
+    Route::post('/courriers/{courrier}/annotations/{annotation}/correction', [CourrierAnnotationController::class, 'corriger']);
+    Route::post('/courriers/{courrier}/annotations/{annotation}/lecture', [CourrierAnnotationController::class, 'lire']);
+    Route::delete('/courriers/{courrier}/annotations/{annotation}', [CourrierAnnotationController::class, 'retirer']);
+    Route::get('/annotations/instructions-non-lues', [CourrierAnnotationController::class, 'instructionsNonLues']);
 });

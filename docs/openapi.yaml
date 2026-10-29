@@ -383,14 +383,28 @@ paths:
   /courriers/{courrier}/annotations:
     get:
       tags: [Courrier]
-      summary: Annotations internes d'un courrier
+      summary: Notes de circuit d'un courrier
+      description: >-
+        Notes du circuit, plus les rappels personnels de l'appelant (jamais
+        ceux des autres). Une note urgente encore à jour remonte en tête, le
+        reste va du plus récent au plus ancien. Pour l'administrateur, le
+        contenu d'un courrier confidentiel ou secret est masqué
+        (contenu_masque).
       parameters:
         - { name: courrier, in: path, required: true, schema: { type: integer } }
       responses:
-        '200': { description: OK }
+        '200': { description: 'Liste des notes (type, couleur, auteur, poste, destinataire, lectures, correction).' }
+        '404': { description: "Courrier invisible pour l'appelant." }
     post:
       tags: [Courrier]
-      summary: Ajouter une annotation interne
+      summary: Ajouter une note de circuit
+      description: >-
+        Types : instruction (DG, DGA et directeurs de direction seulement),
+        observation (défaut), rappel (personnel, sans destinataire, visible
+        uniquement par son auteur) et urgent. Une instruction ou une note
+        urgente qui vise un destinataire déclenche une notification interne
+        (jamais d'e-mail). Les postes SEC2 et assistant du DGA ne peuvent pas
+        être ciblés.
       parameters:
         - { name: courrier, in: path, required: true, schema: { type: integer } }
       requestBody:
@@ -401,9 +415,85 @@ paths:
               type: object
               required: [contenu]
               properties:
-                contenu: { type: string }
+                contenu: { type: string, maxLength: 5000 }
+                type: { type: string, enum: [instruction, observation, rappel, urgent] }
+                destinataire_poste: { type: string, nullable: true }
+                destinataire_direction_id: { type: integer, nullable: true }
       responses:
         '201': { description: Créée. }
+        '403': { description: "Type non autorisé pour l'appelant (instruction) ou contenu non consultable." }
+        '422': { description: 'Données invalides (rappel avec destinataire, poste non ciblable).' }
+
+  /courriers/{courrier}/annotations/{annotation}/correction:
+    post:
+      tags: [Courrier]
+      summary: Corriger une note de circuit
+      description: >-
+        Une note du circuit n'est jamais modifiée : la correction crée une
+        nouvelle note (même type et même destinataire) et marque l'ancienne
+        comme corrigée (annule_par_id). Réservée à l'auteur. Une note ne se
+        corrige qu'une fois. Un rappel personnel se retire, il ne se corrige
+        pas.
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+        - { name: annotation, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contenu]
+              properties:
+                contenu: { type: string, maxLength: 5000 }
+      responses:
+        '201': { description: Nouvelle note créée. }
+        '403': { description: "Appelant différent de l'auteur, ou rappel personnel." }
+        '422': { description: Note déjà corrigée. }
+
+  /courriers/{courrier}/annotations/{annotation}/lecture:
+    post:
+      tags: [Courrier]
+      summary: Marquer une note comme lue
+      description: >-
+        Enregistre la lecture par l'appelant (idempotent). La lecture d'une
+        instruction est tracée dans le journal d'audit et apparaît dans la
+        liste « lu par ». L'auteur ne marque pas sa propre note.
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+        - { name: annotation, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Note avec son état de lecture. }
+        '404': { description: "Note inexistante ou rappel personnel d'un autre utilisateur." }
+
+  /courriers/{courrier}/annotations/{annotation}:
+    delete:
+      tags: [Courrier]
+      summary: Retirer un rappel personnel
+      description: >-
+        Seul un rappel personnel peut être retiré, par son auteur (le retrait
+        est tracé). Toute autre note du circuit est refusée (403) : il
+        n'existe ni suppression ni modification (PUT et PATCH renvoient 405),
+        une correction est une nouvelle note.
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: integer } }
+        - { name: annotation, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: Rappel retiré. }
+        '403': { description: "Note du circuit, ou appelant différent de l'auteur." }
+        '404': { description: "Note inexistante ou rappel d'un autre utilisateur." }
+
+  /annotations/instructions-non-lues:
+    get:
+      tags: [Courrier]
+      summary: Instructions du circuit non lues qui visent l'appelant
+      description: >-
+        Instructions qui visent le poste ou la direction de l'appelant, sur
+        des courriers qu'il peut voir, qu'il n'a pas encore lues (50 au plus,
+        total dans meta.total). Le même compteur alimente la navigation (clé
+        instructions_non_lues de /notifications/compteurs).
+      responses:
+        '200': { description: "Instructions non lues avec l'objet du courrier." }
 
   /courriers/{courrier}/accuse-reception-guichet:
     get:

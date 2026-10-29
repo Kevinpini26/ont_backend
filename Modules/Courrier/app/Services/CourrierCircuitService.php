@@ -321,9 +321,12 @@ class CourrierCircuitService
         return $this->envoi->enregistrerRemise($courrier, $utilisateur, $donnees);
     }
 
-    public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu): CourrierAnnotation
+    /**
+     * @param  array<string, mixed>  $attributs  type, destinataire_poste, destinataire_direction_id, visibilite (voir CourrierAnnotationService)
+     */
+    public function ajouterAnnotation(Courrier $courrier, User $auteur, string $contenu, array $attributs = []): CourrierAnnotation
     {
-        return DB::transaction(function () use ($courrier, $auteur, $contenu) {
+        return DB::transaction(function () use ($courrier, $auteur, $contenu, $attributs) {
             if ($courrier->dossier_id === null) {
                 throw ValidationException::withMessages([
                     'dossier' => 'Une annotation métier exige un dossier actif.',
@@ -338,10 +341,12 @@ class CourrierCircuitService
             $annotation = $courrier->annotations()->create([
                 'auteur_id' => $auteur->id,
                 'contenu' => $contenu,
-            ]);
+            ] + $attributs);
 
             $this->audit->enregistrer('courrier.annotation_creee', $courrier, $auteur, [
                 'annotation_id' => $annotation->id,
+                'type' => $annotation->type->value,
+                'visibilite' => $annotation->visibilite->value,
                 // Le contenu reste dans la table métier protégée ; le journal
                 // ne conserve qu'une donnée non sensible utile au contrôle.
                 'contenu_longueur' => mb_strlen($contenu),

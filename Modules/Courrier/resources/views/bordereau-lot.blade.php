@@ -56,6 +56,14 @@
                     <td>{{ $courrier->numero_accuse_reception ?? $courrier->numero_enregistrement ?? '—' }}</td>
                     <td>{{ $courrier->objet }}</td>
                 </tr>
+                @if (($notes[$courrier->id] ?? collect())->isNotEmpty() || ($notesMasquees[$courrier->id] ?? false))
+                    <tr>
+                        <td></td>
+                        <td colspan="2">
+                            @include('courrier::partials.notes-circuit', ['notes' => $notes[$courrier->id] ?? collect(), 'masquees' => $notesMasquees[$courrier->id] ?? false])
+                        </td>
+                    </tr>
+                @endif
             @endforeach
         </tbody>
     </table>

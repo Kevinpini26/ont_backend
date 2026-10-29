@@ -9,7 +9,7 @@ Aucune vue Blade n'est servie : le backend n'expose que du JSON. Le frontend (Re
 | Module      | Rôle |
 |-------------|------|
 | `Kernel`    | Utilisateurs, directions, authentification, Global Scope par direction, policies transverses |
-| `Courrier`  | Circuit courrier (machine à états), annotations, relecture, numérotation, événement `CourrierStageAvisFavorable` |
+| `Courrier`  | Circuit courrier (machine à états), notes de circuit (annotations typées), relecture, numérotation, événement `CourrierStageAvisFavorable` |
 | `Stagiaires`| Cycle de vie du stagiaire, affectation, présences, documents, double évaluation, attestation PDF |
 | `Public`    | Points d'entrée publics (sans authentification) : suivi de dossier, vérification d'attestation, dépôt de demande de stage, liens à usage unique |
 
@@ -181,7 +181,11 @@ La logique applicative (orchestration des transitions) est répartie en plusieur
 | GET | `/api/v1/courriers/{id}/numerisations/{document}` | ✔ (filtré) | Télécharge une version numérisée précise |
 | GET | `/api/v1/courriers/{id}/pdf` \| `/piece-jointe` \| `/pieces-jointes/{piece}` \| `/lettre-stage` \| `/pieces/{piece}` \| `/imprimer` | ✔ (filtré) | Téléchargements associés au dossier (PDF signé, pièces jointes, lettre de stage, pièce du candidat, fiche imprimable) |
 | GET | `/api/v1/courriers/{id}/annotations` | ✔ (filtré) | Liste des annotations horodatées |
-| POST | `/api/v1/courriers/{id}/annotations` | ✔ (filtré) | `{contenu}` |
+| POST | `/api/v1/courriers/{id}/annotations` | ✔ (filtré) | `{contenu, type?, destinataire_poste?, destinataire_direction_id?}` : note de circuit (`instruction`, `observation`, `rappel` personnel, `urgent`) |
+| POST | `/api/v1/courriers/{id}/annotations/{annotation}/correction` | auteur de la note | `{contenu}` : crée une nouvelle note qui corrige l'ancienne (jamais de modification) |
+| POST | `/api/v1/courriers/{id}/annotations/{annotation}/lecture` | ✔ (filtré) | Marque la note comme lue (la lecture d'une instruction est tracée) |
+| DELETE | `/api/v1/courriers/{id}/annotations/{annotation}` | auteur du rappel | Retire un rappel personnel ; toute autre note du circuit est refusée (403) |
+| GET | `/api/v1/annotations/instructions-non-lues` | ✔ (filtré) | Instructions non lues qui visent le poste ou la direction de l'appelant |
 | GET | `/api/v1/courriers/registre` \| `/export` | postes du circuit central, admin | Registre PDF (arrivée/départ sur une période) et export CSV filtré |
 | GET | `/api/v1/courriers/statistiques` \| `/en-souffrance` \| `/justesse-tri` | ✔ (filtré) | Tableau de bord par étape, dossiers en retard par rapport au délai indicatif de leur statut, taux de justesse du tri |
 | GET | `/api/v1/courriers/statistiques-dg` | `dg`/`dga` | Tableau de bord dédié à la DG (dossiers en attente d'avis, délais) |

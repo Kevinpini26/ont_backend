@@ -5,6 +5,7 @@ namespace Modules\Kernel\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Services\CourrierAnnotationService;
 use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Consultation;
@@ -40,6 +41,12 @@ class NotificationCompteurController extends Controller
                 'tone' => $nonTraites48h > 0 ? 'danger' : 'warning',
             ];
         }
+
+        // Instructions du circuit qui visent cet utilisateur (poste ou direction) et qu'il n'a pas encore lues.
+        $compteurs['instructions_non_lues'] = [
+            'count' => app(CourrierAnnotationService::class)->instructionsNonLues($user)->count(),
+            'tone' => 'warning',
+        ];
 
         if ($user->role === UserRole::AGENT_DFP) {
             $depuis = Consultation::derniere($user, 'demandes_stage');

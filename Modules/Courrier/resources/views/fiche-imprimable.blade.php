@@ -61,6 +61,9 @@
         @endforelse
     </table>
 
+    <h3>Notes du circuit</h3>
+    @include('courrier::partials.notes-circuit', ['notes' => $notes, 'masquees' => $notes_masquees])
+
     <p style="margin-top: 24px; font-style: italic; font-size: 9px;">
         Document imprimé le {{ now()->translatedFormat('d F Y à H:i') }} — reflète l'état du dossier à cet instant,
         pas un document officiel définitif (voir le PDF signé une fois le courrier abouti, s'il y a lieu).

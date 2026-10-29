@@ -45,6 +45,7 @@ use Modules\Courrier\Models\CourrierPieceJointe;
 use Modules\Courrier\Models\DocumentProduitScanOfficiel;
 use Modules\Courrier\Services\ConfiageDgaService;
 use Modules\Courrier\Services\CopieCourrierService;
+use Modules\Courrier\Services\CourrierAnnotationService;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\CourrierEtatService;
 use Modules\Courrier\Services\DispatchCourrierService;
@@ -708,7 +709,10 @@ class CourrierController extends Controller
     {
         $this->authorize('view', $courrier);
 
+        $notesMasquees = ! auth()->user()->can('consulterContenu', $courrier);
         $pdf = $this->pdf->genererDepuisVue('courrier::fiche-imprimable', [
+            'notes' => $notesMasquees ? collect() : app(CourrierAnnotationService::class)->notesImprimables($courrier),
+            'notes_masquees' => $notesMasquees,
             'courrier' => $courrier->load(['directionOrigine', 'directionDestination', 'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar']),
             'qr_verification_data_uri' => $this->qrCode->genererSvgDataUri(
                 rtrim(config('app.frontend_url'), '/')."/verification-dossier?numero={$courrier->numero_accuse_reception}",
