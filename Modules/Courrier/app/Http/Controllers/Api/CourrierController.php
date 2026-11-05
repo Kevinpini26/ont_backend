@@ -5,6 +5,7 @@ namespace Modules\Courrier\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\AccuseReceptionGuichetGenerator;
@@ -56,6 +57,7 @@ use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Contracts\QrCodeService;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
+use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Support\CsvExporter;
@@ -145,6 +147,11 @@ class CourrierController extends Controller
         }
 
         if ($request->filled('recherche')) {
+            // L'administrateur ne lit pas les courriers confidentiels : sa recherche ne doit pas
+            // non plus révéler qu'un objet confidentiel contient le terme cherché.
+            if ($request->user()->role === UserRole::ADMINISTRATEUR) {
+                $query->where('niveau_confidentialite', NiveauConfidentialite::ORDINAIRE->value);
+            }
             $query->recherchePleinTexte($request->string('recherche')->toString());
 
             return CourrierResource::collection($query->paginate(20));
@@ -196,10 +203,12 @@ class CourrierController extends Controller
             $query->whereDate('created_at', '<=', $request->string('periode_fin'));
         }
 
+        $utilisateur = $request->user();
         $lignes = $query->orderBy('id')->cursor()->map(fn (Courrier $c) => [
             $c->numero_enregistrement,
             $c->numero_accuse_reception,
-            $c->objet,
+            Gate::forUser($utilisateur)->allows('voirObjetConfidentielEnMasse', $c) && Gate::forUser($utilisateur)->allows('consulterContenu', $c)
+                ? $c->objet : 'Objet confidentiel',
             $c->type->label(),
             $c->statut->label(),
             $c->directionOrigine?->nom,

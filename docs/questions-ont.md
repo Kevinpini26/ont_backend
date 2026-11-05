@@ -768,3 +768,18 @@ Propositions :
 4. Champ piège invisible (« honeypot ») sur les formulaires, sans CAPTCHA ni service tiers.
 
 Questions : quels plafonds retenir ? La confirmation d'adresse est-elle acceptable pour des candidats qui n'ont parfois qu'un accès limité à leur messagerie ?
+
+
+## Matrice d'accès validée (lot 2, propositions A à I)
+
+Validée par l'ONT le 2026-11-05 (« tout comme tu proposes ») et appliquée, avec tests (`MatriceAccesTest`) :
+
+- **A** Assistants 1 et 2 : plus de statistiques, registre ni originaux empruntés.
+- **B** DGA : registre et statistiques seulement en intérim de la DG ou par délégation officielle.
+- **C** Administrateur : plus de statistiques, registre, tableau de bord DG ni justesse du tri (il garde comptes, structure, paramètres, supervision et audit).
+- **D** Administrateur : objet des courriers confidentiels ou secrets masqué (« Objet confidentiel ») dans la liste, la fiche et la recherche.
+- **E** Registre : objet confidentiel masqué pour tous sauf la DG (et son intérim) et SEC2.
+- **F** Archive annuelle de la DFP (et de l'administrateur) : rapport des stages seul.
+- **G** Justesse du tri : taux global pour SEC1, détail par agent pour la DG seule.
+- **H** Liste des agents : réservée à la DG, au DGA, à SEC1, aux assistants, aux directeurs de direction et à l'administrateur (gestion de l'intérim).
+- **I** Export des courriers : même filtrage que la liste, objet confidentiel masqué hors DG et SEC2.

@@ -5,7 +5,9 @@ namespace Modules\Stagiaires\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
+use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Support\ZipArchiveBuilder;
 use Modules\Stagiaires\Contracts\RapportAnnuelGenerator;
@@ -37,11 +39,15 @@ class ArchiveAnnuelleController extends Controller
         $debut = Carbon::create($annee, 1, 1)->startOfDay();
         $fin = Carbon::create($annee, 12, 31)->endOfDay();
 
-        $zip = ZipArchiveBuilder::construire([
-            "registre-courrier-arrivee-{$annee}.pdf" => $this->registres->generer('arrivee', $debut, $fin),
-            "registre-courrier-depart-{$annee}.pdf" => $this->registres->generer('depart', $debut, $fin),
-            "rapport-annuel-stagiaires-{$annee}.pdf" => $this->rapportAnnuel->generer($annee),
-        ]);
+        // Matrice d'accès (proposition F) : les registres du courrier n'entrent dans l'archive que pour
+        // un poste qui a droit au registre ; la DFP et l'administrateur reçoivent le rapport des stages.
+        $fichiers = [];
+        if (Gate::allows('voirRegistre', Courrier::class)) {
+            $fichiers["registre-courrier-arrivee-{$annee}.pdf"] = $this->registres->generer('arrivee', $debut, $fin);
+            $fichiers["registre-courrier-depart-{$annee}.pdf"] = $this->registres->generer('depart', $debut, $fin);
+        }
+        $fichiers["rapport-annuel-stagiaires-{$annee}.pdf"] = $this->rapportAnnuel->generer($annee);
+        $zip = ZipArchiveBuilder::construire($fichiers);
 
         return response($zip, 200, [
             'Content-Type' => 'application/zip',

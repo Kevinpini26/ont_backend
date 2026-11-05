@@ -57,7 +57,7 @@
                         </td>
                         <td>{{ ($type === 'depart' ? ($courrier->date_envoi ?? $courrier->created_at) : ($courrier->enregistre_at ?? $courrier->created_at))->format('d/m/Y') }}</td>
                         <td>{{ $courrier->expediteur_externe_nom ?? $courrier->candidat_nom ?? $courrier->directionOrigine?->nom ?? '—' }}</td>
-                        <td>{{ $courrier->objet }}</td>
+                        <td>{{ in_array($courrier->id, $objetsMasques ?? [], true) ? 'Objet confidentiel' : $courrier->objet }}</td>
                         <td>{{ $courrier->imputations->firstWhere('est_principale', true)?->direction?->code ?? $courrier->directionDestination?->code ?? '—' }}</td>
                         <td>{{ $courrier->statut?->label() }}</td>
                     </tr>

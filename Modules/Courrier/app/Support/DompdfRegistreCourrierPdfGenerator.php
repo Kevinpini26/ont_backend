@@ -4,6 +4,7 @@ namespace Modules\Courrier\Support;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
@@ -50,6 +51,10 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
             'courriers' => $courriers,
             'ruptures' => $ruptures,
             'total' => $courriers->count(),
+            // Objet des courriers confidentiels masqué sauf pour la DG et SEC2 (matrice d'accès, E).
+            'objetsMasques' => $courriers
+                ->reject(fn (Courrier $courrier) => $user !== null && Gate::forUser($user)->allows('voirObjetConfidentielEnMasse', $courrier))
+                ->map(fn (Courrier $courrier) => (int) $courrier->getKey())->values()->all(),
         ]);
     }
 }

@@ -230,7 +230,8 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
             $this->actingAs($dg)->get($url)->assertNotFound();
         }
 
-        $registre = $this->actingAs($admin)->get('/api/v1/courriers/registre?debut='.now()->startOfMonth()->toDateString().'&fin='.now()->endOfMonth()->toDateString())
+        // Lot 2 (matrice d'accès, C) : le registre n'est plus ouvert à l'administrateur ; la DG le garde.
+        $registre = $this->actingAs($dg)->get('/api/v1/courriers/registre?debut='.now()->startOfMonth()->toDateString().'&fin='.now()->endOfMonth()->toDateString())
             ->assertOk();
         $this->assertStringNotContainsString($token, (new Parser)->parseContent($registre->getContent())->getText());
         $rapport = $this->actingAs($dfp)->get('/api/v1/rapports/periodique?type=mois&annee='.now()->year.'&mois='.now()->month)

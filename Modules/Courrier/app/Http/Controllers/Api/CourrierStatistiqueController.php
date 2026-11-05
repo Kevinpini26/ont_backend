@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
@@ -385,7 +386,8 @@ class CourrierStatistiqueController extends Controller
                 'nombre_reoriented' => $totalReorientes,
                 'taux_justesse' => $totalTries > 0 ? round(1 - ($totalReorientes / $totalTries), 4) : null,
             ],
-            'par_agent' => $parAgent,
+            // Détail nominatif réservé à la DG (matrice d'accès, proposition G).
+            'par_agent' => Gate::allows('voirJustesseTriParAgent', Courrier::class) ? $parAgent : [],
         ]);
     }
 }

@@ -236,14 +236,13 @@ class CourrierPolicy
     }
 
     /**
-     * Lot C, point 3 : la statistique de justesse du tri n'a de sens que
-     * pour celui qui trie — visible du seul Secrétariat 01 (et de
-     * l'administrateur, par convention pour tout ce qui est transverse).
+     * Lot C, point 3, revu au lot 2 (proposition G) : taux global pour le Secrétariat 01 qui
+     * trie, détail par agent pour la DG seule. L'administrateur n'y a plus accès.
      */
     public function voirJustesseTri(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR
-            || ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::SECRETARIAT_1);
+        return $this->voirJustesseTriParAgent($user)
+            || ($this->estAgentCircuitActif($user) && $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_1]));
     }
 
     /**
@@ -446,9 +445,44 @@ class CourrierPolicy
      */
     public function voirStatistiques(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR
-            || ($this->estAgentCircuitActif($user)
-                && ($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) !== Poste::ASSISTANT_DGA);
+        return $this->gereLeCircuit($user);
+    }
+
+    /**
+     * Matrice d'accès validée (lot 2, propositions A à C) : statistiques, registre et originaux
+     * réservés aux postes qui gèrent le circuit (Réception, SEC1, SEC2) et à la DG. Le DGA n'y a
+     * accès qu'en intérim (autorité DG) ou par délégation officielle d'un de ces postes. Les
+     * assistants et l'administrateur (rôle technique) n'y ont plus accès.
+     */
+    private function gereLeCircuit(User $user): bool
+    {
+        return $this->estAgentCircuitActif($user)
+            && ($user->poste === Poste::DG
+                || $this->autoriteDg->estAutorite($user)
+                || $this->delegations->utilisateurHabilite($user, [Poste::RECEPTION, Poste::SECRETARIAT_1, Poste::SECRETARIAT_2]));
+    }
+
+    /**
+     * Documents de masse (registre, export, archive) : l'objet d'un courrier confidentiel ou secret
+     * n'y figure que pour la DG (ou son intérim) et SEC2 (proposition E et I du lot 2).
+     */
+    public function voirObjetConfidentielEnMasse(User $user, Courrier $courrier): bool
+    {
+        if ($courrier->niveau_confidentialite === NiveauConfidentialite::ORDINAIRE) {
+            return true;
+        }
+
+        return $this->estAgentCircuitActif($user)
+            && ($user->poste === Poste::DG
+                || $this->autoriteDg->estAutorite($user)
+                || $this->delegations->utilisateurHabilite($user, [Poste::SECRETARIAT_2]));
+    }
+
+    /** Détail de la justesse du tri par agent : réservé à la DG (proposition G du lot 2). */
+    public function voirJustesseTriParAgent(User $user): bool
+    {
+        return $this->estAgentCircuitActif($user)
+            && ($user->poste === Poste::DG || $this->autoriteDg->estAutorite($user));
     }
 
     /**
@@ -459,9 +493,7 @@ class CourrierPolicy
      */
     public function voirRegistre(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR
-            || ($this->estAgentCircuitActif($user)
-                && ($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste) !== Poste::ASSISTANT_DGA);
+        return $this->gereLeCircuit($user);
     }
 
     /**
@@ -470,8 +502,7 @@ class CourrierPolicy
      */
     public function voirTableauDeBordDg(User $user): bool
     {
-        return $user->role === UserRole::ADMINISTRATEUR
-            || $this->autoriteDg->estAutorite($user);
+        return $this->autoriteDg->estAutorite($user);
     }
 
     /**

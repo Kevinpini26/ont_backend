@@ -113,7 +113,8 @@ class CourrierResource extends JsonResource
                         'date_envoi' => $reponse->date_envoi?->toDateString(),
                     ]),
             ),
-            'objet' => $this->objet,
+            // Objet d'un courrier confidentiel masqué pour qui n'en consulte pas le contenu (administrateur).
+            'objet' => $peutConsulterContenu ? $this->objet : 'Objet confidentiel',
             'contenu' => $peutConsulterContenu ? $this->contenu : null,
             // Permet au frontend de distinguer "pas de contenu" de "contenu
             // masqué, courrier confidentiel" (voir CourrierPolicy::consulterContenu()).

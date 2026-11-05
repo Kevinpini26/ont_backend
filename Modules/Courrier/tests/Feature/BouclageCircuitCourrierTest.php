@@ -10,7 +10,6 @@ use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
-use Modules\Kernel\Models\User;
 
 /**
  * Vérifie le bouclage interne introduit au Lot 1 : un avis DG "réservé"
@@ -127,7 +126,8 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         config(['courrier.circuit.tours_avant_alerte' => 3]);
 
         $direction = Direction::factory()->create();
-        $administrateur = User::factory()->administrateur()->create();
+        // Lot 2 (matrice d'accès, C) : le tableau de bord DG est réservé à la DG.
+        $dg = $this->agent(Poste::DG, $direction);
 
         $courrierBloque = Courrier::factory()->create([
             'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
@@ -136,7 +136,7 @@ class BouclageCircuitCourrierTest extends CourrierTestCase
         ]);
         Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG, 'tour' => 1]);
 
-        $reponse = $this->actingAs($administrateur)
+        $reponse = $this->actingAs($dg)
             ->getJson('/api/v1/courriers/statistiques-dg')
             ->assertOk();
 

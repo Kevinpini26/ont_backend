@@ -5,6 +5,7 @@ namespace Modules\Courrier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 
@@ -12,9 +13,10 @@ class RegistreCourrierTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_un_administrateur_peut_telecharger_le_registre_arrivee_dune_periode(): void
+    public function test_le_secretariat_2_peut_telecharger_le_registre_arrivee_dune_periode(): void
     {
-        $admin = User::factory()->administrateur()->create();
+        // Lot 2 (matrice d'accès, C) : le registre n'est plus ouvert à l'administrateur.
+        $admin = $this->agent(Poste::SECRETARIAT_2, Direction::factory()->create());
         Courrier::factory()->count(3)->create(['created_at' => now()]);
 
         $response = $this->actingAs($admin)->get('/api/v1/courriers/registre?debut='.now()->subDay()->toDateString().'&fin='.now()->addDay()->toDateString());
@@ -25,7 +27,8 @@ class RegistreCourrierTest extends CourrierTestCase
 
     public function test_un_registre_depart_est_genere_meme_vide_faute_de_courrier_sortant(): void
     {
-        $admin = User::factory()->administrateur()->create();
+        // Lot 2 (matrice d'accès, C) : le registre n'est plus ouvert à l'administrateur.
+        $admin = $this->agent(Poste::SECRETARIAT_2, Direction::factory()->create());
 
         $this->actingAs($admin)
             ->get('/api/v1/courriers/registre?type=depart&debut=2026-01-01&fin=2026-01-31')
@@ -43,7 +46,8 @@ class RegistreCourrierTest extends CourrierTestCase
 
     public function test_une_periode_invalide_est_rejetee(): void
     {
-        $admin = User::factory()->administrateur()->create();
+        // Lot 2 (matrice d'accès, C) : le registre n'est plus ouvert à l'administrateur.
+        $admin = $this->agent(Poste::SECRETARIAT_2, Direction::factory()->create());
 
         $this->actingAs($admin)
             ->get('/api/v1/courriers/registre?debut=2026-01-31&fin=2026-01-01')
@@ -66,7 +70,8 @@ class RegistreCourrierTest extends CourrierTestCase
         };
         $this->app->instance(PdfGenerationService::class, $capture);
 
-        $this->actingAs(User::factory()->administrateur()->create())
+        // La DG voit tout le registre ; SEC2 ne voit que son périmètre.
+        $this->actingAs($this->agent(Poste::DG, Direction::factory()->create()))
             ->get('/api/v1/courriers/registre?debut='.now()->subDay()->toDateString().'&fin='.now()->addDay()->toDateString())
             ->assertOk();
 
