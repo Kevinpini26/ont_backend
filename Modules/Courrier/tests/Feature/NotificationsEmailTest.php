@@ -21,7 +21,7 @@ class NotificationsEmailTest extends CourrierTestCase
 {
     use RefreshDatabase;
 
-    public function test_la_creation_dun_courrier_adresse_a_une_direction_met_lenvoi_en_file_dattente(): void
+    public function test_la_creation_dun_courrier_adresse_a_une_direction_ne_la_notifie_pas_avant_le_dispatch(): void
     {
         Queue::fake();
         Storage::fake('local');
@@ -39,15 +39,12 @@ class NotificationsEmailTest extends CourrierTestCase
             'piece_jointe' => UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
         ])->assertCreated();
 
-        Queue::assertPushed(
+        // La direction n'apprend rien avant la décision de la DG et le dispatch exécuté par SEC2.
+        Queue::assertNotPushed(
             EnvoyerNotificationEmailJob::class,
             fn ($job) => $job->mailable instanceof CourrierRecuMail && $job->email === $responsable->email,
         );
-        $this->assertDatabaseHas('notifications_email', [
-            'type' => 'courrier.recu_direction',
-            'destinataire' => $responsable->email,
-            'statut' => 'en_file',
-        ]);
+        $this->assertDatabaseMissing('notifications_email', ['type' => 'courrier.recu_direction', 'destinataire' => $responsable->email]);
     }
 
     public function test_la_relance_davis_dg_ne_seffectue_que_pour_les_courriers_en_attente_depuis_plus_de_48h(): void

@@ -94,19 +94,9 @@ class CourrierReceptionService
             return $courrier;
         });
 
-        // Notification envoyée après commit : jamais de mail annonçant un
-        // courrier dont l'écriture aurait finalement été annulée.
-        if ($courrier->direction_destination_id) {
-            $responsables = User::query()
-                ->where('direction_id', $courrier->direction_destination_id)
-                ->whereIn('role', [UserRole::DIRECTEUR_DIRECTION, UserRole::RESPONSABLE_DIRECTION])
-                ->get();
-
-            foreach ($responsables as $responsable) {
-                $this->notifications->envoyerMail($responsable->email, new CourrierRecuMail($courrier), 'courrier.recu_direction', $courrier);
-            }
-        }
-
+        // Aucune notification à la direction ici : avant la décision de la DG et le dispatch exécuté par
+        // SEC2, elle ne doit rien savoir du courrier (circuit central, confidentialité). Elle est
+        // notifiée par DispatchCourrierService à l'exécution du dispatch.
         $this->accuserReceptionGuichet($courrier);
 
         return $courrier;
