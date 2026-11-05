@@ -36,7 +36,7 @@
             <table class="tableau">
                 <tr>
                     <td>Objet</td>
-                    <td>{{ $ligne['courrier']->objet }}</td>
+                    <td>@can('consulterContenu', $ligne['courrier']){{ $ligne['courrier']->objet }}@else Objet confidentiel @endcan</td>
                 </tr>
                 <tr>
                     <td>Date</td>

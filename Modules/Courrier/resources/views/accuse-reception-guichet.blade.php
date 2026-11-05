@@ -28,7 +28,7 @@
     <table class="tableau">
         <tr>
             <td>Objet</td>
-            <td>{{ $courrier->objet }}</td>
+            <td>@can('consulterContenu', $courrier){{ $courrier->objet }}@else Objet confidentiel @endcan</td>
         </tr>
         <tr>
             <td>Date</td>

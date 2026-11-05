@@ -24,7 +24,7 @@
     <div class="titre">Fiche imprimable — {{ $courrier->numero_accuse_reception }}</div>
 
     <table class="tableau">
-        <tr><td>Objet</td><td>{{ $courrier->objet }}</td></tr>
+        <tr><td>Objet</td><td>@can('consulterContenu', $courrier){{ $courrier->objet }}@else Objet confidentiel @endcan</td></tr>
         <tr><td>Type</td><td>{{ $courrier->type->label() }}</td></tr>
         <tr><td>Statut</td><td>{{ $courrier->statut->label() }}</td></tr>
         <tr><td>Direction d'origine</td><td>{{ $courrier->directionOrigine?->nom ?? '—' }}</td></tr>

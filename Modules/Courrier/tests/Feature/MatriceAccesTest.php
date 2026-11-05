@@ -273,4 +273,27 @@ class MatriceAccesTest extends CourrierTestCase
         $this->actingAs($assistant)->getJson('/api/v1/courriers/statistiques')->assertForbidden();
         $this->actingAs($assistant)->getJson('/api/v1/courriers/registre'.$this->periode())->assertForbidden();
     }
+
+    // D (impressions) : fiche imprimable, feuille de couverture et accusé du guichet.
+    public function test_d_les_impressions_masquent_lobjet_confidentiel_pour_ladministrateur(): void
+    {
+        $courrier = $this->confidentiel('OBJET-A-IMPRIMER');
+        $capture = $this->capturerPdf();
+        $urls = ["/api/v1/courriers/{$courrier->id}/imprimer", "/api/v1/courriers/{$courrier->id}/feuille-couverture", "/api/v1/courriers/{$courrier->id}/accuse-reception-guichet"];
+
+        $admin = User::factory()->administrateur()->create();
+        foreach ($urls as $url) {
+            $capture->html = '';
+            $this->actingAs($admin)->get($url)->assertOk();
+            $this->assertStringNotContainsString('OBJET-A-IMPRIMER', $capture->html, $url);
+            $this->assertStringContainsString('Objet confidentiel', $capture->html, $url);
+        }
+
+        $dg = $this->poste(Poste::DG);
+        foreach ($urls as $url) {
+            $capture->html = '';
+            $this->actingAs($dg)->get($url)->assertOk();
+            $this->assertStringContainsString('OBJET-A-IMPRIMER', $capture->html, $url);
+        }
+    }
 }
