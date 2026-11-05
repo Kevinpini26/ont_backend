@@ -6,6 +6,12 @@ return [
     'name' => 'Kernel',
 
     /**
+     * Mot de passe initial du compte administrateur créé hors local/testing
+     * (AdminUserSeeder). Vide : mot de passe aléatoire inutilisable.
+     */
+    'admin_initial_password' => env('KERNEL_ADMIN_INITIAL_PASSWORD'),
+
+    /**
      * Postes du rôle agent_circuit_courrier qui contournent le filtrage
      * par direction (DirectionScope) car ils traitent les dossiers de
      * toutes les directions dans le circuit courrier central.
@@ -37,7 +43,7 @@ return [
             'Traitement et suivi de la correspondance adressée à l\'ONT.',
         ],
         'destinataires' => "Les agents de l'ONT habilités selon leur fonction (DFP, direction d'accueil concernée, circuit courrier central) — voir les politiques d'accès du système.",
-        'duree_conservation' => "À confirmer avec la DFP/le Secrétariat Général (voir docs/conformite-donnees.md) — l'ordonnance-loi n'impose pas de durée fixe, seulement de ne pas excéder ce qui est nécessaire aux finalités poursuivies (article 193, 3°).",
+        'duree_conservation' => "Les données sont conservées pendant la durée nécessaire aux finalités poursuivies, puis supprimées ou anonymisées.",
         'droits' => "Droit d'accès, de rectification et d'opposition, à exercer auprès du responsable du traitement ci-dessus, ainsi que droit de réclamation auprès de l'Autorité de protection des données à caractère personnel compétente.",
         'transfert_etat_tiers' => "Aucun transfert de données vers un État tiers n'est effectué dans le cadre de ces traitements.",
         'caractere_obligatoire' => "Les informations demandées sont nécessaires à l'instruction du dossier ; un refus de les communiquer empêche son traitement.",

@@ -29,7 +29,7 @@ php artisan migrate --seed
 php artisan serve
 ```
 
-Un compte administrateur est créé par le seeder : `admin@ont.cd` / `ChangeMoi#ONT2026` — **à changer immédiatement après le premier déploiement réel**, voir `SECURITY.md` à la racine du dépôt. En environnement local (`APP_ENV=local`), le seeder crée aussi des comptes de démonstration (un par poste du circuit courrier, DFP, un responsable par direction — mot de passe unique `Demo#ONT2026`, voir `Modules\Kernel\Database\Seeders\DemoAccountsSeeder`) ainsi qu'un dossier courrier à chaque étape du circuit et un stagiaire académique/professionnel à chaque étape du cycle de vie.
+Un compte administrateur `admin@ont.cd` est créé par le seeder. En local et en test, son mot de passe de démonstration est connu (voir `AdminUserSeeder`). Partout ailleurs, il n'est créé que s'il n'existe pas, jamais réinitialisé, avec le mot de passe fourni par `KERNEL_ADMIN_INITIAL_PASSWORD` (sinon un mot de passe aléatoire inutilisable) et un changement de mot de passe obligatoire à la première connexion. Voir `SECURITY.md`. En environnement local (`APP_ENV=local`), le seeder crée aussi des comptes de démonstration (un par poste du circuit courrier, DFP, un responsable par direction — mot de passe unique `Demo#ONT2026`, voir `Modules\Kernel\Database\Seeders\DemoAccountsSeeder`) ainsi qu'un dossier courrier à chaque étape du circuit et un stagiaire académique/professionnel à chaque étape du cycle de vie.
 
 ### Base de données
 

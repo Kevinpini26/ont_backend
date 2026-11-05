@@ -22,4 +22,13 @@ class MentionInformationTest extends TestCase
                 ],
             ]);
     }
+
+    public function test_la_mention_publique_ne_contient_aucune_note_interne(): void
+    {
+        $duree = (string) $this->getJson('/api/v1/public/mention-information')->json('data.duree_conservation');
+
+        $this->assertStringNotContainsString('confirmer', mb_strtolower($duree));
+        $this->assertStringNotContainsString('DFP', $duree);
+        $this->assertStringNotContainsString('docs/', $duree);
+    }
 }

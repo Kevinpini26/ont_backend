@@ -87,8 +87,8 @@ Détail complet : `SECURITY.md`.
 
 - [ ] Aucun compte de démonstration (`Demo#ONT2026`) actif en production
       — ce seeder ne doit jamais tourner hors `APP_ENV=local`
-- [ ] Mot de passe administrateur initial changé (jamais
-      `ChangeMoi#ONT2026` en usage réel)
+- [ ] `KERNEL_ADMIN_INITIAL_PASSWORD` renseigné avant le premier `db:seed`, et mot de passe
+      changé à la première connexion (le seeder ne crée aucun mot de passe connu en production)
 - [ ] Procédure « compte compromis » connue de l'équipe (§7 du guide
       d'installation) : réinitialiser le mot de passe **et** révoquer les
       jetons sont deux actions distinctes, les deux nécessaires

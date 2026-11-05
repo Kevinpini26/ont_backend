@@ -741,3 +741,7 @@ prêté à confusion dans les commentaires de code.)
 
 - **Annulation** (enregistrement par erreur : doublon, mauvais expéditeur) : possible pour la Réception, SEC1 et la DG, tant que le courrier entrant n'a pas été dispatché (statuts reçu, en attente de tri, au classeur, en attente d'avis DG). Motif obligatoire. Le courrier n'est jamais supprimé : il reste au registre, marqué « Annulé », avec auteur, date et motif (journal d'audit). Il sort des files de travail et ne peut plus avancer. *À confirmer : qui doit pouvoir annuler, et jusqu'à quelle étape ?*
 - **Mise en attente** (pièce manquante, complément demandé) : même habilitation ; bloque toute étape du circuit jusqu'à la reprise ; motif obligatoire, reprise tracée. Non disponible pour un courrier déjà envoyé, remis ou dispatché. Les documents internes des directions suivent leur propre circuit et ne sont pas concernés.
+
+## Durée de conservation affichée au public
+
+La mention d'information publique affiche pour l'instant une formule générique (« durée nécessaire aux finalités poursuivies »). Quelle durée précise l'ONT veut-elle afficher, pour les dossiers de stage et pour la correspondance? À valider avec la DFP et le Secrétariat Général (article 193, 3° de l'ordonnance-loi).
