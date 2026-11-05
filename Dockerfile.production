@@ -71,6 +71,8 @@ RUN { \
         echo 'opcache.jit_buffer_size=64M'; \
     } > /usr/local/etc/php/conf.d/opcache-production.ini
 
+COPY docker/php/ont-limites.ini /usr/local/etc/php/conf.d/ont-limites.ini
+
 WORKDIR /var/www/html
 
 COPY --from=vendor /app /var/www/html
