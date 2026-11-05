@@ -104,6 +104,9 @@ Détail complet : `SECURITY.md`.
 
 - [ ] Sauvegarde automatique quotidienne confirmée active
       (`docker compose logs` autour de 3h du matin)
+- [ ] Archive quotidienne des fichiers présente dans `fichiers/` (`kernel:sauvegarder-fichiers`)
+- [ ] `kernel:verifier-restauration` réussit (base jetable `ont_verif_restauration_…` créée par
+      l'administrateur si le compte n'a pas le droit CREATEDB)
 - [ ] **Une restauration réelle testée au moins une fois**, idéalement
       sur un serveur distinct — jamais la première fois lors d'un
       incident réel (voir `INSTALLATION.md`, §6)

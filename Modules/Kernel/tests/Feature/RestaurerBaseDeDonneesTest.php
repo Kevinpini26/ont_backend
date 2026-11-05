@@ -3,6 +3,7 @@
 namespace Modules\Kernel\Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use PDO;
 use Tests\TestCase;
@@ -179,5 +180,30 @@ class RestaurerBaseDeDonneesTest extends TestCase
         $this->artisan('kernel:restaurer-base-de-donnees', ['fichier' => 'database/ont-quelconque.sql.gz'])
             ->expectsConfirmation('Are you sure you want to run this command?', 'no')
             ->assertFailed();
+    }
+
+    /**
+     * Sans ON_ERROR_STOP, psql continue après une erreur SQL et sort avec 0 ; dans un pipeline
+     * « gunzip | psql » sans pipefail, une archive corrompue passe aussi inaperçue.
+     */
+    public function test_la_restauration_arrete_a_la_premiere_erreur_sql_et_controle_larchive(): void
+    {
+        Storage::fake('backups-local');
+        config(['backup.disk' => 'backups-local']);
+        Storage::disk('backups-local')->put('database/ont-2026-11-05_030000.sql.gz', gzencode('select 1;'));
+
+        Process::fake(function ($process) {
+            $commande = (array) $process->command;
+            if (($commande[0] ?? null) === 'gzip' && in_array('-df', $commande, true)) {
+                file_put_contents(substr(end($commande), 0, -3), 'select 1;');
+            }
+
+            return Process::result(exitCode: ($commande[0] ?? null) === 'psql' ? 3 : 0);
+        });
+
+        $this->artisan('kernel:restaurer-base-de-donnees', ['--force' => true])->assertFailed();
+
+        Process::assertRan(fn ($p) => ($p->command[0] ?? null) === 'psql' && in_array('ON_ERROR_STOP=1', $p->command, true));
+        Process::assertDidntRun(fn ($p) => ($p->command[0] ?? null) === 'sh');
     }
 }

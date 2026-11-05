@@ -68,23 +68,31 @@ class RestaurerBaseDeDonneesCommand extends Command
 
         $this->info("Restauration de {$cheminDistant} vers « {$config['database']} »...");
 
-        $resultat = Process::env(['PGPASSWORD' => $config['password']])
-            ->run([
-                'sh', '-c',
-                sprintf(
-                    'gunzip -c %s | psql --host=%s --port=%s --username=%s --no-password %s',
-                    escapeshellarg($cheminTemporaire),
-                    escapeshellarg($config['host']),
-                    escapeshellarg((string) $config['port']),
-                    escapeshellarg($config['username']),
-                    escapeshellarg($config['database']),
-                ),
-            ]);
+        // Deux étapes contrôlées plutôt que « gunzip | psql » : sans pipefail, une archive corrompue
+        // passait inaperçue ; sans ON_ERROR_STOP, psql continuait après une erreur SQL et sortait avec 0.
+        $cheminSql = substr($cheminTemporaire, 0, -3);
+        $decompression = Process::run(['gzip', '-df', $cheminTemporaire]);
 
-        unlink($cheminTemporaire);
+        if ($decompression->failed() || ! is_file($cheminSql)) {
+            $this->error('Archive illisible : '.$decompression->errorOutput());
+            foreach ([$cheminTemporaire, $cheminSql] as $temporaire) {
+                if (is_file($temporaire)) {
+                    unlink($temporaire);
+                }
+            }
+
+            return self::FAILURE;
+        }
+
+        $resultat = Process::env(['PGPASSWORD' => $config['password']])->timeout(3600)->run([
+            'psql', '--host='.$config['host'], '--port='.$config['port'], '--username='.$config['username'],
+            '--no-password', '--quiet', '-v', 'ON_ERROR_STOP=1', '--dbname='.$config['database'], '--file='.$cheminSql,
+        ]);
+
+        unlink($cheminSql);
 
         if ($resultat->failed()) {
-            $this->error('Échec de la restauration : '.$resultat->errorOutput());
+            $this->error('Échec de la restauration (arrêt à la première erreur) : '.$resultat->errorOutput());
 
             return self::FAILURE;
         }

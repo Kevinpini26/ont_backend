@@ -131,9 +131,36 @@ docker compose exec backend php artisan kernel:restaurer-base-de-donnees
 docker compose exec backend php artisan kernel:restaurer-base-de-donnees database/ont-2026-06-15_030000.sql.gz
 ```
 
-**Vérifier régulièrement** qu'une restauration fonctionne réellement (pas
-seulement que la sauvegarde s'exécute sans erreur) — idéalement sur un
-serveur de test, jamais la première fois lors d'un incident réel.
+**Fichiers (scans, PDF officiels, pièces jointes, documents des stagiaires)** : archivés chaque
+jour à 3h30 (`kernel:sauvegarder-fichiers`) dans `fichiers/` sur le même disque de sauvegarde.
+Une base restaurée sans ses fichiers est inutilisable : restaurez toujours les deux, de la même nuit.
+
+```bash
+# Restaurer les fichiers (après avoir récupéré l'archive depuis le disque de sauvegarde) :
+docker compose exec backend tar -xzf /chemin/ont-fichiers-AAAA-MM-JJ_HHMMSS.tar.gz -C storage/app/private
+```
+
+**Vérifier qu'une sauvegarde est réellement restaurable** (automatique chaque dimanche à 5h, ou à la
+demande). La sauvegarde la plus récente est restaurée dans une base **jetable**, contrôlée, puis
+supprimée ; la base de l'application n'est jamais touchée.
+
+```bash
+docker compose exec backend php artisan kernel:verifier-restauration
+```
+
+Si le compte PostgreSQL de l'application n'a pas le droit `CREATEDB` (recommandé), un administrateur
+crée une seule fois une base vide dédiée, puis on la désigne :
+
+```sql
+CREATE DATABASE ont_verif_restauration_hebdo OWNER <utilisateur_de_l_application>;
+```
+
+```bash
+docker compose exec backend php artisan kernel:verifier-restauration --base=ont_verif_restauration_hebdo
+```
+
+La commande refuse toute base qui ne porte pas le préfixe `ont_verif_restauration_` ou qui n'est
+pas vide, et la vide à nouveau après chaque vérification.
 
 ## 7. Que faire quand un compte est compromis
 

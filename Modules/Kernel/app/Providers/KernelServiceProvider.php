@@ -9,6 +9,8 @@ use Modules\Kernel\Console\PreparerDemonstrationCommand;
 use Modules\Kernel\Console\PrevisualiserEmailCommand;
 use Modules\Kernel\Console\RestaurerBaseDeDonneesCommand;
 use Modules\Kernel\Console\SauvegarderBaseDeDonneesCommand;
+use Modules\Kernel\Console\SauvegarderFichiersCommand;
+use Modules\Kernel\Console\VerifierRestaurationCommand;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Contracts\DirectionScopeBypassResolver;
 use Modules\Kernel\Contracts\NotificationCanal;
@@ -51,6 +53,8 @@ class KernelServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         SauvegarderBaseDeDonneesCommand::class,
+        SauvegarderFichiersCommand::class,
+        VerifierRestaurationCommand::class,
         PreparerDemonstrationCommand::class,
         RestaurerBaseDeDonneesCommand::class,
         PrevisualiserEmailCommand::class,
@@ -105,6 +109,8 @@ class KernelServiceProvider extends ModuleServiceProvider
     protected function configureSchedules(Schedule $schedule): void
     {
         $schedule->command(SauvegarderBaseDeDonneesCommand::class)->dailyAt('03:00');
+        $schedule->command(SauvegarderFichiersCommand::class)->dailyAt('03:30');
+        $schedule->command(VerifierRestaurationCommand::class)->weeklyOn(0, '05:00');
 
         // Pouls du planificateur : seul moyen de savoir depuis l'API si
         // "cron -> artisan schedule:run" tourne réellement en production,
