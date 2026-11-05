@@ -211,6 +211,11 @@ paths:
     get:
       tags: [Authentification]
       summary: Profil de l'utilisateur connecté
+      description: >-
+        Inclut `permissions`, calculées par le serveur (intérim et délégations compris) :
+        voir_statistiques_courrier, voir_registre, voir_tableau_de_bord_dg, voir_justesse_tri,
+        voir_justesse_tri_par_agent. L'interface s'en sert pour ses menus ; l'API reste la vraie protection.
+        Également renvoyé par la connexion, dans `user.permissions`.
       responses:
         '200':
           description: OK

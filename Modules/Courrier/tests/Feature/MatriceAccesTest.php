@@ -296,4 +296,39 @@ class MatriceAccesTest extends CourrierTestCase
             $this->assertStringContainsString('OBJET-A-IMPRIMER', $capture->html, $url);
         }
     }
+
+    // Permissions calculées par le serveur et renvoyées au compte connecté.
+    public function test_auth_me_renvoie_les_permissions_calculees_par_le_serveur(): void
+    {
+        $this->actingAs($this->poste(Poste::ASSISTANT_1))->getJson('/api/v1/auth/me')->assertOk()
+            ->assertJsonPath('data.permissions.voir_registre', false)
+            ->assertJsonPath('data.permissions.voir_statistiques_courrier', false);
+
+        $this->actingAs($this->poste(Poste::SECRETARIAT_1))->getJson('/api/v1/auth/me')->assertOk()
+            ->assertJsonPath('data.permissions.voir_registre', true)
+            ->assertJsonPath('data.permissions.voir_justesse_tri', true)
+            ->assertJsonPath('data.permissions.voir_justesse_tri_par_agent', false);
+
+        $dga = $this->poste(Poste::DGA);
+        $dg = $this->poste(Poste::DG);
+        $this->actingAs($dga)->getJson('/api/v1/auth/me')->assertJsonPath('data.permissions.voir_tableau_de_bord_dg', false);
+        DgInterim::query()->create(['dg_titulaire_id' => $dg->id, 'dga_interimaire_id' => $dga->id, 'motif' => 'Mission', 'started_at' => now(), 'started_by_id' => $dg->id]);
+        $this->actingAs($dga)->getJson('/api/v1/auth/me')
+            ->assertJsonPath('data.permissions.voir_tableau_de_bord_dg', true)
+            ->assertJsonPath('data.permissions.voir_registre', true);
+
+        $this->actingAs(User::factory()->administrateur()->create())->getJson('/api/v1/auth/me')
+            ->assertJsonPath('data.permissions.voir_registre', false);
+    }
+
+    public function test_la_connexion_renvoie_aussi_les_permissions(): void
+    {
+        $sec1 = $this->poste(Poste::SECRETARIAT_1);
+        $sec1->forceFill(['password' => 'MotDePasse#Test2026'])->save();
+
+        $this->postJson('/api/v1/auth/login', ['email' => $sec1->email, 'password' => 'MotDePasse#Test2026'])
+            ->assertOk()
+            ->assertJsonPath('user.permissions.voir_registre', true)
+            ->assertJsonPath('user.permissions.voir_justesse_tri_par_agent', false);
+    }
 }

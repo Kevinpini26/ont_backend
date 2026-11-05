@@ -9,6 +9,7 @@ use Modules\Kernel\Models\User;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgAuthorityResolver;
 use Modules\Kernel\Support\DgDisponibilite;
+use Modules\Kernel\Support\PermissionsUtilisateur;
 
 /** @mixin User */
 class UserResource extends JsonResource
@@ -29,6 +30,8 @@ class UserResource extends JsonResource
             'poste_label' => $this->poste?->label(),
             'poste_delegue' => $this->when($request->user()?->id === $this->id,
                 fn () => app(DelegationResolver::class)->posteDelegueAujourdhui($this->resource)?->value),
+            'permissions' => $this->when($request->user()?->id === $this->id,
+                fn () => PermissionsUtilisateur::pour($this->resource)),
             'source_autorite_dg' => $this->when($request->user()?->id === $this->id,
                 fn () => app(DgAuthorityResolver::class)->source($this->resource)),
             'dg_disponible' => $this->when($this->poste?->value === 'dg', fn () => DgDisponibilite::estDisponible()),
