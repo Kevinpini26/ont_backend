@@ -83,6 +83,10 @@ vrai navigateur et un vrai serveur de mail.
 
 ## 5. Sécurité
 
+- [ ] `TRUSTED_PROXIES` renseigné avec l'adresse (ou la plage) du reverse proxy HTTPS : sans cela l'IP
+      des audits et des limiteurs est celle du proxy, HSTS est absent et les liens signés échouent.
+      Vérifier ensuite qu'une connexion fait apparaître l'IP réelle du poste dans le journal d'audit.
+
 Détail complet : `SECURITY.md`.
 
 - [ ] Aucun compte de démonstration (`Demo#ONT2026`) actif en production

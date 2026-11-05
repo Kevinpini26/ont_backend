@@ -12,6 +12,12 @@ return [
     'admin_initial_password' => env('KERNEL_ADMIN_INITIAL_PASSWORD'),
 
     /**
+     * Proxys de confiance (voir ConfigurerProxysDeConfiance) : adresses ou plages CIDR séparées
+     * par des virgules, ou « * ». Vide par défaut : aucun en-tête X-Forwarded-* n'est cru.
+     */
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
+    /**
      * Postes du rôle agent_circuit_courrier qui contournent le filtrage
      * par direction (DirectionScope) car ils traitent les dossiers de
      * toutes les directions dans le circuit courrier central.

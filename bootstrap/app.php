@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Modules\Kernel\Http\Middleware\ConfigurerProxysDeConfiance;
 use Modules\Kernel\Http\Middleware\EnsureMotDePasseAJour;
 use Modules\Kernel\Http\Middleware\EnsureUserHasPoste;
 use Modules\Kernel\Http\Middleware\EnsureUserHasRole;
@@ -31,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // le login. Exclu explicitement des routes qui doivent rester
         // accessibles pendant ce blocage (déconnexion, profil, changement
         // de mot de passe) via ->withoutMiddleware() sur ces routes.
+        // Doit passer avant tout ce qui lit l'IP ou le schéma (limiteurs, audit, HSTS, URL signées).
+        $middleware->prepend(ConfigurerProxysDeConfiance::class);
+
         $middleware->api(append: [EnsureMotDePasseAJour::class, SecurityHeaders::class]);
 
         // API pure : jamais de redirection vers une route "login" (qui
