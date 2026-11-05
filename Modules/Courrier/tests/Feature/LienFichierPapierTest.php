@@ -127,6 +127,8 @@ class LienFichierPapierTest extends CourrierTestCase
         $parObjet = collect($reponse->json('data'))->keyBy('objet');
         $this->assertFalse($parObjet['Emprunt récent']['alerte']);
         $this->assertTrue($parObjet['Emprunt ancien']['alerte']);
+        // Lot 3 : la référence d'un courrier du guichet (sans accusé en ligne) reste disponible.
+        $this->assertArrayHasKey('numero_enregistrement', $parObjet['Emprunt ancien']);
     }
 
     public function test_un_poste_non_central_ne_peut_pas_voir_la_liste_des_originaux_empruntes(): void

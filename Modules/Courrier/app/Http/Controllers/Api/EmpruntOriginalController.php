@@ -35,6 +35,8 @@ class EmpruntOriginalController extends Controller
                 'id' => $emprunt->id,
                 'courrier_id' => $emprunt->courrier_id,
                 'numero_accuse_reception' => $emprunt->courrier->numero_accuse_reception,
+                // Courrier du guichet : pas d'accusé en ligne, le numéro d'enregistrement sert de référence.
+                'numero_enregistrement' => $emprunt->courrier->numero_enregistrement,
                 'objet' => $emprunt->courrier->objet,
                 'emprunte_par' => $emprunt->empruntePar->name,
                 'emprunte_le' => $emprunt->emprunte_le,
