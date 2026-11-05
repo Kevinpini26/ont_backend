@@ -49,7 +49,7 @@ return [
             'Traitement et suivi de la correspondance adressée à l\'ONT.',
         ],
         'destinataires' => "Les agents de l'ONT habilités selon leur fonction (DFP, direction d'accueil concernée, circuit courrier central) — voir les politiques d'accès du système.",
-        'duree_conservation' => "Les données sont conservées pendant la durée nécessaire aux finalités poursuivies, puis supprimées ou anonymisées.",
+        'duree_conservation' => 'Les données sont conservées pendant la durée nécessaire aux finalités poursuivies, puis supprimées ou anonymisées.',
         'droits' => "Droit d'accès, de rectification et d'opposition, à exercer auprès du responsable du traitement ci-dessus, ainsi que droit de réclamation auprès de l'Autorité de protection des données à caractère personnel compétente.",
         'transfert_etat_tiers' => "Aucun transfert de données vers un État tiers n'est effectué dans le cadre de ces traitements.",
         'caractere_obligatoire' => "Les informations demandées sont nécessaires à l'instruction du dossier ; un refus de les communiquer empêche son traitement.",
