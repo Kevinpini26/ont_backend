@@ -2,6 +2,7 @@
 
 namespace Modules\Courrier\Tests\Unit;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Modules\Courrier\Contracts\SequenceGenerator;
 use Modules\Courrier\Support\DefaultNumeroGenerator;
@@ -9,13 +10,14 @@ use Modules\Kernel\Models\Direction;
 use Tests\TestCase;
 
 /**
- * Étend Tests\TestCase (pas PHPUnit\Framework\TestCase) uniquement parce
- * que DefaultNumeroGenerator dépend de la façade Date — SequenceGenerator
- * est doublé par un stub maison ci-dessous, aucune base de données
- * impliquée dans ce test.
+ * SequenceGenerator est doublé par un stub maison ci-dessous, mais le format du
+ * numéro de départ est lu dans la table settings (Setting::valeur) : la base doit
+ * donc être migrée, d'où RefreshDatabase (sinon échec sur une base vide).
  */
 class DefaultNumeroGeneratorTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function tearDown(): void
     {
         Date::setTestNow();
