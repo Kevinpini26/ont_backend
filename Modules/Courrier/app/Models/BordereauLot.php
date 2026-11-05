@@ -51,6 +51,7 @@ class BordereauLot extends Model
         return $this->hasMany(CourrierTransition::class, 'bordereau_lot_id');
     }
 
+    /** @return HasManyThrough<Courrier, CourrierTransition, $this> */
     public function courriers(): HasManyThrough
     {
         return $this->hasManyThrough(

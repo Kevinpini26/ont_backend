@@ -518,6 +518,7 @@ class Courrier extends Model implements Numerisable
         return $this->hasMany(TraitementDirection::class);
     }
 
+    /** @return HasOne<DocumentProduitDirection, $this> */
     public function documentProduitDirection(): HasOne
     {
         return $this->hasOne(DocumentProduitDirection::class, 'courrier_id');

@@ -66,3 +66,17 @@ parameters:
         -
             identifier: notIdentical.alwaysTrue
             path: Modules/Kernel/app/Console/SauvegarderBaseDeDonneesCommand.php
+
+        # Les fichiers Modules/*/config/config.php sont fusionnés dans la configuration de l'application
+        # (donc mis en cache avec elle) : env() y est lu à la construction, comme dans config/*.php.
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: Modules/*/config/config.php
+
+        # traitement_direction_id et document_source_id sont des clés étrangères NULLables : un document
+        # autonome les a réellement à null, et le contrôle est volontaire (cohérence structurelle
+        # de l'origine, voir le commentaire du contrôleur). L'analyse infère à tort « toujours null ».
+        -
+            identifier: identical.alwaysTrue
+            path: Modules/Courrier/app/Http/Controllers/Api/CourrierController.php
+            count: 2

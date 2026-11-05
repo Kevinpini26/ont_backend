@@ -172,7 +172,11 @@ class CourrierAnnotationService
             ->get();
     }
 
-    /** Instructions du circuit qui visent cet utilisateur (par son poste ou sa direction) et qu'il n'a pas encore lues. */
+    /**
+     * Instructions du circuit qui visent cet utilisateur (par son poste ou sa direction) et qu'il n'a pas encore lues.
+     *
+     * @return Builder<CourrierAnnotation>
+     */
     public function instructionsNonLues(User $user): Builder
     {
         $poste = ($this->delegations->posteDelegueAujourdhui($user) ?? $user->poste)?->value;
