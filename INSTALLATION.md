@@ -37,7 +37,8 @@ cp .env.docker.production.example .env.docker.production
 
 # 3. Générer une clé d'application (APP_KEY) — à copier dans
 #    .env.docker.production, jamais laissée vide.
-docker run --rm -v "$PWD":/app -w /app php:8.3-cli php artisan key:generate --show
+# Sans artisan ni vendor (absents d'un clone neuf) : même format que `key:generate --show`.
+docker run --rm php:8.3-cli php -r 'echo "base64:".base64_encode(random_bytes(32)).PHP_EOL;'
 # Copier la valeur affichée (base64:...) dans APP_KEY= du fichier .env.docker.production.
 
 # 4. Démarrer l'ensemble (base de données, API, worker, planificateur, portail).
