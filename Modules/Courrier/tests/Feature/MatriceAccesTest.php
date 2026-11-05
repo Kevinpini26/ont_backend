@@ -7,6 +7,7 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Models\DelegationPoste;
 use Modules\Kernel\Models\DgInterim;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
@@ -219,5 +220,57 @@ class MatriceAccesTest extends CourrierTestCase
 
         $dg = $this->actingAs($this->poste(Poste::DG))->get('/api/v1/courriers/export')->assertOk();
         $this->assertStringContainsString('OBJET-EXPORTE', $dg->streamedContent());
+    }
+
+    // B (suite) : l'accès ouvert par l'intérim se referme à sa fin.
+    public function test_b_lacces_du_dga_se_referme_a_la_fin_de_linterim(): void
+    {
+        $dga = $this->poste(Poste::DGA);
+        $dg = $this->poste(Poste::DG);
+        $interim = DgInterim::query()->create(['dg_titulaire_id' => $dg->id, 'dga_interimaire_id' => $dga->id, 'motif' => 'Mission', 'started_at' => now(), 'started_by_id' => $dg->id]);
+
+        $this->actingAs($dga)->getJson('/api/v1/courriers/statistiques-dg')->assertOk();
+        $this->actingAs($dga)->getJson('/api/v1/courriers/justesse-tri')->assertOk();
+
+        $interim->forceFill(['ended_at' => now(), 'ended_by_id' => $dg->id])->save();
+
+        $this->actingAs($dga)->getJson('/api/v1/courriers/statistiques')->assertForbidden();
+        $this->actingAs($dga)->getJson('/api/v1/courriers/statistiques-dg')->assertForbidden();
+        $this->actingAs($dga)->getJson('/api/v1/courriers/justesse-tri')->assertForbidden();
+    }
+
+    // Délégation officielle : ouvre l'accès du poste délégué, seulement pendant sa période et tant qu'elle n'est pas révoquée.
+    public function test_une_delegation_de_sec1_ouvre_puis_referme_le_registre(): void
+    {
+        $this->capturerPdf();
+        $admin = User::factory()->administrateur()->create();
+        $assistant = $this->poste(Poste::ASSISTANT_1);
+        $delegation = DelegationPoste::query()->create([
+            'poste' => Poste::SECRETARIAT_1, 'delegataire_id' => $assistant->id,
+            'debut' => now()->subDay()->toDateString(), 'fin' => now()->addDay()->toDateString(),
+            'motif' => 'Congé', 'cree_par_id' => $admin->id,
+        ]);
+
+        $this->actingAs($assistant)->get('/api/v1/courriers/registre'.$this->periode())->assertOk();
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/justesse-tri')->assertOk()->assertJsonPath('par_agent', []);
+
+        $delegation->forceFill(['revoquee_at' => now(), 'revoquee_par_id' => $admin->id])->save();
+
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/registre'.$this->periode())->assertForbidden();
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/justesse-tri')->assertForbidden();
+    }
+
+    public function test_une_delegation_expiree_ne_donne_aucun_acces(): void
+    {
+        $admin = User::factory()->administrateur()->create();
+        $assistant = $this->poste(Poste::ASSISTANT_2);
+        DelegationPoste::query()->create([
+            'poste' => Poste::SECRETARIAT_2, 'delegataire_id' => $assistant->id,
+            'debut' => now()->subDays(10)->toDateString(), 'fin' => now()->subDays(2)->toDateString(),
+            'motif' => 'Ancienne absence', 'cree_par_id' => $admin->id,
+        ]);
+
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/statistiques')->assertForbidden();
+        $this->actingAs($assistant)->getJson('/api/v1/courriers/registre'.$this->periode())->assertForbidden();
     }
 }
