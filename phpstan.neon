@@ -65,7 +65,9 @@ parameters:
         # pas du code mort.
         -
             identifier: notIdentical.alwaysTrue
-            path: Modules/Kernel/app/Console/SauvegarderBaseDeDonneesCommand.php
+            paths:
+                - Modules/Kernel/app/Console/SauvegarderBaseDeDonneesCommand.php
+                - Modules/Kernel/app/Console/SauvegarderFichiersCommand.php
 
         # Les fichiers Modules/*/config/config.php sont fusionnés dans la configuration de l'application
         # (donc mis en cache avec elle) : env() y est lu à la construction, comme dans config/*.php.
