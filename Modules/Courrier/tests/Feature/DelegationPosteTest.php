@@ -142,7 +142,8 @@ class DelegationPosteTest extends CourrierTestCase
         // pas une invisibilité de scope qui rendrait 404 au lieu de 403.
         $courrier = Courrier::factory()->create([
             'statut' => CourrierStatut::RECU,
-            'direction_destination_id' => $direction->id,
+            // Lot 2 : la destination ne rend plus visible avant le dispatch ; l'origine, si.
+            'direction_origine_id' => $direction->id,
         ]);
         $this->marquerDecharge($courrier);
 
@@ -168,7 +169,8 @@ class DelegationPosteTest extends CourrierTestCase
         // rejet policy (délégation expirée) d'une invisibilité de scope.
         $courrier = Courrier::factory()->create([
             'statut' => CourrierStatut::RECU,
-            'direction_destination_id' => $direction->id,
+            // Lot 2 : la destination ne rend plus visible avant le dispatch ; l'origine, si.
+            'direction_origine_id' => $direction->id,
         ]);
         $this->marquerDecharge($courrier);
 
@@ -251,7 +253,8 @@ class DelegationPosteTest extends CourrierTestCase
         ]);
         $a = Courrier::factory()->create([
             'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
-            'direction_destination_id' => $direction->id,
+            // Lot 2 : la destination ne rend plus visible avant le dispatch ; l'origine, si.
+            'direction_origine_id' => $direction->id,
         ]);
         $d = Courrier::factory()->create([
             'statut' => CourrierStatut::PROJET_A_VALIDER,

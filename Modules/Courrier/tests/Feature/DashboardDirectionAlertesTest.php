@@ -19,11 +19,11 @@ class DashboardDirectionAlertesTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        $ancien = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::RECU]);
-        CourrierTransition::query()->create(['courrier_id' => $ancien->id, 'statut' => CourrierStatut::RECU, 'created_at' => now()->subHours(72)]);
+        $ancien = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
+        CourrierTransition::query()->create(['courrier_id' => $ancien->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE, 'created_at' => now()->subHours(72)]);
 
-        $recent = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::RECU]);
-        CourrierTransition::query()->create(['courrier_id' => $recent->id, 'statut' => CourrierStatut::RECU, 'created_at' => now()->subHours(2)]);
+        $recent = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
+        CourrierTransition::query()->create(['courrier_id' => $recent->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE, 'created_at' => now()->subHours(2)]);
 
         $response = $this->actingAs($responsable)
             ->getJson('/api/v1/courriers/statistiques-direction')

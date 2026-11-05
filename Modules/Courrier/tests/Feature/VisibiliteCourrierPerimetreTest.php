@@ -14,6 +14,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\DocumentRelation;
+use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\SourceDocumentNumerise;
 use Modules\Kernel\Models\Direction;
@@ -87,6 +88,90 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         // Le circuit central garde ces données.
         $fiche = $this->actingAs($this->agent(Poste::SECRETARIAT_2, $centrale))->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
         $this->assertSame('NOTE-TECHNIQUE-SEC2', $fiche->json('data.note_technique'));
+    }
+
+    /** Lot 2 : le commentaire d'avis de la DG est masqué aux directions (décision ONT du 2026-11-05). */
+    public function test_le_commentaire_davis_de_la_dg_est_masque_aux_directions_partout(): void
+    {
+        $centrale = Direction::factory()->create();
+        $finances = Direction::factory()->create();
+        $dg = $this->agent(Poste::DG, $centrale);
+        $courrier = Courrier::factory()->create([
+            'direction_destination_id' => $centrale->id,
+            'statut' => CourrierStatut::DISPATCH_EXECUTE,
+            'avis_dg_commentaire' => 'COMMENTAIRE-DG-RESERVE',
+        ]);
+        $this->dispatchExecute($courrier, $finances);
+        $capture = new class implements PdfGenerationService
+        {
+            public string $html = '';
+
+            public function genererDepuisVue(string $vue, array $donnees = []): string
+            {
+                $this->html .= view($vue, $donnees)->render();
+
+                return '%PDF';
+            }
+        };
+        $this->app->instance(PdfGenerationService::class, $capture);
+
+        foreach ([User::factory()->directeurDirection($finances)->create(), User::factory()->secretariatDirection($finances)->create()] as $direction) {
+            $fiche = $this->actingAs($direction)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+            $this->assertArrayNotHasKey('avis_dg_commentaire', $fiche->json('data'));
+            $this->assertStringNotContainsString('COMMENTAIRE-DG-RESERVE', $fiche->getContent());
+            $this->assertStringNotContainsString('COMMENTAIRE-DG-RESERVE', $this->actingAs($direction)->getJson('/api/v1/courriers')->getContent());
+            $this->assertStringNotContainsString('COMMENTAIRE-DG-RESERVE', $this->actingAs($direction)->get('/api/v1/courriers/export')->streamedContent());
+            $capture->html = '';
+            $this->actingAs($direction)->get("/api/v1/courriers/{$courrier->id}/imprimer")->assertOk();
+            $this->assertStringNotContainsString('COMMENTAIRE-DG-RESERVE', $capture->html);
+            $this->assertStringNotContainsString('COMMENTAIRE-DG-RESERVE', $this->actingAs($direction)->getJson('/api/v1/notifications')->getContent());
+        }
+
+        // Aucune notification ni aucun e-mail ne reproduit ce commentaire (contrôle du code source).
+        foreach (array_merge(glob(base_path('Modules/*/app/Notifications/*.php')), glob(base_path('Modules/*/app/Mail/*.php')), glob(base_path('Modules/*/resources/views/emails/*.blade.php'))) as $fichier) {
+            $this->assertStringNotContainsString('avis_dg_commentaire', file_get_contents($fichier), $fichier);
+        }
+
+        // La DG le garde.
+        $this->actingAs($dg)->getJson("/api/v1/courriers/{$courrier->id}")->assertJsonPath('data.avis_dg_commentaire', 'COMMENTAIRE-DG-RESERVE');
+    }
+
+    /**
+     * Lot 2 : une direction ne voit un courrier qu'une fois le dispatch EXÉCUTÉ par SEC2 : ni avant la
+     * décision de la DG (même si la destination est déjà connue), ni pendant que le dispatch attend SEC2.
+     */
+    public function test_une_direction_ne_voit_le_courrier_quapres_le_dispatch_execute(): void
+    {
+        $centrale = Direction::factory()->create();
+        $finances = Direction::factory()->create();
+        $this->agent(Poste::DG, $centrale);
+        $directeur = User::factory()->directeurDirection($finances)->create();
+        $secretariat = User::factory()->secretariatDirection($finances)->create();
+
+        $avantDecision = [];
+        foreach ([CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_TRI, CourrierStatut::EN_ATTENTE_AVIS_DG] as $statut) {
+            $avantDecision[] = Courrier::factory()->create([
+                'objet' => 'AVANT-DISPATCH-'.$statut->value,
+                'statut' => $statut,
+                'direction_destination_id' => $finances->id,
+            ]);
+        }
+        $enAttenteSec2 = Courrier::factory()->create(['objet' => 'AVANT-DISPATCH-en_dispatch', 'statut' => CourrierStatut::EN_DISPATCH, 'direction_destination_id' => $finances->id]);
+        $dispatch = $this->dispatchExecute($enAttenteSec2, $finances, DispatchStatut::EN_ATTENTE);
+
+        foreach ([$directeur, $secretariat] as $direction) {
+            foreach ([...$avantDecision, $enAttenteSec2] as $courrier) {
+                $this->actingAs($direction)->getJson("/api/v1/courriers/{$courrier->id}")->assertNotFound();
+            }
+            $this->assertStringNotContainsString('AVANT-DISPATCH-', $this->actingAs($direction)->getJson('/api/v1/courriers')->getContent());
+            $this->assertStringNotContainsString('AVANT-DISPATCH-', $this->actingAs($direction)->getJson('/api/v1/courriers?recherche=AVANT-DISPATCH')->getContent());
+            $this->assertStringNotContainsString('AVANT-DISPATCH-', $this->actingAs($direction)->get('/api/v1/courriers/export')->streamedContent());
+        }
+
+        // SEC2 exécute le dispatch : la direction le voit.
+        $dispatch->forceFill(['statut' => DispatchStatut::EXECUTE, 'execute_at' => now()])->save();
+        $enAttenteSec2->forceFill(['statut' => CourrierStatut::DISPATCH_EXECUTE])->save();
+        $this->actingAs($directeur)->getJson("/api/v1/courriers/{$enAttenteSec2->id}")->assertOk();
     }
 
     public function test_objet_recherche_dossier_et_piece_jointe_ne_fuitent_pas(): void

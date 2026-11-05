@@ -117,7 +117,7 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $autreDirection = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        Courrier::factory()->create(['direction_destination_id' => $direction->id, 'direction_origine_id' => null]);
+        Courrier::factory()->create(['direction_destination_id' => $direction->id, 'direction_origine_id' => null, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
         Courrier::factory()->create(['direction_origine_id' => $direction->id, 'direction_destination_id' => null]);
         Courrier::factory()->create(['direction_destination_id' => $autreDirection->id, 'direction_origine_id' => null]);
 
@@ -194,8 +194,8 @@ class CourrierStatistiqueTest extends CourrierTestCase
         $autreDirection = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($saDirection)->create();
 
-        Courrier::factory()->create(['direction_destination_id' => $saDirection->id]);
-        Courrier::factory()->create(['direction_destination_id' => $autreDirection->id]);
+        Courrier::factory()->create(['direction_destination_id' => $saDirection->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
+        Courrier::factory()->create(['direction_destination_id' => $autreDirection->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
 
         $response = $this->actingAs($responsable)
             ->getJson('/api/v1/courriers/statistiques-direction')

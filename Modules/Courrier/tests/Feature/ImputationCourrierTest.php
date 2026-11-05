@@ -142,10 +142,10 @@ class ImputationCourrierTest extends CourrierTestCase
     public function test_un_responsable_de_direction_ne_peut_pas_imputer_un_courrier(): void
     {
         $directionResponsable = Direction::factory()->create();
-        // direction_destination_id = sa propre direction : sinon le
-        // CourrierDirectionScope filtre le courrier avant même d'atteindre
-        // la policy, et le test obtiendrait 404 plutôt que 403.
-        $courrier = Courrier::factory()->create(['direction_destination_id' => $directionResponsable->id]);
+        // direction_origine_id = sa propre direction : sinon le scope filtre le courrier avant même
+        // d'atteindre la policy (404 plutôt que 403). Depuis le lot 2, la destination seule ne rend
+        // plus visible avant le dispatch exécuté.
+        $courrier = Courrier::factory()->create(['direction_origine_id' => $directionResponsable->id]);
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($directionResponsable)->create();
 

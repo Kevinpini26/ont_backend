@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
@@ -17,9 +18,9 @@ class CourrierDirectionScopeTest extends CourrierTestCase
         $directionA = Direction::factory()->create();
         $directionB = Direction::factory()->create();
 
-        Courrier::factory()->create(['direction_origine_id' => $directionA->id, 'direction_destination_id' => $directionB->id]);
-        Courrier::factory()->create(['direction_origine_id' => $directionB->id, 'direction_destination_id' => $directionA->id]);
-        Courrier::factory()->create(['direction_origine_id' => $directionB->id, 'direction_destination_id' => $directionB->id]);
+        Courrier::factory()->create(['direction_origine_id' => $directionA->id, 'direction_destination_id' => $directionB->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
+        Courrier::factory()->create(['direction_origine_id' => $directionB->id, 'direction_destination_id' => $directionA->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
+        Courrier::factory()->create(['direction_origine_id' => $directionB->id, 'direction_destination_id' => $directionB->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
 
         $responsableA = User::factory()->responsableDirection($directionA)->create();
 

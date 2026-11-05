@@ -22,7 +22,8 @@ class NotificationCompteurTest extends TestCase
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        Courrier::factory()->count(2)->create(['direction_destination_id' => $direction->id]);
+        // Lot 2 : la direction ne reçoit qu'après le dispatch exécuté (avant, le courrier est invisible pour elle).
+        Courrier::factory()->count(2)->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
 
         $this->actingAs($responsable)
             ->getJson('/api/v1/notifications/compteurs')
@@ -37,8 +38,8 @@ class NotificationCompteurTest extends TestCase
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        $ancien = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::RECU]);
-        CourrierTransition::query()->create(['courrier_id' => $ancien->id, 'statut' => CourrierStatut::RECU, 'created_at' => now()->subHours(72)]);
+        $ancien = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
+        CourrierTransition::query()->create(['courrier_id' => $ancien->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE, 'created_at' => now()->subHours(72)]);
 
         $this->actingAs($responsable)
             ->getJson('/api/v1/notifications/compteurs')
@@ -51,7 +52,7 @@ class NotificationCompteurTest extends TestCase
         $direction = Direction::factory()->create();
         $responsable = User::factory()->responsableDirection($direction)->create();
 
-        Courrier::factory()->create(['direction_destination_id' => $direction->id]);
+        Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
 
         $this->actingAs($responsable)
             ->postJson('/api/v1/notifications/marquer-consulte', ['cle' => 'courriers_recus'])
@@ -66,7 +67,7 @@ class NotificationCompteurTest extends TestCase
         // postérieur à consulte_at (les deux peuvent sinon tomber dans la
         // même seconde lors d'une exécution rapide du test).
         $this->travel(1)->seconds();
-        Courrier::factory()->create(['direction_destination_id' => $direction->id]);
+        Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
 
         $this->actingAs($responsable)
             ->getJson('/api/v1/notifications/compteurs')

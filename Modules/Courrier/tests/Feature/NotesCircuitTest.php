@@ -220,7 +220,8 @@ class NotesCircuitTest extends CourrierTestCase
     {
         $directionCible = Direction::factory()->create();
         $secretariat = User::factory()->secretariatDirection($directionCible)->create();
-        $this->courrier->update(['direction_destination_id' => $directionCible->id, 'niveau_confidentialite' => NiveauConfidentialite::ORDINAIRE]);
+        // Lot 2 : la direction ne voit (donc n'est notifiée) qu'après le dispatch exécuté.
+        $this->courrier->update(['direction_destination_id' => $directionCible->id, 'niveau_confidentialite' => NiveauConfidentialite::ORDINAIRE, 'statut' => CourrierStatut::DISPATCH_EXECUTE]);
 
         $this->noter($this->dg, ['contenu' => 'Observation simple', 'type' => 'observation', 'destinataire_direction_id' => $directionCible->id])->assertCreated();
         Notification::assertNothingSent();

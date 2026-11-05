@@ -18,6 +18,15 @@ use Modules\Kernel\Support\DgAuthorityResolver;
 /** Source de vérité unique de la visibilité documentaire interne. */
 class CourrierVisibilityService
 {
+    /**
+     * Étapes du circuit central actuel avant l'exécution du dispatch par SEC2. Les statuts historiques du
+     * circuit court (au_protocole, en_circuit_hierarchique) n'y figurent pas : ces dossiers n'ont jamais
+     * de dispatch et doivent rester lisibles par leur direction.
+     */
+    private const STATUTS_AVANT_DISPATCH = [
+        'recu', 'en_attente_tri', 'en_attente_classeur', 'en_attente_avis_dg', 'retour_reception', 'en_dispatch',
+    ];
+
     public function __construct(
         private readonly DelegationResolver $delegations,
         private readonly CircuitTransitionRules $regles,
@@ -176,7 +185,15 @@ class CourrierVisibilityService
             $direction->where('courriers.niveau_confidentialite', NiveauConfidentialite::ORDINAIRE)
                 ->where(fn (Builder $relation) => $relation
                     ->where('courriers.direction_origine_id', $directionId)
-                    ->orWhere('courriers.direction_destination_id', $directionId));
+                    // Lot 2 : la destination saisie à la Réception n'est qu'une indication. Tant que la
+                    // DG n'a pas décidé et que SEC2 n'a pas exécuté le dispatch, la direction ne voit
+                    // pas le courrier (le dispatch exécuté l'ouvre, voir plus bas).
+                    ->orWhere(fn (Builder $destination) => $destination
+                        ->where('courriers.direction_destination_id', $directionId)
+                        ->where(fn (Builder $etape) => $etape
+                            // Dossier historique du circuit court (sans avis DG ni dispatch) : inchangé.
+                            ->where('courriers.necessite_avis_dg', false)
+                            ->orWhereNotIn('courriers.statut', self::STATUTS_AVANT_DISPATCH))));
         })->orWhereHas('imputations', fn (Builder $imputation) => $imputation->where('direction_id', $directionId))
             ->orWhereHas('dispatchs', fn (Builder $dispatch) => $dispatch
                 ->where('type_destination', 'direction')
