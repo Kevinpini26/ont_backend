@@ -5,7 +5,6 @@ namespace Modules\Kernel\Tests\Feature;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\DocumentNumerise;
 use Modules\Kernel\Models\JetonCaptureNumerisation;
 use Modules\Kernel\Models\User;

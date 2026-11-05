@@ -1,0 +1,7 @@
+{
+    "preset": "laravel",
+    "notPath": [
+        "bootstrap/cache",
+        "Modules/Kernel/database/migrations/2026_10_06_090000_add_initiales_reference_to_users.php"
+    ]
+}
