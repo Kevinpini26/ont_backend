@@ -41,4 +41,10 @@ enum UserRole: string
     {
         return $this === self::DIRECTEUR_DIRECTION || $this === self::RESPONSABLE_DIRECTION;
     }
+
+    /** Compte d'une direction : directeur, responsable ou secrétariat de direction. */
+    public function estDirection(): bool
+    {
+        return $this->estDirecteurDirection() || $this === self::SECRETARIAT_DIRECTION;
+    }
 }

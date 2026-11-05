@@ -27,7 +27,7 @@ class CourrierResource extends JsonResource
         $masquerProjet = $masquerProjetSec1 || $masquerProjetSec2;
         $peutConsulterContenu = $request->user() !== null && Gate::forUser($request->user())->allows('consulterContenu', $this->resource);
 
-        return [
+        $donnees = [
             'id' => $this->id,
             'peut_annoter' => $request->user() !== null && Gate::forUser($request->user())->allows('annoter', $this->resource),
             'dossier_id' => $this->dossier_id,
@@ -314,5 +314,22 @@ class CourrierResource extends JsonResource
                 ]),
             ),
         ];
+
+        // Lot 2 : une direction (directeur, responsable ou secrétariat) ne reçoit pas les données
+        // internes du circuit central (tri, classement physique, note technique de SEC2, missions et
+        // confiage au DGA, identifiants des agents). Le serveur les retire : masquer à l'écran ne suffit pas.
+        if ($request->user() !== null && $request->user()->role->estDirection()) {
+            return array_diff_key($donnees, array_flip(self::CHAMPS_INTERNES_AU_CIRCUIT));
+        }
+
+        return $donnees;
     }
+
+    /** @var list<string> */
+    private const CHAMPS_INTERNES_AU_CIRCUIT = [
+        'note_technique', 'emplacement_physique', 'accuse_reception_partenaire',
+        'urgence_triee_par', 'courriel_envoye_par_id', 'retrait_disponible_par_id',
+        'retrait_effectue_par_id', 'scan_signe_televerse_par_id', 'confiage_dga', 'missions_documentaires', 'tour',
+        'peut_confier_au_dga', 'peut_retourner_au_dg', 'peut_reprendre_du_dga',
+    ];
 }

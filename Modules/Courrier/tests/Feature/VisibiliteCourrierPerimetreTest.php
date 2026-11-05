@@ -56,6 +56,39 @@ class VisibiliteCourrierPerimetreTest extends CourrierTestCase
         }
     }
 
+    /** Lot 2 : la fiche d'une direction ne contient pas les données internes du circuit central. */
+    public function test_la_fiche_dune_direction_ne_contient_pas_les_donnees_internes_du_circuit(): void
+    {
+        $centrale = Direction::factory()->create();
+        $finances = Direction::factory()->create();
+        $this->agent(Poste::DG, $centrale);
+        $courrier = Courrier::factory()->create([
+            'direction_destination_id' => $centrale->id,
+            'statut' => CourrierStatut::DISPATCH_EXECUTE,
+            'note_technique' => 'NOTE-TECHNIQUE-SEC2',
+            'emplacement_physique' => 'ARMOIRE-SEC2-B3',
+            'accuse_reception_partenaire' => 'AR-PARTENAIRE-INTERNE',
+        ]);
+        $this->dispatchExecute($courrier, $finances);
+
+        $champsInternes = ['note_technique', 'emplacement_physique', 'accuse_reception_partenaire',
+            'urgence_triee_par', 'courriel_envoye_par_id', 'retrait_disponible_par_id', 'retrait_effectue_par_id',
+            'scan_signe_televerse_par_id', 'confiage_dga', 'missions_documentaires', 'tour'];
+
+        foreach ([User::factory()->directeurDirection($finances)->create(), User::factory()->secretariatDirection($finances)->create()] as $direction) {
+            $fiche = $this->actingAs($direction)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+            foreach ($champsInternes as $champ) {
+                $this->assertArrayNotHasKey($champ, $fiche->json('data'), $champ);
+            }
+            $this->assertStringNotContainsString('NOTE-TECHNIQUE-SEC2', $fiche->getContent());
+            $this->assertStringNotContainsString('ARMOIRE-SEC2-B3', $fiche->getContent());
+        }
+
+        // Le circuit central garde ces données.
+        $fiche = $this->actingAs($this->agent(Poste::SECRETARIAT_2, $centrale))->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
+        $this->assertSame('NOTE-TECHNIQUE-SEC2', $fiche->json('data.note_technique'));
+    }
+
     public function test_objet_recherche_dossier_et_piece_jointe_ne_fuitent_pas(): void
     {
         Storage::fake('local');
