@@ -30,10 +30,13 @@ class SauvegarderBaseDeDonneesTest extends TestCase
         Carbon::setTestNow('2026-06-15 03:00:00');
         $cheminTemporaire = storage_path('app/tmp-backup-ont-2026-06-15_030000.sql.gz');
 
-        Process::fake(function () use ($cheminTemporaire) {
-            // Simule la production du fichier gzip par le pipeline shell
-            // réel (pg_dump | gzip > fichier), sans exécuter pg_dump.
-            file_put_contents($cheminTemporaire, 'dump-simule');
+        Process::fake(function ($process) use ($cheminTemporaire) {
+            // Simule pg_dump (fichier SQL), gzip (archive) puis gzip -t, sans les exécuter.
+            if (in_array('gzip', (array) $process->command, true) && ! in_array('-t', (array) $process->command, true)) {
+                file_put_contents($cheminTemporaire, 'dump-simule');
+            } elseif (($process->command[0] ?? null) === 'pg_dump') {
+                file_put_contents(substr($cheminTemporaire, 0, -3), 'sql-simule');
+            }
 
             return Process::result(output: '', errorOutput: '', exitCode: 0);
         });
@@ -48,5 +51,36 @@ class SauvegarderBaseDeDonneesTest extends TestCase
 
         $this->assertCount(1, $fichiers);
         $this->assertStringNotContainsString('ancienne', $fichiers[0]);
+    }
+
+    public function test_un_echec_de_pg_dump_est_detecte_et_ne_declenche_ni_envoi_ni_retention(): void
+    {
+        Storage::fake('backups-local');
+        config(['backup.disk' => 'backups-local', 'backup.retention_days' => 30]);
+        Carbon::setTestNow('2026-06-15 03:00:00');
+
+        Process::fake(fn ($process) => ($process->command[0] ?? null) === 'pg_dump'
+            ? Process::result(output: '', errorOutput: 'connexion refusée', exitCode: 1)
+            : Process::result(output: '', errorOutput: '', exitCode: 0));
+
+        Storage::disk('backups-local')->put('database/ont-ancienne.sql.gz', 'ancien');
+        touch(Storage::disk('backups-local')->path('database/ont-ancienne.sql.gz'), now()->subDays(45)->timestamp);
+
+        $this->artisan('kernel:sauvegarder-base-de-donnees')->assertFailed();
+
+        $this->assertSame(['database/ont-ancienne.sql.gz'], Storage::disk('backups-local')->files('database'));
+    }
+
+    public function test_une_sauvegarde_vide_est_refusee(): void
+    {
+        Storage::fake('backups-local');
+        config(['backup.disk' => 'backups-local']);
+        Carbon::setTestNow('2026-06-15 03:00:00');
+
+        Process::fake(fn () => Process::result(output: '', errorOutput: '', exitCode: 0));
+
+        $this->artisan('kernel:sauvegarder-base-de-donnees')->assertFailed();
+
+        $this->assertSame([], Storage::disk('backups-local')->files('database'));
     }
 }

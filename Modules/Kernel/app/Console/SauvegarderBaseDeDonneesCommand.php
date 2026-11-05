@@ -31,21 +31,28 @@ class SauvegarderBaseDeDonneesCommand extends Command
         $nomFichier = 'ont-'.now()->format('Y-m-d_His').'.sql.gz';
         $cheminTemporaire = storage_path("app/tmp-backup-{$nomFichier}");
 
-        $resultat = Process::env(['PGPASSWORD' => $config['password']])
-            ->run([
-                'sh', '-c',
-                sprintf(
-                    'pg_dump --host=%s --port=%s --username=%s --no-password %s | gzip > %s',
-                    escapeshellarg($config['host']),
-                    escapeshellarg((string) $config['port']),
-                    escapeshellarg($config['username']),
-                    escapeshellarg($config['database']),
-                    escapeshellarg($cheminTemporaire),
-                ),
-            ]);
+        // Pas de pipeline shell (pg_dump | gzip) : sans pipefail, l'échec de pg_dump serait masqué par
+        // le succès de gzip. Deux étapes, chacune contrôlée, puis vérification de l'archive produite.
+        $cheminSql = substr($cheminTemporaire, 0, -3);
 
-        if ($resultat->failed()) {
-            $this->error('Échec de pg_dump : '.$resultat->errorOutput());
+        $dump = Process::env(['PGPASSWORD' => $config['password']])->run([
+            'pg_dump', '--host='.$config['host'], '--port='.$config['port'],
+            '--username='.$config['username'], '--no-password', '--file='.$cheminSql, $config['database'],
+        ]);
+
+        if ($dump->failed() || ! is_file($cheminSql) || filesize($cheminSql) === 0) {
+            $this->error('Échec de pg_dump : '.$dump->errorOutput());
+            $this->nettoyerTemporaires($cheminSql, $cheminTemporaire);
+
+            return self::FAILURE;
+        }
+
+        $compression = Process::run(['gzip', '-f', $cheminSql]);
+
+        if ($compression->failed() || ! is_file($cheminTemporaire) || filesize($cheminTemporaire) === 0
+            || Process::run(['gzip', '-t', $cheminTemporaire])->failed()) {
+            $this->error('Échec de la compression de la sauvegarde : '.$compression->errorOutput());
+            $this->nettoyerTemporaires($cheminSql, $cheminTemporaire);
 
             return self::FAILURE;
         }
@@ -61,6 +68,15 @@ class SauvegarderBaseDeDonneesCommand extends Command
         $this->nettoyerAnciennesSauvegardes($disque);
 
         return self::SUCCESS;
+    }
+
+    private function nettoyerTemporaires(string ...$chemins): void
+    {
+        foreach ($chemins as $chemin) {
+            if (is_file($chemin)) {
+                unlink($chemin);
+            }
+        }
     }
 
     private function nettoyerAnciennesSauvegardes(string $disque): void
