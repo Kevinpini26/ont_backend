@@ -753,3 +753,18 @@ Depuis le lot 1C, l'anonymisation efface l'identité et les coordonnées (nom, e
 1. **Pièces jointes secondaires** (`courrier_pieces_jointes`), **numérisations** (`documents_numerises`) et **documents du dossier stagiaire** (`stagiaire_documents`) : faut-il les supprimer physiquement ? Ils contiennent souvent l'identité du candidat, mais la règle « les dépôts officiels ne sont jamais réécrits » s'applique peut-être aux numérisations du circuit.
 2. **Détection de doublons** : elle compare les noms. Après anonymisation, une même personne qui redépose n'est plus reconnue. Faut-il conserver un condensé irréversible (empreinte) du nom et de l'e-mail pour garder cette détection ?
 3. **Journal d'audit** : il peut contenir des noms dans les métadonnées. Il n'est jamais modifié ; faut-il prévoir une procédure (avec décision écrite) pour ce cas ?
+
+## Portail public : protection contre les abus (proposition du lot 1C, à valider)
+
+Constats sur le code actuel :
+- **Dépôts massifs** : `POST /public/demandes-stage` et `/public/courriers-externes` sont limités à 20 par minute et par IP, sans plafond journalier. Un script peut déposer près de 29 000 dossiers par jour depuis une seule IP, chacun créant un courrier à traiter par la Réception.
+- **Accusés envoyés à des tiers** : l'accusé de réception part vers l'adresse saisie, sans confirmation. Le formulaire peut servir à envoyer des e-mails ONT à n'importe qui.
+- **Verrouillage volontaire** : `VerificationEchecsLimiteur` verrouille un numéro de dossier pendant 1 heure après 5 échecs, quelle que soit l'IP. N'importe qui peut bloquer la vérification d'un candidat en tapant 5 fois son numéro avec une mauvaise information.
+
+Propositions :
+1. Plafond par IP et par jour (ex. 10 dépôts) et par adresse e-mail (ex. 3 par jour), en plus de la limite par minute.
+2. Accusé de réception envoyé seulement après confirmation de l'adresse (lien à usage unique), ou limité à 1 accusé par adresse et par heure.
+3. Verrouillage par couple (numéro, IP) au lieu du numéro seul, avec un plafond global plus haut par numéro (ex. 30 échecs par jour) qui alerte l'administrateur au lieu de bloquer le candidat.
+4. Champ piège invisible (« honeypot ») sur les formulaires, sans CAPTCHA ni service tiers.
+
+Questions : quels plafonds retenir ? La confirmation d'adresse est-elle acceptable pour des candidats qui n'ont parfois qu'un accès limité à leur messagerie ?
