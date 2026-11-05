@@ -23,7 +23,12 @@ class AppServiceProvider extends ServiceProvider
     {
         // Limiteur par défaut de toutes les routes /api/* (voir
         // bootstrap/app.php : $middleware->throttleApi()).
-        RateLimiter::for('api', fn ($request) => Limit::perMinute(60)->by($request->user()?->id ?: $request->ip()));
+        // Un écran de travail (DG, SEC2) enchaîne 11 à 29 appels à l'ouverture, plus les compteurs
+        // et notifications en arrière-plan : 60 par minute provoquait des 429 en usage normal.
+        // Les visiteurs anonymes (portail public) gardent la limite stricte par IP.
+        RateLimiter::for('api', fn ($request) => $request->user()
+            ? Limit::perMinute((int) config('kernel.limite_api_connecte', 240))->by('user:'.$request->user()->id)
+            : Limit::perMinute(60)->by($request->ip()));
 
         // Connexion : freine le bruteforce de mots de passe. On limite à la
         // fois par IP et par e-mail tenté pour ne pas bloquer tout un

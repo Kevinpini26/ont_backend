@@ -11,6 +11,9 @@ return [
      */
     'admin_initial_password' => env('KERNEL_ADMIN_INITIAL_PASSWORD'),
 
+    /** Appels API par minute et par utilisateur connecté (les anonymes restent à 60 par IP). */
+    'limite_api_connecte' => (int) env('API_LIMITE_CONNECTE', 240),
+
     /**
      * Proxys de confiance (voir ConfigurerProxysDeConfiance) : adresses ou plages CIDR séparées
      * par des virgules, ou « * ». Vide par défaut : aucun en-tête X-Forwarded-* n'est cru.
