@@ -35,6 +35,11 @@ class StagiaireDemoSeeder extends Seeder
 
     public function run(StagiaireCircuitService $circuit, TableauRepartitionCircuitService $tableaux): void
     {
+        // Rejouable : les dossiers de démonstration déjà semés ne sont jamais recréés.
+        if (Courrier::withoutGlobalScopes()->where('numero_accuse_reception', 'like', 'AR-%-DEMO%')->exists()) {
+            return;
+        }
+
         $this->direction = Direction::query()->where('code', 'DRH')->firstOrFail();
         $dfp = User::query()->where('email', 'dfp@ont.cd')->firstOrFail();
         $responsable = User::query()->where('email', 'responsable.drh@ont.cd')->firstOrFail();

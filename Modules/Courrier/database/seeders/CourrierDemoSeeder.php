@@ -5,7 +5,6 @@ namespace Modules\Courrier\Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\AvisDg;
-use Modules\Courrier\Enums\CourrierClassification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Enums\DegreUrgence;
@@ -29,18 +28,20 @@ class CourrierDemoSeeder extends Seeder
 {
     public function run(CourrierCircuitService $circuit): void
     {
+        // Rejouable : les courriers de démonstration déjà semés ne sont jamais recréés.
+        if (Courrier::withoutGlobalScopes()->where('piece_jointe_chemin', 'like', 'courriers/demo-%')->exists()) {
+            return;
+        }
+
         $direction = Direction::query()->where('code', 'DMC')->firstOrFail();
 
         $reception = User::query()->where('email', 'reception@ont.cd')->firstOrFail();
         $dg = User::query()->where('email', 'dg@ont.cd')->firstOrFail();
         $secretariat1 = User::query()->where('email', 'secretariat_1@ont.cd')->firstOrFail();
-        $secretariat2 = User::query()->where('email', 'secretariat_2@ont.cd')->firstOrFail();
         // Lot assistants : le rédacteur du projet de réponse et son relecteur
         // désigné doivent être deux comptes distincts (voir
         // SoumettreProjetReponseRequest::withValidator()) — jamais
         // Secrétariat 01, qui ne rédige plus (voir docs/questions-ont.md).
-        $redacteur = User::query()->where('email', 'assistant_1@ont.cd')->firstOrFail();
-        $relecteur = User::query()->where('email', 'assistant_1@ont.cd')->firstOrFail();
 
         // Liste ordonnée (pas de tableau associatif indexé par l'enum : PHP
         // n'autorise que des clés int/string) de [statut cible, objet].
@@ -53,9 +54,6 @@ class CourrierDemoSeeder extends Seeder
             [CourrierStatut::EN_ATTENTE_CLASSEUR, 'Courrier sans caractère urgent — gardé au classeur d\'attente'],
             [CourrierStatut::EN_ATTENTE_AVIS_DG, "Sollicitation d'avis sur une convention de coopération"],
             [CourrierStatut::PROJET_A_REDIGER, 'Demande de subvention — festival culturel de Matadi'],
-            [CourrierStatut::PROJET_A_VALIDER, 'Réponse à une requête de la Fédération des hôteliers'],
-            [CourrierStatut::SIGNE, "Autorisation d'exploitation d'un site touristique"],
-            [CourrierStatut::ENREGISTRE, 'Correspondance avec le Ministère du Tourisme — accusé de suivi'],
         ];
 
         foreach ($objets as [$statutCible, $objet]) {
@@ -65,14 +63,14 @@ class CourrierDemoSeeder extends Seeder
                 continue;
             }
 
-            $circuit->accuserReception($courrier, $secretariat1);
+            $this->accuser($circuit, $courrier, $secretariat1);
             $courrier = $circuit->transmettreTri($courrier, $secretariat1);
 
             if ($statutCible === CourrierStatut::EN_ATTENTE_TRI) {
                 continue;
             }
 
-            $circuit->accuserReception($courrier, $secretariat1);
+            $this->accuser($circuit, $courrier, $secretariat1);
             // Normal reste au classeur (voir CourrierStatut::EN_ATTENTE_CLASSEUR) ;
             // tout le reste de la liste doit franchir cette étape, donc urgent.
             $degreUrgence = $statutCible === CourrierStatut::EN_ATTENTE_CLASSEUR ? DegreUrgence::NORMAL : DegreUrgence::URGENT;
@@ -82,39 +80,22 @@ class CourrierDemoSeeder extends Seeder
                 continue;
             }
 
-            $circuit->accuserReception($courrier, $dg);
+            $this->accuser($circuit, $courrier, $dg);
             $courrier = $circuit->rendreAvisDg($courrier, $dg, AvisDg::FAVORABLE, 'Avis favorable — dossier conforme.');
 
-            if ($statutCible === CourrierStatut::PROJET_A_REDIGER) {
-                continue;
-            }
+            // Les étapes suivantes (projet de réponse, relecture, signature, envoi) passent désormais par
+            // une mission de préparation confiée par la DG à un assistant : elles se démontrent en direct
+            // dans l'application (voir GUIDE-PRESENTATION-ONT.md), pas par un seed figé.
+        }
+    }
 
-            $circuit->accuserReception($courrier, $redacteur);
-            $courrier = $circuit->soumettreProjetReponse($courrier, $redacteur, [
-                'type' => 'doc',
-                'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Projet de réponse — brouillon de démonstration.']]]],
-            ], $relecteur->id);
+    /** Accuse la réception seulement si la décharge n'a pas déjà été donnée : le seed doit rester rejouable. */
+    private function accuser(CourrierCircuitService $circuit, Courrier $courrier, User $utilisateur): void
+    {
+        $bordereau = $courrier->fresh()->bordereauCourant();
 
-            if ($statutCible === CourrierStatut::PROJET_A_VALIDER) {
-                continue;
-            }
-
-            $circuit->accuserReception($courrier, $relecteur);
-            $circuit->validerRelecture($courrier, $relecteur, 'Relu, aucune remarque.');
-            $courrier = $circuit->signer($courrier, $dg);
-
-            if ($statutCible === CourrierStatut::SIGNE) {
-                continue;
-            }
-
-            $circuit->accuserReception($courrier, $secretariat2);
-            $circuit->enregistrer(
-                $courrier,
-                $secretariat2,
-                CourrierClassification::EXTERNE,
-                null,
-                'AR-PARTENAIRE-DEMO-'.$courrier->id,
-            );
+        if ($bordereau !== null && $bordereau->accuse_reception_at === null) {
+            $circuit->accuserReception($courrier, $utilisateur);
         }
     }
 
