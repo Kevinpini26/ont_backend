@@ -1,8 +1,8 @@
 name: CI
 
 on:
+  # Toute branche (dev/*, amelioration/*...) est vérifiée dès le push, pas seulement main ou une pull request.
   push:
-    branches: [main]
   pull_request:
 
 jobs:
@@ -13,13 +13,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: ont_ci
+          POSTGRES_DB: ont_testing
           POSTGRES_USER: ont
           POSTGRES_PASSWORD: ont_ci_password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U ont"
+          --health-cmd="pg_isready -U ont -d ont_testing"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -30,7 +30,7 @@ jobs:
       DB_CONNECTION: pgsql
       DB_HOST: 127.0.0.1
       DB_PORT: 5432
-      DB_DATABASE: ont_ci
+      DB_DATABASE: ont_testing
       DB_USERNAME: ont
       DB_PASSWORD: ont_ci_password
       CACHE_STORE: array
