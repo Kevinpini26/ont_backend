@@ -783,3 +783,7 @@ Validée par l'ONT le 2026-11-05 (« tout comme tu proposes ») et appliquée, a
 - **G** Justesse du tri : taux global pour SEC1, détail par agent pour la DG seule.
 - **H** Liste des agents : réservée à la DG, au DGA, à SEC1, aux assistants, aux directeurs de direction et à l'administrateur (gestion de l'intérim).
 - **I** Export des courriers : même filtrage que la liste, objet confidentiel masqué hors DG et SEC2.
+
+## Commentaire d'avis de la DG visible aux directions ?
+
+Décision provisoire de l'ONT (2026-11-05) : le commentaire d'avis de la DG (`avis_dg_commentaire`) est **masqué aux directions** (directeur, responsable, secrétariat), dans l'API (fiche, liste) ; il n'apparaît ni dans les impressions, ni dans l'export CSV, ni dans les notifications ou e-mails (test `test_le_commentaire_davis_de_la_dg_est_masque_aux_directions_partout`). La direction garde l'instruction écrite pour elle au moment du dispatch. L'ONT pourra demander plus tard de l'afficher : il suffit de retirer `avis_dg_commentaire` de `CourrierResource::CHAMPS_INTERNES_AU_CIRCUIT`.

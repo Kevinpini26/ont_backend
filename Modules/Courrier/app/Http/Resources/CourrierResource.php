@@ -331,5 +331,8 @@ class CourrierResource extends JsonResource
         'urgence_triee_par', 'courriel_envoye_par_id', 'retrait_disponible_par_id',
         'retrait_effectue_par_id', 'scan_signe_televerse_par_id', 'confiage_dga', 'missions_documentaires', 'tour',
         'peut_confier_au_dga', 'peut_retourner_au_dg', 'peut_reprendre_du_dga',
+        // Décision ONT du 2026-11-05 : la direction garde l'instruction du dispatch, pas le commentaire
+        // d'avis de la DG (voir docs/questions-ont.md).
+        'avis_dg_commentaire',
     ];
 }
