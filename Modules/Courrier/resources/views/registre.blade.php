@@ -16,6 +16,7 @@
         table.registre th { background: #eef2f7; font-size: 9px; text-transform: uppercase; }
         tr.rupture td { border-top: 2px solid #b91c1c; }
         .mention-rupture { color: #b91c1c; font-weight: bold; font-size: 9px; }
+        .mention-secondaire { color: #475569; font-size: 8px; }
         .totaux { margin-top: 12px; font-weight: bold; }
         .cartouche { margin-top: 50px; width: 100%; }
         .cartouche td { width: 50%; vertical-align: top; padding-top: 30px; border-top: 1px solid #444; }
@@ -46,12 +47,15 @@
                 @foreach ($courriers as $courrier)
                     <tr class="{{ in_array($courrier->id, $ruptures, true) ? 'rupture' : '' }}">
                         <td>
-                            {{ $type === 'depart' ? $courrier->numero_depart : $courrier->numero_accuse_reception }}
+                            {{ $type === 'depart' ? $courrier->numero_depart : $courrier->numero_enregistrement }}
+                            @if ($type !== 'depart' && $courrier->numero_accuse_reception)
+                                <br><span class="mention-secondaire">Accusé en ligne : {{ $courrier->numero_accuse_reception }}</span>
+                            @endif
                             @if (in_array($courrier->id, $ruptures, true))
                                 <br><span class="mention-rupture">RUPTURE DE SÉQUENCE</span>
                             @endif
                         </td>
-                        <td>{{ $courrier->created_at->format('d/m/Y') }}</td>
+                        <td>{{ ($type === 'depart' ? ($courrier->date_envoi ?? $courrier->created_at) : ($courrier->enregistre_at ?? $courrier->created_at))->format('d/m/Y') }}</td>
                         <td>{{ $courrier->expediteur_externe_nom ?? $courrier->candidat_nom ?? $courrier->directionOrigine?->nom ?? '—' }}</td>
                         <td>{{ $courrier->objet }}</td>
                         <td>{{ $courrier->imputations->firstWhere('est_principale', true)?->direction?->code ?? $courrier->directionDestination?->code ?? '—' }}</td>

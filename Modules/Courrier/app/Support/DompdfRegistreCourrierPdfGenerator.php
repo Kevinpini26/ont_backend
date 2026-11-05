@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Support;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
@@ -20,7 +21,11 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
     {
         // Le registre départ porte sur les sorties effectives de la période,
         // sans attribuer ou modifier les numéros établis à la signature.
-        $colonneNumero = $type === 'depart' ? 'numero_depart' : 'numero_accuse_reception';
+        // Le registre d'arrivée suit le numéro d'enregistrement, attribué à tout courrier entré
+        // (guichet ou dépôt en ligne enregistré), et non l'accusé en ligne que le guichet n'attribue pas.
+        // Un dépôt en ligne pas encore enregistré par la Réception n'y figure pas encore.
+        $colonneNumero = $type === 'depart' ? 'numero_depart' : 'numero_enregistrement';
+        $colonneDate = $type === 'depart' ? 'date_envoi' : DB::raw('coalesce(enregistre_at, created_at)');
 
         $user = auth()->user();
         $poste = $user === null ? null : (app(DelegationResolver::class)->posteDelegueAujourdhui($user) ?? $user->poste);
@@ -28,7 +33,7 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
             ->when($poste !== Poste::SECRETARIAT_2, fn ($query) => $query->withoutGlobalScopes())
             ->exclureAutonomesAvantTransmission()
             ->whereNotNull($colonneNumero)
-            ->whereBetween($type === 'depart' ? 'date_envoi' : 'created_at', [$debut, $fin])
+            ->whereBetween($colonneDate, [$debut, $fin])
             ->with(['directionOrigine', 'directionDestination', 'imputations.direction'])
             ->orderBy($colonneNumero)
             ->get();

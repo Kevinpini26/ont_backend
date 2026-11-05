@@ -174,8 +174,10 @@ class Sec2InstitutionnelTest extends CourrierTestCase
         $visible = Courrier::factory()->create([
             'created_by' => $sec2->id, 'statut' => CourrierStatut::ENVOYE, 'sens' => SensCourrier::SORTANT,
             'numero_depart' => 'REG-SEC2-1', 'date_envoi' => now(),
+            // Le registre d'arrivée suit désormais numero_enregistrement (voir DompdfRegistreCourrierPdfGenerator).
+            'numero_enregistrement' => 'REG-ARR-SEC2-1', 'enregistre_at' => now(),
         ]);
-        Courrier::factory()->create(['statut' => CourrierStatut::RECU]);
+        Courrier::factory()->create(['statut' => CourrierStatut::RECU, 'numero_enregistrement' => 'REG-ARR-ETRANGER-1', 'enregistre_at' => now()]);
         Courrier::factory()->create(['statut' => CourrierStatut::ENVOYE, 'sens' => SensCourrier::SORTANT, 'numero_depart' => 'REG-ETRANGER-2', 'date_envoi' => now()]);
         $this->mock(PdfGenerationService::class)
             ->shouldReceive('genererDepuisVue')->twice()->andReturnUsing(function ($vue, $donnees) use ($visible) {
