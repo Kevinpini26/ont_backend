@@ -165,6 +165,7 @@ class CourrierReponseService
                 throw TransitionNonAutoriseeException::posteNonHabilite();
             }
             $relecteurs = User::query()
+                ->where('actif', true)
                 ->where('role', UserRole::AGENT_CIRCUIT_COURRIER)
                 ->where('poste', $posteRelecteur)
                 ->get();

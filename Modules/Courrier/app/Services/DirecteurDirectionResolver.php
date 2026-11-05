@@ -11,12 +11,14 @@ class DirecteurDirectionResolver
     public function resolve(int $directionId): User
     {
         $directeurs = User::query()
+            ->where('actif', true)
             ->where('direction_id', $directionId)
             ->where('role', UserRole::DIRECTEUR_DIRECTION)
             ->get();
 
         if ($directeurs->isEmpty()) {
             $directeurs = User::query()
+                ->where('actif', true)
                 ->where('direction_id', $directionId)
                 ->where('role', UserRole::RESPONSABLE_DIRECTION)
                 ->get();

@@ -144,6 +144,25 @@ class ProjetReponseDTest extends CourrierTestCase
     }
 
     /** @return array{Courrier, User, User, User, User} */
+    public function test_un_ancien_relecteur_desactive_ne_bloque_pas_la_soumission(): void
+    {
+        [$a, $dg, $dg1, $dg2] = $this->acteurs(Poste::ASSISTANT_2);
+        User::factory()->agentCircuitCourrier(Poste::ASSISTANT_1)->create(['actif' => false]);
+
+        $missionId = $this->actingAs($dg)->postJson("/api/v1/courriers/{$a->id}/demander-preparation-reponse", [
+            'assistant_id' => $dg2->id,
+            'instruction' => 'Préparer une réponse.',
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($dg2)->postJson("/api/v1/missions-documentaires/{$missionId}/prendre-en-charge")->assertOk();
+        $this->actingAs($dg2)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse", [
+            'objet' => 'Réponse', 'destinataire_externe_nom' => 'Demandeur', 'projet_reponse_contenu' => $this->contenu,
+        ])->assertCreated();
+
+        $this->actingAs($dg2)->postJson("/api/v1/missions-documentaires/{$missionId}/projet-reponse/soumettre", [
+            'projet_reponse_contenu' => $this->contenu,
+        ])->assertOk()->assertJsonPath('data.relecteur.id', $dg1->id);
+    }
+
     private function acteurs(Poste $redacteur): array
     {
         $direction = Direction::factory()->create();
