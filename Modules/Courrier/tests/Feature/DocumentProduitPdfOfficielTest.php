@@ -42,6 +42,9 @@ class DocumentProduitPdfOfficielTest extends CourrierTestCase
     public function test_validation_genere_un_pdf_officiel_fidele_et_imprimable(): void
     {
         [$document, $secretariat, $directeur] = $this->preparerDocument();
+        // Nom long fixe : un nom tiré au hasard peut être coupé sur deux lignes dans le PDF et rendait
+        // ce test instable (environ 1 exécution sur 6).
+        $document->direction->forceFill(['nom' => 'Direction des Études, de la Planification et des Statistiques du Tourisme'])->save();
 
         $reponse = $this->actingAs($directeur)
             ->postJson("/api/v1/documents-produits-direction/{$document->id}/valider")
@@ -61,7 +64,8 @@ class DocumentProduitPdfOfficielTest extends CourrierTestCase
         $textePdf = (new Parser)->parseContent($contenuPdf)->getText();
 
         $this->assertStringContainsString('OFFICE NATIONAL DU TOURISME', $textePdf);
-        $this->assertStringContainsString($document->direction->nom, $textePdf);
+        // Le PDF coupe les longues lignes : comparaison sur le texte aux espaces normalisés.
+        $this->assertStringContainsString($document->direction->fresh()->nom, preg_replace('/\s+/u', ' ', $textePdf));
         $this->assertStringContainsString($courrier->reference_documentaire, $textePdf);
         $this->assertStringContainsString('Texte officiel exact.', $textePdf);
         $this->assertMatchesRegularExpression('/DOCUMENT À SIGNER PHYSIQUEMENT\s+—\s+NON\s+SIGNÉ/u', $textePdf);
