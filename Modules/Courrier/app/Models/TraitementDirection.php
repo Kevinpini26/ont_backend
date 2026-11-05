@@ -31,6 +31,7 @@ class TraitementDirection extends Model
         ];
     }
 
+    /** @return BelongsTo<Courrier, $this> */
     public function courrier(): BelongsTo
     {
         return $this->belongsTo(Courrier::class);
@@ -41,6 +42,7 @@ class TraitementDirection extends Model
         return $this->belongsTo(Dossier::class);
     }
 
+    /** @return BelongsTo<DispatchCourrier, $this> */
     public function dispatch(): BelongsTo
     {
         return $this->belongsTo(DispatchCourrier::class, 'dispatch_courrier_id');

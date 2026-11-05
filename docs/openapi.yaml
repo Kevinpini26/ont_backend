@@ -227,6 +227,42 @@ paths:
                   data: { $ref: '#/components/schemas/Utilisateur' }
         '401': { $ref: '#/components/responses/NonAuthentifie' }
 
+  /mes-actions:
+    get:
+      tags: [Authentification]
+      summary: Ce que j'ai à faire
+      description: >-
+        Actions en attente de l'agent connecté (file de son poste, intérim et délégation compris,
+        missions, relectures, courriers distribués et traitements de sa direction, instructions non
+        lues, demandes de stage pour la DFP), triées par urgence puis par retard (plus de 48 h ou
+        échéance dépassée). L'objet d'un courrier confidentiel est masqué pour qui n'en lit pas le contenu.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, enum: [file, mission, relecture, distribution, traitement, instruction, demande_stage] }
+                        action: { type: string }
+                        courrier_id: { type: integer, nullable: true }
+                        reference: { type: string, nullable: true }
+                        objet: { type: string, nullable: true }
+                        statut: { type: string, nullable: true }
+                        urgence: { type: string, nullable: true, enum: [normal, urgent, tres_urgent] }
+                        depuis: { type: string, format: date-time, nullable: true }
+                        en_retard: { type: boolean }
+                        lien: { type: string }
+                  total: { type: integer }
+                  en_retard: { type: integer }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+
   /auth/mot-de-passe/changer:
     post:
       tags: [Comptes]

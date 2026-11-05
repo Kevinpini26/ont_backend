@@ -239,6 +239,20 @@ class CourrierVisibilityService
     }
 
     /**
+     * Restreint la requête aux courriers sur lesquels ce poste doit agir maintenant (sa file),
+     * selon les mêmes règles que les transitions. Sert à l'accueil « Ce que j'ai à faire ».
+     *
+     * @param  Builder<covariant Courrier>  $query
+     */
+    public function restreindreAFileCourante(Builder $query, Poste $poste): Builder
+    {
+        return $query->where(function (Builder $file) use ($poste): void {
+            $file->whereRaw('1 = 0');
+            $this->ajouterFileCourante($file, $poste);
+        });
+    }
+
+    /**
      * Un poste central voit la file sur laquelle il doit actuellement agir,
      * même avant la création du bordereau suivant. Les règles viennent de la
      * même configuration que les transitions, afin d'éviter une seconde
