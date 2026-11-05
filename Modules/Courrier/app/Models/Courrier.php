@@ -363,6 +363,17 @@ class Courrier extends Model implements Numerisable
         return $this->urgence_triee_at !== null;
     }
 
+    /**
+     * Objet à reproduire hors de l'application (e-mail) : jamais celui d'un courrier confidentiel ou
+     * secret, qui ne se consulte que dans l'application, après contrôle d'accès.
+     */
+    public function objetPourCanalExterne(): string
+    {
+        return $this->niveau_confidentialite === NiveauConfidentialite::ORDINAIRE
+            ? (string) $this->objet
+            : 'Courrier confidentiel : consultez-le dans l’application';
+    }
+
     /** @return HasMany<CourrierAnnotation, $this> */
     public function annotations(): HasMany
     {

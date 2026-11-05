@@ -4,7 +4,7 @@
 Le courrier suivant attend votre avis depuis plus de 48 heures.
 
 <x-mail::panel>
-**Objet :** {{ $courrier->objet }}<br>
+**Objet :** {{ $courrier->objetPourCanalExterne() }}<br>
 **Référence :** {{ $courrier->numero_accuse_reception }}
 </x-mail::panel>
 

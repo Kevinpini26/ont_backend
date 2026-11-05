@@ -4,7 +4,7 @@
 Un nouveau courrier a été adressé à votre direction.
 
 <x-mail::panel>
-**Objet :** {{ $courrier->objet }}<br>
+**Objet :** {{ $courrier->objetPourCanalExterne() }}<br>
 **Référence :** {{ $courrier->numero_accuse_reception ?? $courrier->numero_enregistrement }}<br>
 **Type :** {{ $courrier->type?->label() }}
 </x-mail::panel>
