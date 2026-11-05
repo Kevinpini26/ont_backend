@@ -254,4 +254,27 @@ class AnonymiserCandidaturesNonRetenuesTest extends CourrierTestCase
 
         $this->assertNotNull($courrier->fresh()->anonymise_at);
     }
+
+    public function test_les_coordonnees_et_la_piece_principale_sont_aussi_effacees(): void
+    {
+        Storage::fake('local');
+        Storage::disk('local')->put('courriers/candidature-scan.pdf', '%PDF');
+        $courrier = Courrier::factory()->demandeStage()->create([
+            'avis_dg' => AvisDg::DEFAVORABLE,
+            'avis_dg_rendu_at' => now()->subMonths(13),
+            'candidat_email' => 'candidat@example.test',
+            'expediteur_externe_email' => 'expediteur@example.test',
+            'expediteur_externe_telephone' => '+243 800 000 000',
+            'piece_jointe_chemin' => 'courriers/candidature-scan.pdf',
+        ]);
+
+        $this->artisan(AnonymiserCandidaturesNonRetenuesCommand::class)->assertSuccessful();
+
+        $courrier->refresh();
+        $this->assertNull($courrier->candidat_email);
+        $this->assertNull($courrier->expediteur_externe_email);
+        $this->assertNull($courrier->expediteur_externe_telephone);
+        $this->assertNull($courrier->piece_jointe_chemin);
+        Storage::disk('local')->assertMissing('courriers/candidature-scan.pdf');
+    }
 }

@@ -45,7 +45,7 @@ des postes des agents.
 | Donnée | Sujets concernés | Table(s) | Conservation |
 |---|---|---|---|
 | Identité, contact, établissement d'origine | Candidats à un stage | `stagiaires`, `courriers` | Indéfinie tant que le stage est actif ou clôturé avec succès |
-| Identité, contact | Candidature de stage **non retenue** (avis DG défavorable) | `courriers` | **12 mois** après l'avis, puis anonymisation automatique (`courrier:anonymiser-candidatures-non-retenues`, planifiée) |
+| Identité, contact (nom, e-mails, téléphone, établissement) et pièce principale | Candidature de stage **non retenue** : avis DG défavorable, ou dossier écarté au tableau de répartition (`NON_RETENU`) | `courriers`, `stagiaires` | **12 mois** après l'avis ou le refus, puis anonymisation automatique (`courrier:anonymiser-candidatures-non-retenues` et `stagiaires:anonymiser-non-retenus`, planifiées). Le journal d'audit est conservé. Pièces jointes secondaires, numérisations et documents du dossier : en attente de décision (voir `docs/questions-ont.md`). |
 | Pièce d'identité, diplômes, CV | Stagiaires | Disque `local` (jamais public) | Durée du dossier ; accès restreint à la DFP et à l'administrateur (`StagiairePolicy::telechargerDocument()`) |
 | Contenu et pièces jointes de courrier | Correspondants internes/externes | `courriers`, disque `local` | Indéfinie (valeur probante administrative) |
 | Retour d'expérience de fin de stage | Stagiaires | `stagiaire_retours` | Indéfinie ; strictement confidentiel, jamais visible par la direction d'accueil (`StagiairePolicy::voirRetour()`) |

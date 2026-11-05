@@ -4,6 +4,7 @@ namespace Modules\Stagiaires\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Gate;
+use Modules\Stagiaires\Console\AnonymiserStagiairesNonRetenusCommand;
 use Modules\Stagiaires\Console\GenererRapportAnnuelCommand;
 use Modules\Stagiaires\Console\VerifierCoherenceStagiairesCommand;
 use Modules\Stagiaires\Console\VerifierEcheancesStageCommand;
@@ -58,6 +59,7 @@ class StagiairesServiceProvider extends ModuleServiceProvider
         VerifierEcheancesStageCommand::class,
         GenererRapportAnnuelCommand::class,
         VerifierCoherenceStagiairesCommand::class,
+        AnonymiserStagiairesNonRetenusCommand::class,
     ];
 
     /**
@@ -103,5 +105,6 @@ class StagiairesServiceProvider extends ModuleServiceProvider
     {
         $schedule->command(VerifierEcheancesStageCommand::class)->dailyAt('07:00');
         $schedule->command(VerifierCoherenceStagiairesCommand::class)->dailyAt('02:00');
+        $schedule->command(AnonymiserStagiairesNonRetenusCommand::class)->daily();
     }
 }

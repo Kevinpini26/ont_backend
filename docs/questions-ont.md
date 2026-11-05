@@ -745,3 +745,11 @@ prêté à confusion dans les commentaires de code.)
 ## Durée de conservation affichée au public
 
 La mention d'information publique affiche pour l'instant une formule générique (« durée nécessaire aux finalités poursuivies »). Quelle durée précise l'ONT veut-elle afficher, pour les dossiers de stage et pour la correspondance? À valider avec la DFP et le Secrétariat Général (article 193, 3° de l'ordonnance-loi).
+
+## Anonymisation : pièces jointes, numérisations et documents d'une candidature non retenue
+
+Depuis le lot 1C, l'anonymisation efface l'identité et les coordonnées (nom, e-mails, téléphone, établissement, lieu de naissance) et la pièce principale, pour les avis DG défavorables comme pour les refus du tableau de répartition. Trois points restent à trancher par l'ONT :
+
+1. **Pièces jointes secondaires** (`courrier_pieces_jointes`), **numérisations** (`documents_numerises`) et **documents du dossier stagiaire** (`stagiaire_documents`) : faut-il les supprimer physiquement ? Ils contiennent souvent l'identité du candidat, mais la règle « les dépôts officiels ne sont jamais réécrits » s'applique peut-être aux numérisations du circuit.
+2. **Détection de doublons** : elle compare les noms. Après anonymisation, une même personne qui redépose n'est plus reconnue. Faut-il conserver un condensé irréversible (empreinte) du nom et de l'e-mail pour garder cette détection ?
+3. **Journal d'audit** : il peut contenir des noms dans les métadonnées. Il n'est jamais modifié ; faut-il prévoir une procédure (avec décision écrite) pour ce cas ?
