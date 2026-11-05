@@ -334,6 +334,8 @@ paths:
         les postes centraux du circuit courrier et l'administrateur.
       parameters:
         - { name: statut, in: query, schema: { type: string } }
+        - { name: "statuts[]", in: query, schema: { type: array, items: { type: string } }, description: "File de travail : statuts recherchés, filtrés avant la pagination (la visibilité par poste reste appliquée)." }
+        - { name: par_page, in: query, schema: { type: integer, default: 20, maximum: 200 } }
         - { name: direction_origine_id, in: query, schema: { type: integer } }
         - { name: direction_destination_id, in: query, schema: { type: integer } }
         - { name: recherche, in: query, schema: { type: string }, description: "Objet, numéro, ou nom du candidat/expéditeur." }

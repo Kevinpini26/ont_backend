@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Courrier\Contracts\AccuseReceptionGuichetGenerator;
 use Modules\Courrier\Contracts\FeuilleCouvertureGenerator;
@@ -99,6 +100,17 @@ class CourrierController extends Controller
             $query->where('statut', $request->string('statut'));
         }
 
+        // File de travail : filtre côté serveur, avant la pagination. Sinon un courrier en attente plus
+        // ancien que la première page disparaît de la file de son destinataire.
+        if ($request->filled('statuts')) {
+            $request->validate([
+                'statuts' => ['array', 'max:30'],
+                'statuts.*' => ['string', Rule::in(array_column(CourrierStatut::cases(), 'value'))],
+            ]);
+            $query->whereIn('statut', $request->input('statuts'));
+        }
+        $parPage = max(1, min(200, $request->integer('par_page', 20)));
+
         if ($request->boolean('file_sorties_sec2')) {
             $this->authorize('voirFileSortiesSec2', Courrier::class);
             $query->where('sens', 'sortant')->where(function ($sorties): void {
@@ -154,7 +166,7 @@ class CourrierController extends Controller
             }
             $query->recherchePleinTexte($request->string('recherche')->toString());
 
-            return CourrierResource::collection($query->paginate(20));
+            return CourrierResource::collection($query->paginate($parPage));
         }
 
         // tri=urgence : très urgent en tête, puis urgent, puis normal, puis
@@ -171,10 +183,10 @@ class CourrierController extends Controller
                 end asc
                 SQL)->latest();
 
-            return CourrierResource::collection($query->paginate(20));
+            return CourrierResource::collection($query->paginate($parPage));
         }
 
-        return CourrierResource::collection($query->latest()->paginate(20));
+        return CourrierResource::collection($query->latest()->paginate($parPage));
     }
 
     public function export(Request $request)
