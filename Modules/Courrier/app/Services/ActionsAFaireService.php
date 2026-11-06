@@ -7,10 +7,13 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DispatchStatut;
+use Modules\Courrier\Enums\DocumentProduitOrigine;
+use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Enums\MissionDocumentaireStatut;
 use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\TraitementDirection;
 use Modules\Kernel\Enums\Poste;
@@ -32,6 +35,20 @@ class ActionsAFaireService
 
     private const RANG_URGENCE = ['tres_urgent' => 0, 'urgent' => 1, 'normal' => 2];
 
+    /** Ce que le poste doit faire, une fois la réception accusée. */
+    private const ACTION_PAR_STATUT = [
+        'recu' => 'Transmettre au tri',
+        'en_attente_tri' => 'Trier',
+        'en_attente_classeur' => 'Examiner au classeur',
+        'en_attente_avis_dg' => 'Décider',
+        'en_attente_validation_dg' => 'Valider',
+        'projet_a_rediger' => 'Rédiger le projet',
+        'projet_a_valider' => 'Valider pour signature',
+        'en_attente_signature' => 'Signer',
+        'en_dispatch' => 'Exécuter la décision de la DG',
+        'signe' => 'Envoyer le courrier',
+    ];
+
     public function __construct(
         private readonly CourrierVisibilityService $visibilite,
         private readonly DelegationResolver $delegations,
@@ -47,6 +64,8 @@ class ActionsAFaireService
             ->merge($this->missions($user))
             ->merge($this->relectures($user))
             ->merge($this->direction($user))
+            ->merge($this->documentsInternes($user))
+            ->merge($this->depotsEnLigne($user))
             ->merge($this->instructions($user));
 
         return $this->trier($actions);
@@ -71,7 +90,8 @@ class ActionsAFaireService
         $enRetard = $extra['en_retard'] ?? ($depuis !== null && $depuis->lt(now()->subHours(self::HEURES_AVANT_RETARD)));
         unset($extra['en_retard']);
 
-        return [
+        // array_merge et non « + » : les valeurs fournies (référence, objet d'une demande de stage) priment.
+        return array_merge([
             'type' => $type,
             'action' => $action,
             'courrier_id' => $courrier?->id,
@@ -82,7 +102,7 @@ class ActionsAFaireService
             'depuis' => $depuis?->toIso8601String(),
             'en_retard' => $enRetard,
             'lien' => $lien,
-        ] + $extra;
+        ], $extra);
     }
 
     /** @return Collection<int, array<string, mixed>> */
@@ -102,7 +122,7 @@ class ActionsAFaireService
         $actions = collect();
         foreach ($postes as $poste) {
             $courriers = $this->visibilite->restreindreAFileCourante(Courrier::query(), $poste)
-                ->with('transitions')
+                ->with(['transitions', 'documentProduitDirection'])
                 ->limit(200)
                 ->get();
 
@@ -110,18 +130,94 @@ class ActionsAFaireService
                 /** @var Courrier $courrier */
                 $bordereau = $courrier->bordereauCourant();
                 $aAccuser = $bordereau !== null && $bordereau->accuse_reception_at === null;
+                // Un dépôt en ligne se traite d'abord à la Réception : voir depotsEnLigne().
+                if ($poste === Poste::RECEPTION && $courrier->mode_reception?->value === 'depot_en_ligne' && $courrier->statut === CourrierStatut::RECU) {
+                    continue;
+                }
                 $actions->push($this->element(
                     'file',
-                    $aAccuser ? 'Accuser réception' : 'Traiter',
+                    $aAccuser ? 'Accuser réception' : (self::ACTION_PAR_STATUT[$courrier->statut?->value] ?? 'Traiter'),
                     $courrier,
                     $bordereau?->created_at ?? $courrier->created_at,
-                    '/courriers/'.$courrier->id,
+                    $this->lienDeFile($courrier, $poste),
                     ['cle' => $poste->value],
                 ));
             }
         }
 
         return $actions;
+    }
+
+    /** Un document interne autonome se traite sur l'écran dédié de SEC1 ou de la DG, pas sur la fiche. */
+    private function lienDeFile(Courrier $courrier, Poste $poste): string
+    {
+        if ($courrier->documentProduitDirection?->origine === DocumentProduitOrigine::AUTONOME) {
+            return match ($poste) {
+                Poste::SECRETARIAT_1 => '/circuit/documents-autonomes-sec1',
+                Poste::DG => '/circuit/documents-autonomes-dg',
+                default => '/courriers/'.$courrier->id,
+            };
+        }
+
+        return '/courriers/'.$courrier->id;
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function depotsEnLigne(User $user): Collection
+    {
+        if (! $this->delegations->utilisateurHabilite($user, [Poste::RECEPTION])) {
+            return collect();
+        }
+
+        return Courrier::query()
+            ->where('statut', CourrierStatut::RECU->value)
+            ->where('mode_reception', 'depot_en_ligne')
+            ->whereDoesntHave('transitions', fn ($t) => $t->where('destinataire_poste', Poste::SECRETARIAT_1->value))
+            ->limit(200)
+            ->get()
+            ->map(fn (Courrier $c) => $this->element(
+                'depot',
+                $c->numero_enregistrement === null ? 'Enregistrer le dépôt' : 'Transmettre à SEC1',
+                $c,
+                $c->created_at,
+                '/courriers/'.$c->id,
+            ));
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function documentsInternes(User $user): Collection
+    {
+        $requete = DocumentProduitDirection::query()->where('origine', DocumentProduitOrigine::AUTONOME->value)->with('courrier');
+        $lien = fn (DocumentProduitDirection $d) => '/direction/documents-internes/'.$d->id;
+
+        if ($user->role === UserRole::SECRETARIAT_DIRECTION && $user->direction_id !== null) {
+            $actions = [
+                DocumentProduitStatut::BROUILLON->value => 'Soumettre le document au Directeur',
+                DocumentProduitStatut::A_CORRIGER->value => 'Corriger le document',
+                DocumentProduitStatut::VALIDE->value => 'Enregistrer le scan officiel',
+                DocumentProduitStatut::SCAN_ENREGISTRE->value => 'Transmettre le document à la Réception',
+            ];
+            $requete->where('direction_id', $user->direction_id)->whereIn('statut', array_keys($actions));
+        } elseif ($user->role->estDirecteurDirection() && $user->direction_id !== null) {
+            $actions = [DocumentProduitStatut::SOUMIS_DIRECTEUR->value => 'Examiner le document interne'];
+            $requete->where('direction_id', $user->direction_id)->whereIn('statut', array_keys($actions));
+            $lien = fn (DocumentProduitDirection $d) => '/direction/directeur/documents-internes/'.$d->id;
+        } elseif ($this->delegations->utilisateurHabilite($user, [Poste::RECEPTION])) {
+            $actions = [DocumentProduitStatut::TRANSMIS_RECEPTION->value => 'Contrôler le document interne'];
+            $requete->whereIn('statut', array_keys($actions));
+            $lien = fn () => '/circuit/documents-internes';
+        } else {
+            return collect();
+        }
+
+        return $requete->limit(200)->get()->map(fn (DocumentProduitDirection $d) => $this->element(
+            'document_interne',
+            $actions[$d->statut->value],
+            $d->courrier,
+            $d->soumis_at ?? $d->updated_at,
+            $lien($d),
+            ['cle' => (string) $d->id],
+        ));
     }
 
     /** @return Collection<int, array<string, mixed>> */
@@ -170,7 +266,7 @@ class ActionsAFaireService
                 ->with('courrier')
                 ->get()
                 ->each(fn (DispatchCourrier $d) => $actions->push($this->element(
-                    'distribution', 'Accuser réception du courrier distribué', $d->courrier, $d->execute_at, '/direction/courrier',
+                    'distribution', 'Accuser réception du courrier distribué', $d->courrier, $d->execute_at, '/direction/courriers-recus',
                     ['cle' => (string) $d->id, 'en_retard' => $d->estEnRetard() || ($d->execute_at?->lt(now()->subHours(self::HEURES_AVANT_RETARD)) ?? false)],
                 )));
         }
@@ -189,7 +285,8 @@ class ActionsAFaireService
                 $t->statut === TraitementDirectionStatut::RECU_SECRETARIAT ? 'Transmettre au directeur' : 'Traiter le courrier',
                 $t->courrier,
                 $t->transmis_directeur_at ?? $t->recu_secretariat_at,
-                '/direction/courriers-a-traiter',
+                // Le secrétariat transmet depuis « Courriers reçus » ; le directeur traite depuis « Courriers à traiter ».
+                $t->statut === TraitementDirectionStatut::RECU_SECRETARIAT ? '/direction/courriers-recus' : '/direction/courriers-a-traiter',
                 ['cle' => (string) $t->id, 'en_retard' => $t->dispatch?->estEnRetard() ?? false],
             )));
 

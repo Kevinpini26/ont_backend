@@ -14,6 +14,7 @@ changent.
 | **En dispatch vers la direction** | Statut | **En cours de distribution** | Cohérent avec la ligne précédente. |
 | **Cycle décisionnel** | Fiche du courrier (« Cycle 2 ») | **Passage devant la DG** (« 2ᵉ passage ») | Le terme « cycle » n'est pas parlant ; la fiche dit déjà « ᵉ passage » ailleurs. |
 | **Jetons** | Administration (révoquer les jetons d'un compte) | **Sessions ouvertes** (« Fermer toutes les sessions ») | Un agent ne connaît pas la notion de jeton ; il comprend « déconnecter partout ». |
+| **Projet officiel D**, **brouillon D** | Mes missions des assistants | **Projet de réponse**, **brouillon de la réponse** | Relevé à la répétition du lot 5 : « D » est un repère de conception, sans aucun sens pour un agent. |
 | **Repères du dossier** | Fiche du courrier (1 écran) | **Références du dossier** | Terme administratif habituel. |
 
 ## Questions associées

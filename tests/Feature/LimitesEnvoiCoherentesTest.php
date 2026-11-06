@@ -24,8 +24,11 @@ class LimitesEnvoiCoherentesTest extends TestCase
         $nginx = file_get_contents(base_path('docker/nginx.conf'));
         preg_match('/client_max_body_size\s+(\d+[KMG]?);/i', $nginx, $m);
 
+        // Défaut relevé à la répétition : le scan officiel va jusqu'à 15 Mo (plafond_ko_courrier).
         $plusGrosFichierLaravel = max(
             (int) config('courrier.signature_physique.taille_max_scan_ko', 10240),
+            (int) config('kernel.numerisation.plafond_ko_courrier', 15360),
+            (int) config('kernel.numerisation.plafond_ko_stagiaire', 20480),
             10240,
         ) * 1024;
 
