@@ -242,9 +242,10 @@ class AdminGestionUtilisateursTest extends TestCase
     public function test_la_liste_des_utilisateurs_filtre_par_role_poste_direction_actif_et_recherche(): void
     {
         $direction = Direction::factory()->create();
-        User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create(['name' => 'Jean Réception']);
-        User::factory()->agentDfp()->create(['name' => 'Alice DFP', 'actif' => false]);
-        $admin = User::factory()->administrateur()->create();
+        // Noms et adresses fixés : un nom tiré au hasard (« Jeanne… ») faisait parfois échouer la recherche.
+        User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create(['name' => 'Jean Réception', 'email' => 'jean.reception@exemple.test']);
+        User::factory()->agentDfp()->create(['name' => 'Alice DFP', 'email' => 'alice.dfp@exemple.test', 'actif' => false]);
+        $admin = User::factory()->administrateur()->create(['name' => 'Administrateur Test', 'email' => 'administrateur@exemple.test']);
 
         $this->actingAs($admin)->getJson('/api/v1/users?role=agent_circuit_courrier')
             ->assertOk()->assertJsonCount(1, 'data');
