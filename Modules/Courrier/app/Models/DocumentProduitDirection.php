@@ -40,6 +40,7 @@ class DocumentProduitDirection extends Model
         return $this->belongsTo(TraitementDirection::class, 'traitement_direction_id');
     }
 
+    /** @return BelongsTo<Courrier, $this> */
     public function courrier(): BelongsTo
     {
         return $this->belongsTo(Courrier::class);
