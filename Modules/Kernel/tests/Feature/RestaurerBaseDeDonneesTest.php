@@ -36,8 +36,8 @@ class RestaurerBaseDeDonneesTest extends TestCase
     protected function tearDown(): void
     {
         if ($this->peutCreerBase) {
-            $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_SOURCE);
-            $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_CIBLE);
+            $this->supprimerBaseJetable(self::DB_SOURCE);
+            $this->supprimerBaseJetable(self::DB_CIBLE);
         }
 
         // La connexion "pgsql" par défaut a pu être redirigée vers une base
@@ -65,8 +65,29 @@ class RestaurerBaseDeDonneesTest extends TestCase
         $this->pdoMaintenance()->exec($sql);
     }
 
+    private function exigerBaseJetable(string $base): void
+    {
+        if (! in_array($base, [self::DB_SOURCE, self::DB_CIBLE], true)) {
+            throw new \LogicException("« {$base} » n'est pas une base jetable de ce test : opération refusée.");
+        }
+    }
+
+    private function recreerBaseJetable(string $base): void
+    {
+        $this->supprimerBaseJetable($base);
+        $this->executerSurMaintenance('CREATE DATABASE '.$base);
+    }
+
+    private function supprimerBaseJetable(string $base): void
+    {
+        $this->exigerBaseJetable($base);
+        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.$base);
+    }
+
     private function pdo(string $base): PDO
     {
+        $this->exigerBaseJetable($base);
+
         return new PDO(
             "pgsql:host={$this->configOriginal['host']};port={$this->configOriginal['port']};dbname={$base}",
             $this->configOriginal['username'],
@@ -82,6 +103,7 @@ class RestaurerBaseDeDonneesTest extends TestCase
      */
     private function pointerVers(string $base): void
     {
+        $this->exigerBaseJetable($base);
         config(['database.connections.pgsql.database' => $base]);
     }
 
@@ -107,8 +129,7 @@ class RestaurerBaseDeDonneesTest extends TestCase
         Storage::fake('backups-local');
         config(['backup.disk' => 'backups-local']);
 
-        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_SOURCE);
-        $this->executerSurMaintenance('CREATE DATABASE '.self::DB_SOURCE);
+        $this->recreerBaseJetable(self::DB_SOURCE);
 
         $this->pdo(self::DB_SOURCE)->exec(
             'CREATE TABLE marqueur (id serial primary key, valeur text not null)'
@@ -126,8 +147,7 @@ class RestaurerBaseDeDonneesTest extends TestCase
         // Restauration vers une base cible différente et vide : le
         // scénario réel (nouveau serveur, ou base perdue après incident),
         // pas une simple relecture de la base source encore intacte.
-        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_CIBLE);
-        $this->executerSurMaintenance('CREATE DATABASE '.self::DB_CIBLE);
+        $this->recreerBaseJetable(self::DB_CIBLE);
         $this->pointerVers(self::DB_CIBLE);
 
         $this->artisan('kernel:restaurer-base-de-donnees', [
@@ -149,8 +169,7 @@ class RestaurerBaseDeDonneesTest extends TestCase
         Storage::fake('backups-local');
         config(['backup.disk' => 'backups-local']);
 
-        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_SOURCE);
-        $this->executerSurMaintenance('CREATE DATABASE '.self::DB_SOURCE);
+        $this->recreerBaseJetable(self::DB_SOURCE);
         $this->pdo(self::DB_SOURCE)->exec('CREATE TABLE marqueur (id serial primary key, valeur text not null)');
         $this->pdo(self::DB_SOURCE)->exec("INSERT INTO marqueur (valeur) VALUES ('la-plus-recente')");
 
@@ -161,14 +180,38 @@ class RestaurerBaseDeDonneesTest extends TestCase
         $this->pointerVers(self::DB_SOURCE);
         $this->artisan('kernel:sauvegarder-base-de-donnees')->assertSuccessful();
 
-        $this->executerSurMaintenance('DROP DATABASE IF EXISTS '.self::DB_CIBLE);
-        $this->executerSurMaintenance('CREATE DATABASE '.self::DB_CIBLE);
+        $this->recreerBaseJetable(self::DB_CIBLE);
         $this->pointerVers(self::DB_CIBLE);
 
         $this->artisan('kernel:restaurer-base-de-donnees', ['--force' => true])->assertSuccessful();
 
         $valeur = $this->pdo(self::DB_CIBLE)->query('SELECT valeur FROM marqueur')->fetchColumn();
         $this->assertSame('la-plus-recente', $valeur);
+    }
+
+    /**
+     * Ce test crée, écrase et supprime des bases : aucune autre base que ses deux bases jetables
+     * ne doit pouvoir être visée, même par erreur, quel que soit l'état du compte PostgreSQL.
+     */
+    public function test_aucune_base_hors_des_deux_bases_jetables_ne_peut_etre_visee(): void
+    {
+        foreach (['ont', 'ont_testing', 'ont_repetition_finale', 'ont_verif_restauration_hebdo', 'systeme_ont', 'fpt_ont', 'gestage_ont', 'postgres', ''] as $base) {
+            foreach ([
+                fn () => $this->pointerVers($base),
+                fn () => $this->recreerBaseJetable($base),
+                fn () => $this->supprimerBaseJetable($base),
+                fn () => $this->pdo($base),
+            ] as $action) {
+                try {
+                    $action();
+                    $this->fail("La base « {$base} » n'aurait jamais dû pouvoir être visée.");
+                } catch (\LogicException $e) {
+                    $this->assertStringContainsString('base jetable', $e->getMessage());
+                }
+            }
+        }
+
+        $this->assertSame($this->configOriginal['database'], config('database.connections.pgsql.database'));
     }
 
     public function test_la_restauration_est_refusee_sans_confirmation_ni_option_force(): void
