@@ -62,4 +62,4 @@ jobs:
         run: php artisan migrate --force
 
       - name: Tests
-        run: php artisan test
+        run: bash scripts/controle-stockage-tests.sh
