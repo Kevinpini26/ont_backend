@@ -4,6 +4,7 @@ namespace Modules\Kernel\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CourrierAnnotationService;
 use Modules\Courrier\Support\CourriersNonTraites;
@@ -29,7 +30,14 @@ class NotificationCompteurController extends Controller
 
             $recusQuery = Courrier::query()
                 ->where('direction_destination_id', $user->direction_id);
-            $nonConsultes = (clone $recusQuery)->when($depuis, fn ($q) => $q->where('created_at', '>', $depuis))->count();
+            // Un courrier arrive à la direction au dispatch exécuté, pas à sa création à la Réception.
+            // Les anciens dossiers sans cette transition gardent leur date de création.
+            $nonConsultes = (clone $recusQuery)->when($depuis, fn ($q) => $q->where(fn ($recu) => $recu
+                ->whereHas('transitions', fn ($t) => $t->where('statut', CourrierStatut::DISPATCH_EXECUTE)->where('created_at', '>', $depuis))
+                ->orWhere(fn ($ancien) => $ancien
+                    ->whereDoesntHave('transitions', fn ($t) => $t->where('statut', CourrierStatut::DISPATCH_EXECUTE))
+                    ->where('created_at', '>', $depuis))))
+                ->count();
 
             // Même seuil que CourrierStatistiqueController::pourDirection()
             // ('courriers_recus_non_traites_48h') : rouge réservé au cas

@@ -7,6 +7,7 @@ use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Models\Consultation;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
 use Modules\Stagiaires\Enums\StagiaireStatut;
@@ -45,6 +46,22 @@ class NotificationCompteurTest extends TestCase
             ->getJson('/api/v1/notifications/compteurs')
             ->assertOk()
             ->assertJsonPath('courriers_recus.tone', 'danger');
+    }
+
+    public function test_un_courrier_cree_avant_la_consultation_mais_dispatche_apres_compte_comme_recu(): void
+    {
+        $direction = Direction::factory()->create();
+        $responsable = User::factory()->responsableDirection($direction)->create();
+
+        // Créé il y a 3 jours à la Réception, remis à la direction (dispatch exécuté) il y a 1 heure.
+        $courrier = Courrier::factory()->create(['direction_destination_id' => $direction->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE, 'created_at' => now()->subDays(3)]);
+        CourrierTransition::query()->create(['courrier_id' => $courrier->id, 'statut' => CourrierStatut::DISPATCH_EXECUTE, 'created_at' => now()->subHour()]);
+        Consultation::query()->create(['user_id' => $responsable->id, 'cle' => 'courriers_recus', 'consulte_at' => now()->subDay()]);
+
+        $this->actingAs($responsable)
+            ->getJson('/api/v1/notifications/compteurs')
+            ->assertOk()
+            ->assertJsonPath('courriers_recus.count', 1);
     }
 
     public function test_marquer_consulte_ramene_le_compteur_a_zero_pour_les_elements_deja_vus(): void
