@@ -277,7 +277,8 @@ class CourrierResource extends JsonResource
             ] : null),
             'pieces_jointes' => $this->when(
                 $peutConsulterContenu && $this->relationLoaded('piecesJointes'),
-                fn () => $this->piecesJointes->map(fn ($piece) => [
+                // La pièce principale a déjà son propre bouton (piece_jointe_disponible) : pas en double ici.
+                fn () => $this->piecesJointes->reject(fn ($piece) => $piece->chemin === $this->piece_jointe_chemin)->values()->map(fn ($piece) => [
                     'id' => $piece->id,
                     'libelle' => $piece->libelle,
                     'type_mime' => $piece->type_mime,

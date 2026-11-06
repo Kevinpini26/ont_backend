@@ -42,6 +42,27 @@ class PiecesJointesCourrierTest extends CourrierTestCase
         }
     }
 
+    public function test_la_piece_principale_napparait_pas_une_seconde_fois_parmi_les_annexes(): void
+    {
+        Storage::fake('local');
+        $direction = Direction::factory()->create();
+        $reception = $this->agent(Poste::RECEPTION, $direction);
+
+        $response = $this->actingAs($reception)->post('/api/v1/courriers', [
+            'objet' => 'Correspondance avec une annexe',
+            'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
+            'expediteur_externe_nom' => 'Partenaire',
+            'mode_reception' => 'porteur',
+            'piece_jointe' => UploadedFile::fake()->create('lettre.pdf', 100, 'application/pdf'),
+            'pieces_jointes' => [UploadedFile::fake()->create('annexe1.pdf', 50, 'application/pdf')],
+        ])->assertCreated();
+
+        $fiche = $this->actingAs($reception)->getJson('/api/v1/courriers/'.$response->json('data.id'))->assertOk();
+
+        $this->assertTrue($fiche->json('data.piece_jointe_disponible'));
+        $this->assertSame(['Annexe 1'], collect($fiche->json('data.pieces_jointes'))->pluck('libelle')->all());
+    }
+
     public function test_les_annexes_supplementaires_sont_facultatives(): void
     {
         Storage::fake('local');
