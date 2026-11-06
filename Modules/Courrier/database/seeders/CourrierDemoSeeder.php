@@ -4,6 +4,7 @@ namespace Modules\Courrier\Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Modules\Courrier\Enums\AvisDg;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
@@ -102,7 +103,7 @@ class CourrierDemoSeeder extends Seeder
     private function creer(CourrierCircuitService $circuit, User $reception, Direction $direction, string $objet, string $cle): Courrier
     {
         $chemin = "courriers/demo-{$cle}.pdf";
-        Storage::disk('local')->put($chemin, '%PDF-1.4 — pièce jointe de démonstration.');
+        Storage::disk('local')->put($chemin, self::pdfDeDemonstration($objet));
 
         return $circuit->creer($reception, [
             'objet' => $objet,
@@ -110,5 +111,35 @@ class CourrierDemoSeeder extends Seeder
             'direction_destination_id' => $direction->id,
             'piece_jointe_chemin' => $chemin,
         ]);
+    }
+
+    /**
+     * Petit PDF valide (une page, du texte) : un lecteur PDF doit pouvoir ouvrir la pièce de démonstration.
+     * Les accents sont retirés, car la police standard Helvetica n'est pas encodée en UTF-8.
+     */
+    public static function pdfDeDemonstration(string $titre): string
+    {
+        $ascii = static fn (string $texte): string => str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], Str::ascii($texte));
+        $flux = 'BT /F1 16 Tf 72 760 Td ('.$ascii($titre).') Tj 0 -28 Td /F1 11 Tf (Piece jointe de demonstration - ONT) Tj ET';
+        $objets = [
+            '<< /Type /Catalog /Pages 2 0 R >>',
+            '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+            '<< /Length '.strlen($flux)." >>\nstream\n".$flux."\nendstream",
+            '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        ];
+        $pdf = "%PDF-1.4\n";
+        $positions = [];
+        foreach ($objets as $index => $objet) {
+            $positions[] = strlen($pdf);
+            $pdf .= ($index + 1)." 0 obj\n".$objet."\nendobj\n";
+        }
+        $xref = strlen($pdf);
+        $pdf .= 'xref'."\n0 ".(count($objets) + 1)."\n0000000000 65535 f \n";
+        foreach ($positions as $position) {
+            $pdf .= sprintf("%010d 00000 n \n", $position);
+        }
+
+        return $pdf.'trailer'."\n<< /Size ".(count($objets) + 1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF\n";
     }
 }
