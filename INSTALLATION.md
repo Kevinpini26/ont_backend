@@ -147,10 +147,38 @@ docker compose exec backend php artisan kernel:restaurer-base-de-donnees databas
 jour à 3h30 (`kernel:sauvegarder-fichiers`) dans `fichiers/` sur le même disque de sauvegarde.
 Une base restaurée sans ses fichiers est inutilisable : restaurez toujours les deux, de la même nuit.
 
-```bash
-# Restaurer les fichiers (après avoir récupéré l'archive depuis le disque de sauvegarde) :
-docker compose exec backend tar -xzf /chemin/ont-fichiers-AAAA-MM-JJ_HHMMSS.tar.gz -C storage/app/private
+**Restaurer les fichiers.** Il n'existe pas de commande dédiée : suivez exactement cette procédure.
+
+1. Arrêtez l'application et les workers, pour que personne n'écrive pendant la restauration.
+2. Récupérez l'archive depuis le disque de sauvegarde (`fichiers/` sur le disque `BACKUP_DISK`).
+3. Ouvrez un terminal avec le compte de l'application : `docker compose exec backend sh`.
+4. Adaptez les lignes `ARCHIVE` et `STOCKAGE`, puis exécutez le bloc suivant :
+
+<!-- debut-procedure-restauration-fichiers -->
+```sh
+set -e
+ARCHIVE=/chemin/ont-fichiers-AAAA-MM-JJ_HHMMSS.tar.gz
+STOCKAGE=/var/www/html/storage/app/private
+
+tar -tzf "$ARCHIVE" > /dev/null
+NOUVEAU=$(mktemp -d "$STOCKAGE.restauration.XXXXXX")
+tar -xzf "$ARCHIVE" -C "$NOUVEAU"
+(cd "$NOUVEAU" && find . -type f -exec sha256sum {} + | sort -k2) > "$NOUVEAU.sha256"
+if [ -d "$STOCKAGE" ]; then
+  mv "$STOCKAGE" "$STOCKAGE.avant-restauration-$(date +%Y%m%d%H%M%S)"
+fi
+mv "$NOUVEAU" "$STOCKAGE"
+(cd "$STOCKAGE" && sha256sum -c "$NOUVEAU.sha256" > /dev/null)
+echo "Restauration réussie : $(wc -l < "$NOUVEAU.sha256") fichiers contrôlés."
 ```
+<!-- fin-procedure-restauration-fichiers -->
+
+Le dossier présent avant l'opération n'est jamais effacé : il est conservé sous le nom
+`private.avant-restauration-…`. Supprimez-le vous-même une fois l'application contrôlée. Le bloc
+s'arrête à la première erreur, sans avoir touché au dossier actuel si l'archive est illisible.
+
+5. Si vous disposez d'une liste d'empreintes faite avant l'incident, comparez-la au fichier
+   `….sha256` : c'est la seule preuve que le contenu n'a pas changé depuis la sauvegarde.
 
 **Vérifier qu'une sauvegarde est réellement restaurable** (automatique chaque dimanche à 5h, ou à la
 demande). La sauvegarde la plus récente est restaurée dans une base **jetable**, contrôlée, puis
