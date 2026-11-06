@@ -31,4 +31,10 @@ done
 export DB_DATABASE="$base" LARAVEL_STORAGE_PATH="$cible" APP_ENV=local MAIL_MAILER=log QUEUE_CONNECTION=sync
 # server.php sert le dossier courant : il faut démarrer depuis public/.
 cd public
-exec php -d variables_order=EGPCS -S 127.0.0.1:"${PORT:-8010}" ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+# Mêmes limites d'envoi qu'en production (docker/php/ont-limites.ini).
+limites=()
+while IFS= read -r ligne; do
+    limites+=(-d "${ligne// /}")
+done < <(grep -E '^[a-z_]+ *=' ../docker/php/ont-limites.ini)
+[ "${#limites[@]}" -gt 0 ] || arret "limites d'envoi introuvables."
+exec php "${limites[@]}" -d variables_order=EGPCS -S 127.0.0.1:"${PORT:-8010}" ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
