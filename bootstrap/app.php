@@ -4,6 +4,7 @@ use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
 use Modules\Kernel\Http\Middleware\ConfigurerProxysDeConfiance;
 use Modules\Kernel\Http\Middleware\EnsureMotDePasseAJour;
@@ -51,6 +52,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        $exceptions->render(fn (PostTooLargeException $e, Request $request) => $request->is('api/*')
+            ? response()->json(['message' => 'Le fichier envoyé est trop volumineux.'], 413)
+            : null);
 
         // Voir SecurityHeaders::appliquer() : seul point qui couvre aussi
         // bien les réponses normales que les erreurs.
