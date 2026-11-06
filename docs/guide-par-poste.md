@@ -91,10 +91,13 @@ archivage.
 
 - « Mes missions » : rédigez le projet de réponse demandé, joignez le document, puis
   soumettez-le à la relecture.
-- « À relire » : relisez le travail de l'autre assistant. Vous ne pouvez jamais valider votre
+- « À relire » (Assistant 1 et Assistant 2 seulement) : relisez le travail de l'autre assistant. Vous ne pouvez jamais valider votre
   propre rédaction. Vous pouvez valider ou demander une correction, avec un commentaire.
 
 Après votre validation, le projet part à la DG. Il est signé, scanné, puis envoyé par SEC2.
+
+**Assistant DGA :** vous préparez les réponses que le DGA vous confie depuis « Mes missions ».
+Vous n'avez pas de menu « À relire » : la relecture se fait entre l'Assistant 1 et l'Assistant 2.
 
 ## Secrétariat de direction
 
