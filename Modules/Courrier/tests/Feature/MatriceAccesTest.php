@@ -102,6 +102,21 @@ class MatriceAccesTest extends CourrierTestCase
         $this->actingAs($dga)->get('/api/v1/courriers/registre'.$this->periode())->assertOk();
     }
 
+    // Relevé du lot 5 : l'Espace DG du DGA en intérim appelait les statistiques stagiaires (403).
+    public function test_b_le_dga_en_interim_ouvre_tout_lespace_dg(): void
+    {
+        $dga = $this->poste(Poste::DGA);
+        $dg = $this->poste(Poste::DG);
+
+        $this->actingAs($dga)->getJson('/api/v1/stagiaires/statistiques')->assertForbidden();
+
+        DgInterim::query()->create(['dg_titulaire_id' => $dg->id, 'dga_interimaire_id' => $dga->id, 'motif' => 'Mission', 'started_at' => now()->subHour(), 'started_by_id' => $dg->id]);
+
+        foreach (['/api/v1/courriers/statistiques-dg', '/api/v1/stagiaires/statistiques', '/api/v1/stagiaires/alertes'] as $url) {
+            $this->actingAs($dga)->getJson($url)->assertOk();
+        }
+    }
+
     // C : l'administrateur n'a plus les vues métier.
     public function test_c_ladministrateur_na_ni_statistiques_ni_registre_ni_tableau_dg_ni_justesse(): void
     {

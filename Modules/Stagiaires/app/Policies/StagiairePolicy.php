@@ -5,13 +5,17 @@ namespace Modules\Stagiaires\Policies;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\DgAuthorityResolver;
 use Modules\Stagiaires\Enums\DocumentType;
 use Modules\Stagiaires\Models\Stagiaire;
 use Modules\Stagiaires\Support\VisibiliteStagiairePourCircuitCourrier;
 
 class StagiairePolicy
 {
-    public function __construct(private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier) {}
+    public function __construct(
+        private readonly VisibiliteStagiairePourCircuitCourrier $visibiliteCircuitCourrier,
+        private readonly DgAuthorityResolver $autoriteDg,
+    ) {}
 
     /**
      * Filtre grossier (qui a le droit de lister des stagiaires, pas
@@ -221,6 +225,8 @@ class StagiairePolicy
         return $user->role === UserRole::AGENT_DFP
             || $user->role === UserRole::ADMINISTRATEUR
             || ($user->role === UserRole::AGENT_CIRCUIT_COURRIER && $user->poste === Poste::DG)
+            // Le DGA en intérim (ou par délégation officielle) ouvre tout l'Espace DG, qui affiche ces statistiques.
+            || $this->autoriteDg->estAutorite($user)
             || $user->role->estDirecteurDirection();
     }
 
