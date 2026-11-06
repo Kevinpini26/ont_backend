@@ -238,7 +238,9 @@ class RestaurerBaseDeDonneesTest extends TestCase
         Process::fake(function ($process) {
             $commande = (array) $process->command;
             if (($commande[0] ?? null) === 'gzip' && in_array('-df', $commande, true)) {
+                // Comme le vrai gzip -d : l'archive est remplacée par son contenu décompressé.
                 file_put_contents(substr(end($commande), 0, -3), 'select 1;');
+                unlink(end($commande));
             }
 
             return Process::result(exitCode: ($commande[0] ?? null) === 'psql' ? 3 : 0);
@@ -248,5 +250,6 @@ class RestaurerBaseDeDonneesTest extends TestCase
 
         Process::assertRan(fn ($p) => ($p->command[0] ?? null) === 'psql' && in_array('ON_ERROR_STOP=1', $p->command, true));
         Process::assertDidntRun(fn ($p) => ($p->command[0] ?? null) === 'sh');
+        $this->assertFileDoesNotExist(storage_path('app/tmp-restore-ont-2026-11-05_030000.sql.gz'), 'Le test ne laisse aucun fichier temporaire.');
     }
 }
