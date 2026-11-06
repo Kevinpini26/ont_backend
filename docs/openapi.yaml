@@ -6,9 +6,10 @@ info:
     API REST du Système d'information de l'Office National du Tourisme
     (RDC) : circuit courrier interne et cycle de vie des stagiaires.
 
-    Cette spécification couvre les quatre modules (Kernel, Courrier,
-    Stagiaires, Public) avec, pour chaque module, les points d'entrée
-    principaux détaillés en exemple. Les nombreuses actions de transition
+    Cette spécification couvre toutes les routes des quatre modules (Kernel,
+    Courrier, Stagiaires, Public) ; un test le vérifie. Les points d'entrée
+    principaux sont détaillés, les autres décrivent méthode, chemin, paramètres
+    et droits. Les nombreuses actions de transition
     du circuit courrier et du cycle de vie stagiaire (`/courriers/{id}/...`,
     `/stagiaires/{id}/...`) suivent toutes le même schéma documenté une fois
     ci-dessous : `POST` sans corps ou avec un corps propre à l'action,
@@ -1054,6 +1055,35 @@ paths:
         '422': { $ref: '#/components/responses/ErreurValidation' }
 
   /directions/{direction}:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /directions/{direction}"
+      x-controleur: "DirectionController@show"
+      parameters:
+        - { name: direction, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    patch:
+      tags: [Comptes]
+      summary: "Modifier /directions/{direction}"
+      x-controleur: "DirectionController@update"
+      description: "Réservé à : administrateur."
+      parameters:
+        - { name: direction, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    delete:
+      tags: [Comptes]
+      summary: "Retirer /directions/{direction}"
+      x-controleur: "DirectionController@destroy"
+      description: "Réservé à : administrateur."
+      parameters:
+        - { name: direction, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
     put:
       tags: [Administration]
       summary: Modifier une direction (code, nom, actif, opérationnelle, capacité, site)
@@ -1092,6 +1122,16 @@ paths:
         '422': { $ref: '#/components/responses/ErreurValidation' }
 
   /users/{user}:
+    patch:
+      tags: [Comptes]
+      summary: "Modifier /users/{user}"
+      x-controleur: "UserController@update"
+      description: "Réservé à : administrateur."
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
     get:
       tags: [Administration]
       summary: Fiche d'un compte (dernière connexion, sessions actives, détail)
@@ -1184,3 +1224,1815 @@ paths:
       responses:
         '200': { description: OK, paginé. }
         '403': { $ref: '#/components/responses/NonAutorise' }
+
+  # Entrées générées depuis la table des routes (lot 5) : méthode, chemin, paramètres et droits exacts.
+  /admin/stagiaires/import-historique:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /admin/stagiaires/import-historique"
+      x-controleur: "ImportHistoriqueController@importer"
+      description: "Réservé à : administrateur."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /agents-circuit-courrier:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /agents-circuit-courrier"
+      x-controleur: "AgentCircuitCourrierController@index"
+      description: "Réservé aux postes qui désignent un relecteur ou un assistant : DG (intérim compris), DGA, SEC1, assistants, directeurs de direction, et l'administrateur pour la gestion de l'intérim."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /archives/annuelle:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /archives/annuelle"
+      x-controleur: "ArchiveAnnuelleController@telecharger"
+      description: "DFP et administrateur : rapport annuel des stages seul. Les registres du courrier n'y figurent que pour un poste qui a droit au registre."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /bordereaux-lot:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /bordereaux-lot"
+      x-controleur: "BordereauLotController@store"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /bordereaux-lot/{bordereau}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /bordereaux-lot/{bordereau}"
+      x-controleur: "BordereauLotController@show"
+      parameters:
+        - { name: bordereau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /bordereaux-lot/{bordereau}/accuser-reception:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /bordereaux-lot/{bordereau}/accuser-reception"
+      x-controleur: "BordereauLotController@accuserReception"
+      parameters:
+        - { name: bordereau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /bordereaux-lot/{bordereau}/pdf:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /bordereaux-lot/{bordereau}/pdf"
+      x-controleur: "BordereauLotController@telechargerPdf"
+      parameters:
+        - { name: bordereau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /classements-documents:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /classements-documents"
+      x-controleur: "ClassementDocumentController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /classements-documents/{classement}/archiver:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /classements-documents/{classement}/archiver"
+      x-controleur: "ClassementDocumentController@archiver"
+      parameters:
+        - { name: classement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /classements-documents/{classement}/corriger:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /classements-documents/{classement}/corriger"
+      x-controleur: "ClassementDocumentController@corriger"
+      parameters:
+        - { name: classement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/a-numeriser:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/a-numeriser"
+      x-controleur: "CourrierRattrapageNumerisationController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/en-souffrance:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/en-souffrance"
+      x-controleur: "CourrierEnSouffranceController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/export:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/export"
+      x-controleur: "CourrierController@export"
+      description: "Même filtrage que la liste. Objet confidentiel masqué, sauf pour la DG et SEC2, et toujours pour l'administrateur."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/feuilles-couverture-lot:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/feuilles-couverture-lot"
+      x-controleur: "CourrierController@feuilleCouvertureLot"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/initier-dg:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/initier-dg"
+      x-controleur: "CourrierController@initierParDg"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/initier-sortant:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/initier-sortant"
+      x-controleur: "CourrierController@initierSortant"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/justesse-tri:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/justesse-tri"
+      x-controleur: "CourrierStatistiqueController@justesseTri"
+      description: "SEC1 : taux global seul (par_agent vide). DG : détail par agent. Fermé à l'administrateur."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/originaux-empruntes:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/originaux-empruntes"
+      x-controleur: "EmpruntOriginalController@index"
+      description: "Mêmes droits que /courriers/statistiques."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/registre:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/registre"
+      x-controleur: "RegistreCourrierController@telecharger"
+      description: "Mêmes droits que /courriers/statistiques. Registre d'arrivée sur le numéro d'enregistrement ; objet des courriers confidentiels ou secrets masqué, sauf pour la DG et SEC2."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/statistiques:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/statistiques"
+      x-controleur: "CourrierStatistiqueController@index"
+      description: "Réservé aux postes qui gèrent le circuit (Réception, SEC1, SEC2) et à la DG, intérim et délégation officielle compris. Fermé aux assistants, au DGA hors intérim et à l'administrateur (matrice d'accès, lot 2)."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/statistiques-dg:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/statistiques-dg"
+      x-controleur: "CourrierStatistiqueController@dg"
+      description: "Réservé à l'autorité DG (titulaire ou intérim). Fermé à l'administrateur."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/statistiques-direction:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/statistiques-direction"
+      x-controleur: "CourrierStatistiqueController@pourDirection"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/annuler:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/annuler"
+      x-controleur: "CourrierController@annuler"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/confier-au-dga:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/confier-au-dga"
+      x-controleur: "CourrierController@confierAuDga"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/confirmer-remise-physique:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/confirmer-remise-physique"
+      x-controleur: "CourrierController@confirmerRemisePhysique"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/copies:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/copies"
+      x-controleur: "CourrierController@ajouterCopies"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/demander-preparation-reponse:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/demander-preparation-reponse"
+      x-controleur: "MissionDocumentaireController@demanderPreparationReponse"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/dispatcher-direction:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/dispatcher-direction"
+      x-controleur: "CourrierController@dispatcherVersDirection"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/dispatchs:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/dispatchs"
+      x-controleur: "DispatchCourrierController@index"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/dispatchs"
+      x-controleur: "DispatchCourrierController@store"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/enregistrer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/enregistrer"
+      x-controleur: "CourrierController@enregistrer"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/enregistrer-remise:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/enregistrer-remise"
+      x-controleur: "CourrierController@enregistrerRemise"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/envoyer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/envoyer"
+      x-controleur: "CourrierController@envoyer"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/envoyer-par-courriel:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/envoyer-par-courriel"
+      x-controleur: "CourrierController@envoyerParCourriel"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/feuille-couverture:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/feuille-couverture"
+      x-controleur: "CourrierController@feuilleCouverture"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/imprimer:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/imprimer"
+      x-controleur: "CourrierController@imprimer"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/imputer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/imputer"
+      x-controleur: "CourrierController@imputer"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/initier-reponse:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/initier-reponse"
+      x-controleur: "CourrierController@initierReponse"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/jeton-capture:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/jeton-capture"
+      x-controleur: "CourrierController@genererJetonCapture"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/lettre-stage:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/lettre-stage"
+      x-controleur: "CourrierController@telechargerLettreStage"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/missions:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/missions"
+      x-controleur: "MissionDocumentaireController@index"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/missions"
+      x-controleur: "MissionDocumentaireController@store"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/mode-sortie:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/mode-sortie"
+      x-controleur: "CourrierController@choisirModeSortie"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/numerisations/{document}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/numerisations/{document}"
+      x-controleur: "CourrierController@telechargerNumerisation"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/pdf:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/pdf"
+      x-controleur: "CourrierController@telechargerPdf"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/pdf-a-signer:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/pdf-a-signer"
+      x-controleur: "CourrierController@telechargerPdfASigner"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/piece-jointe:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/piece-jointe"
+      x-controleur: "CourrierController@telechargerPieceJointe"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/pieces-jointes/{piece}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/pieces-jointes/{piece}"
+      x-controleur: "CourrierController@telechargerPiece"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+        - { name: piece, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/pieces/{piece}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/pieces/{piece}"
+      x-controleur: "CourrierController@telechargerPieceCandidat"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+        - { name: piece, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/relations:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /courriers/{courrier}/relations"
+      x-controleur: "DossierController@relations"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/rendre-avis:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/rendre-avis"
+      x-controleur: "CourrierController@rendreAvis"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/rendre-disponible-retrait:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/rendre-disponible-retrait"
+      x-controleur: "CourrierController@rendreDisponiblePourRetrait"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/renvoyer-au-tri:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/renvoyer-au-tri"
+      x-controleur: "CourrierController@renvoyerAuTri"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/renvoyer-pour-correction:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/renvoyer-pour-correction"
+      x-controleur: "CourrierController@renvoyerPourCorrection"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/reprendre-du-dga:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/reprendre-du-dga"
+      x-controleur: "CourrierController@reprendreDuDga"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/reprendre-suspension:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/reprendre-suspension"
+      x-controleur: "CourrierController@reprendreSuspension"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/requalifier-urgence:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/requalifier-urgence"
+      x-controleur: "CourrierController@requalifierUrgence"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/retourner-au-dg:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/retourner-au-dg"
+      x-controleur: "CourrierController@retournerAuDg"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/scan-signe:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/scan-signe"
+      x-controleur: "CourrierController@televerserScanSigne"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/signer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/signer"
+      x-controleur: "CourrierController@signer"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/soumettre-projet-reponse:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/soumettre-projet-reponse"
+      x-controleur: "CourrierController@soumettreProjetReponse"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/suspendre:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/suspendre"
+      x-controleur: "CourrierController@suspendre"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/transmettre-avis-dg:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/transmettre-avis-dg"
+      x-controleur: "CourrierController@transmettreAvisDg"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/transmettre-depuis-classeur:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/transmettre-depuis-classeur"
+      x-controleur: "CourrierController@transmettreDepuisClasseur"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/transmettre-sec1:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/transmettre-sec1"
+      x-controleur: "CourrierController@transmettreSec1"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/transmettre-tri:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/transmettre-tri"
+      x-controleur: "CourrierController@transmettreTri"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/valider-avant-diffusion:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/valider-avant-diffusion"
+      x-controleur: "CourrierController@validerAvantDiffusion"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/valider-pour-signature:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/valider-pour-signature"
+      x-controleur: "CourrierController@validerPourSignature"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/valider-relecture:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /courriers/{courrier}/valider-relecture"
+      x-controleur: "CourrierController@validerRelecture"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /delegations-poste:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /delegations-poste"
+      x-controleur: "DelegationPosteController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /delegations-poste"
+      x-controleur: "DelegationPosteController@store"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /delegations-poste/{delegation}/revoquer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /delegations-poste/{delegation}/revoquer"
+      x-controleur: "DelegationPosteController@revoquer"
+      parameters:
+        - { name: delegation, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dg-disponibilite:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /dg-disponibilite"
+      x-controleur: "DgDisponibiliteController@show"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /dg-disponibilite"
+      x-controleur: "DgDisponibiliteController@update"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dg-interims:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /dg-interims"
+      x-controleur: "DgDisponibiliteController@historique"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /directions:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /directions"
+      x-controleur: "DirectionController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /directions"
+      x-controleur: "DirectionController@store"
+      description: "Réservé à : administrateur."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/boite-direction:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /dispatchs/boite-direction"
+      x-controleur: "DispatchCourrierController@boiteDirection"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/centre:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /dispatchs/centre"
+      x-controleur: "DispatchCourrierController@centre"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/{dispatch}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /dispatchs/{dispatch}"
+      x-controleur: "DispatchCourrierController@show"
+      parameters:
+        - { name: dispatch, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/{dispatch}/accuser-reception:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /dispatchs/{dispatch}/accuser-reception"
+      x-controleur: "DispatchCourrierController@accuserReception"
+      parameters:
+        - { name: dispatch, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/{dispatch}/classer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /dispatchs/{dispatch}/classer"
+      x-controleur: "ClassementDocumentController@classer"
+      parameters:
+        - { name: dispatch, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/{dispatch}/executer:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /dispatchs/{dispatch}/executer"
+      x-controleur: "DispatchCourrierController@executer"
+      parameters:
+        - { name: dispatch, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dispatchs/{dispatch}/scan-officiel:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /dispatchs/{dispatch}/scan-officiel"
+      x-controleur: "DispatchCourrierController@consulterScanAutonome"
+      parameters:
+        - { name: dispatch, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /docs/openapi.yaml:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /docs/openapi.yaml"
+      x-controleur: "DocumentationController@openapi"
+      security: []
+      responses:
+        '200': { description: OK }
+  /documents-produits-direction:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction"
+      x-controleur: "DocumentProduitDirectionController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/autonomes:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/autonomes"
+      x-controleur: "DocumentProduitDirectionController@storeAutonome"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/autonomes-dg:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/autonomes-dg"
+      x-controleur: "DocumentProduitDirectionController@autonomesEnAttenteDg"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/autonomes-sec1:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/autonomes-sec1"
+      x-controleur: "DocumentProduitDirectionController@autonomesAcceptesSec1"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/transmis-reception/autonomes:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/transmis-reception/autonomes"
+      x-controleur: "DocumentProduitDirectionController@autonomesTransmisReception"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/{document}"
+      x-controleur: "DocumentProduitDirectionController@show"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/accepter-reception:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/accepter-reception"
+      x-controleur: "DocumentProduitDirectionController@accepterReceptionAutonome"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/brouillon:
+    patch:
+      tags: [Courrier]
+      summary: "Modifier /documents-produits-direction/{document}/brouillon"
+      x-controleur: "DocumentProduitDirectionController@modifierBrouillon"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/controle-dg:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/{document}/controle-dg"
+      x-controleur: "DocumentProduitDirectionController@etatAutonomeDg"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/controle-reception:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/{document}/controle-reception"
+      x-controleur: "DocumentProduitDirectionController@etatControleReception"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/controle-sec1:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/{document}/controle-sec1"
+      x-controleur: "DocumentProduitDirectionController@etatSec1"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/decision-dg:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/decision-dg"
+      x-controleur: "DocumentProduitDirectionController@deciderAutonomeDg"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/demander-correction:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/demander-correction"
+      x-controleur: "DocumentProduitDirectionController@correction"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/demander-correction-reception:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/demander-correction-reception"
+      x-controleur: "DocumentProduitDirectionController@demanderCorrectionReceptionAutonome"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/pdf-officiel:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/{document}/pdf-officiel"
+      x-controleur: "DocumentProduitDirectionController@telechargerPdfOfficiel"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/prendre-en-charge-sec1:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/prendre-en-charge-sec1"
+      x-controleur: "DocumentProduitDirectionController@prendreEnChargeAutonomeSec1"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/recevoir:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/recevoir"
+      x-controleur: "DocumentProduitDirectionController@recevoir"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/scan-officiel:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /documents-produits-direction/{document}/scan-officiel"
+      x-controleur: "DocumentProduitDirectionController@consulterScanOfficiel"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/scan-officiel"
+      x-controleur: "DocumentProduitDirectionController@deposerScanOfficiel"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/soumettre:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/soumettre"
+      x-controleur: "DocumentProduitDirectionController@soumettre"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/transmettre-dg-sec1:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/transmettre-dg-sec1"
+      x-controleur: "DocumentProduitDirectionController@transmettreAutonomeDgDepuisSec1"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/transmettre-reception:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/transmettre-reception"
+      x-controleur: "DocumentProduitDirectionController@transmettreReception"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/{document}/valider:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /documents-produits-direction/{document}/valider"
+      x-controleur: "DocumentProduitDirectionController@valider"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dossiers/a-archiver:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /dossiers/a-archiver"
+      x-controleur: "ArchivageDossierController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dossiers/{dossier}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /dossiers/{dossier}"
+      x-controleur: "DossierController@show"
+      parameters:
+        - { name: dossier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dossiers/{dossier}/archiver:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /dossiers/{dossier}/archiver"
+      x-controleur: "ArchivageDossierController@archiver"
+      parameters:
+        - { name: dossier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /dossiers/{dossier}/decision-archivage:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /dossiers/{dossier}/decision-archivage"
+      x-controleur: "ArchivageDossierController@decider"
+      parameters:
+        - { name: dossier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /etablissements-formation:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /etablissements-formation"
+      x-controleur: "EtablissementFormationController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /etablissements-formation"
+      x-controleur: "EtablissementFormationController@store"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /instructions-courrier-dg:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /instructions-courrier-dg"
+      x-controleur: "InstructionCourrierDgController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /instructions-courrier-dg"
+      x-controleur: "InstructionCourrierDgController@store"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /instructions-courrier-dg/{instruction}:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /instructions-courrier-dg/{instruction}"
+      x-controleur: "InstructionCourrierDgController@show"
+      parameters:
+        - { name: instruction, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /instructions-courrier-dg/{instruction}/annuler:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /instructions-courrier-dg/{instruction}/annuler"
+      x-controleur: "InstructionCourrierDgController@annuler"
+      parameters:
+        - { name: instruction, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /missions-documentaires/mes-missions:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /missions-documentaires/mes-missions"
+      x-controleur: "MissionDocumentaireController@mesMissions"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /missions-documentaires/{mission}/annuler:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /missions-documentaires/{mission}/annuler"
+      x-controleur: "MissionDocumentaireController@annuler"
+      parameters:
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /missions-documentaires/{mission}/prendre-en-charge:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /missions-documentaires/{mission}/prendre-en-charge"
+      x-controleur: "MissionDocumentaireController@prendreEnCharge"
+      parameters:
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /missions-documentaires/{mission}/projet-reponse:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /missions-documentaires/{mission}/projet-reponse"
+      x-controleur: "MissionDocumentaireController@creerProjet"
+      parameters:
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    patch:
+      tags: [Courrier]
+      summary: "Modifier /missions-documentaires/{mission}/projet-reponse"
+      x-controleur: "MissionDocumentaireController@sauvegarderProjet"
+      parameters:
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /missions-documentaires/{mission}/projet-reponse/soumettre:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /missions-documentaires/{mission}/projet-reponse/soumettre"
+      x-controleur: "MissionDocumentaireController@soumettreProjet"
+      parameters:
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /missions-documentaires/{mission}/retourner:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /missions-documentaires/{mission}/retourner"
+      x-controleur: "MissionDocumentaireController@retourner"
+      parameters:
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /notifications:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /notifications"
+      x-controleur: "NotificationController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /notifications-diffusion/{notification}/renvoyer:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /notifications-diffusion/{notification}/renvoyer"
+      x-controleur: "NotificationDiffusionController@renvoyer"
+      parameters:
+        - { name: notification, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /notifications/compteurs:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /notifications/compteurs"
+      x-controleur: "NotificationCompteurController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /notifications/marquer-consulte:
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /notifications/marquer-consulte"
+      x-controleur: "NotificationCompteurController@marquerConsulte"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /notifications/marquer-toutes-lues:
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /notifications/marquer-toutes-lues"
+      x-controleur: "NotificationController@marquerToutesLues"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /notifications/{id}/marquer-lu:
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /notifications/{id}/marquer-lu"
+      x-controleur: "NotificationController@marquerLu"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /projets-reponse/a-relire:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /projets-reponse/a-relire"
+      x-controleur: "MissionDocumentaireController@projetsARevoir"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /public/capture/{token}:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/capture/{token}"
+      x-controleur: "CaptureNumerisationPublicController@show"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Public]
+      summary: "Exécuter /public/capture/{token}"
+      x-controleur: "CaptureNumerisationPublicController@soumettre"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/courriers-externes:
+    post:
+      tags: [Public]
+      summary: "Exécuter /public/courriers-externes"
+      x-controleur: "CourrierExternePublicController@store"
+      security: []
+      responses:
+        '200': { description: OK }
+  /public/disponibilite-demandes-stage:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/disponibilite-demandes-stage"
+      x-controleur: "DisponibiliteDemandesStagePublicController@show"
+      security: []
+      responses:
+        '200': { description: OK }
+  /public/liens/{token}:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/liens/{token}"
+      x-controleur: "LienPublicController@show"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/liens/{token}/convention.pdf:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/liens/{token}/convention.pdf"
+      x-controleur: "LienPublicController@telechargerConvention"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/liens/{token}/rapport-stage:
+    post:
+      tags: [Public]
+      summary: "Exécuter /public/liens/{token}/rapport-stage"
+      x-controleur: "LienPublicController@soumettreRapportStage"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/liens/{token}/retour:
+    post:
+      tags: [Public]
+      summary: "Exécuter /public/liens/{token}/retour"
+      x-controleur: "LienPublicController@soumettreRetour"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/liens/{token}/signer-convention:
+    post:
+      tags: [Public]
+      summary: "Exécuter /public/liens/{token}/signer-convention"
+      x-controleur: "LienPublicController@signerConvention"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/liens/{token}/signer-engagement-confidentialite:
+    post:
+      tags: [Public]
+      summary: "Exécuter /public/liens/{token}/signer-engagement-confidentialite"
+      x-controleur: "LienPublicController@signerEngagementConfidentialite"
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/mention-information:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/mention-information"
+      x-controleur: "MentionInformationController@show"
+      security: []
+      responses:
+        '200': { description: OK }
+  /public/reponses/{courrier}/pdf:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/reponses/{courrier}/pdf"
+      x-controleur: "ReponseCourrierPublicController@telecharger"
+      security: []
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+  /public/statistiques:
+    get:
+      tags: [Public]
+      summary: "Consulter /public/statistiques"
+      x-controleur: "StatistiquesPubliquesController@show"
+      security: []
+      responses:
+        '200': { description: OK }
+  /rapports/periodique:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /rapports/periodique"
+      x-controleur: "RapportPeriodiqueController@genererPdf"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /sites:
+    get:
+      tags: [Comptes]
+      summary: "Consulter /sites"
+      x-controleur: "SiteController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /sites"
+      x-controleur: "SiteController@store"
+      description: "Réservé à : administrateur."
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/alertes:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/alertes"
+      x-controleur: "StagiaireStatistiqueController@alertes"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/disponibilite-demandes:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/disponibilite-demandes"
+      x-controleur: "DisponibiliteDemandesStageController@show"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/disponibilite-demandes"
+      x-controleur: "DisponibiliteDemandesStageController@update"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/en-souffrance:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/en-souffrance"
+      x-controleur: "StagiaireEnSouffranceController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/export:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/export"
+      x-controleur: "StagiaireController@export"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/rapport-annuel:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/rapport-annuel"
+      x-controleur: "RapportAnnuelController@telecharger"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/statistiques:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/statistiques"
+      x-controleur: "StagiaireStatistiqueController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/convention/signer-direction:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/convention/signer-direction"
+      x-controleur: "StagiaireController@signerConventionDirection"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/convention/telecharger:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/{stagiaire}/convention/telecharger"
+      x-controleur: "StagiaireController@telechargerConvention"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/documents:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/{stagiaire}/documents"
+      x-controleur: "StagiaireDocumentController@index"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/documents"
+      x-controleur: "StagiaireDocumentController@store"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/evaluer-dfp:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/evaluer-dfp"
+      x-controleur: "StagiaireController@evaluerDfp"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/examiner-dossier:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/examiner-dossier"
+      x-controleur: "StagiaireController@examinerDossier"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/imprimer:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/{stagiaire}/imprimer"
+      x-controleur: "StagiaireController@imprimer"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/informations-complementaires:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/informations-complementaires"
+      x-controleur: "StagiaireController@definirInformationsComplementaires"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/jeton-capture:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/jeton-capture"
+      x-controleur: "StagiaireController@genererJetonCapture"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/modifier-dates:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/modifier-dates"
+      x-controleur: "StagiaireController@modifierDatesStage"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/notifications-diffusion:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/{stagiaire}/notifications-diffusion"
+      x-controleur: "NotificationDiffusionController@index"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/objectifs:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/objectifs"
+      x-controleur: "StagiaireController@definirObjectifs"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/ouvrir-periode-evaluation:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/ouvrir-periode-evaluation"
+      x-controleur: "StagiaireController@ouvrirPeriodeEvaluation"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/presences/{date}:
+    delete:
+      tags: [Stagiaires]
+      summary: "Retirer /stagiaires/{stagiaire}/presences/{date}"
+      x-controleur: "StagiairePresenceController@destroy"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+        - { name: date, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/prolonger:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/prolonger"
+      x-controleur: "StagiaireController@prolonger"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/reaffecter:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/reaffecter"
+      x-controleur: "StagiaireController@reaffecter"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/retour:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /stagiaires/{stagiaire}/retour"
+      x-controleur: "StagiaireController@retour"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/terminer-stage:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/terminer-stage"
+      x-controleur: "StagiaireController@terminerStage"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /stagiaires/{stagiaire}/valider-arrivee:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /stagiaires/{stagiaire}/valider-arrivee"
+      x-controleur: "StagiaireController@validerArrivee"
+      parameters:
+        - { name: stagiaire, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /tableaux-repartition"
+      x-controleur: "TableauRepartitionController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /tableaux-repartition"
+      x-controleur: "TableauRepartitionController@store"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/dossiers-eligibles:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /tableaux-repartition/dossiers-eligibles"
+      x-controleur: "TableauRepartitionController@dossiersEligibles"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/motifs-non-retenu:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /tableaux-repartition/motifs-non-retenu"
+      x-controleur: "TableauRepartitionController@motifsNonRetenu"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /tableaux-repartition/{tableau}"
+      x-controleur: "TableauRepartitionController@show"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/lignes:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /tableaux-repartition/{tableau}/lignes"
+      x-controleur: "TableauRepartitionController@ajouterLigne"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/lignes/lot:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /tableaux-repartition/{tableau}/lignes/lot"
+      x-controleur: "TableauRepartitionController@ajouterLignesEnLot"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/lignes/{ligne}:
+    delete:
+      tags: [Stagiaires]
+      summary: "Retirer /tableaux-repartition/{tableau}/lignes/{ligne}"
+      x-controleur: "TableauRepartitionController@retirerLigne"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+        - { name: ligne, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/pdf:
+    get:
+      tags: [Stagiaires]
+      summary: "Consulter /tableaux-repartition/{tableau}/pdf"
+      x-controleur: "TableauRepartitionController@telechargerPdf"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/rendre-avis:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /tableaux-repartition/{tableau}/rendre-avis"
+      x-controleur: "TableauRepartitionController@rendreAvis"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/representer-dg:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /tableaux-repartition/{tableau}/representer-dg"
+      x-controleur: "TableauRepartitionController@representerDg"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /tableaux-repartition/{tableau}/soumettre:
+    post:
+      tags: [Stagiaires]
+      summary: "Exécuter /tableaux-repartition/{tableau}/soumettre"
+      x-controleur: "TableauRepartitionController@soumettre"
+      parameters:
+        - { name: tableau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /traitements-direction:
+    get:
+      tags: [Courrier]
+      summary: "Consulter /traitements-direction"
+      x-controleur: "TraitementDirectionController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /traitements-direction/{traitement}/decision:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /traitements-direction/{traitement}/decision"
+      x-controleur: "TraitementDirectionController@decider"
+      parameters:
+        - { name: traitement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /traitements-direction/{traitement}/document-produit:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /traitements-direction/{traitement}/document-produit"
+      x-controleur: "DocumentProduitDirectionController@store"
+      parameters:
+        - { name: traitement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /traitements-direction/{traitement}/prendre-en-charge:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /traitements-direction/{traitement}/prendre-en-charge"
+      x-controleur: "TraitementDirectionController@prendreEnCharge"
+      parameters:
+        - { name: traitement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /traitements-direction/{traitement}/transmettre-directeur:
+    post:
+      tags: [Courrier]
+      summary: "Exécuter /traitements-direction/{traitement}/transmettre-directeur"
+      x-controleur: "TraitementDirectionController@transmettreDirecteur"
+      parameters:
+        - { name: traitement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /users/{user}/deverrouiller:
+    post:
+      tags: [Comptes]
+      summary: "Exécuter /users/{user}/deverrouiller"
+      x-controleur: "UserController@deverrouiller"
+      description: "Réservé à : administrateur."
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /users/{user}/tokens:
+    delete:
+      tags: [Comptes]
+      summary: "Retirer /users/{user}/tokens"
+      x-controleur: "UserController@revoquerJetons"
+      description: "Réservé à : administrateur."
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
