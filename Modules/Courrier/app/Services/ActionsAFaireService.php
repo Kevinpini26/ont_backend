@@ -145,7 +145,9 @@ class ActionsAFaireService
             }
         }
 
-        return $actions;
+        // Pendant un intérim, un même courrier est dans la file du DGA et dans celle de la DG : une seule
+        // ligne, avec le lien de l'autorité DG (dernier poste parcouru).
+        return $actions->reverse()->unique('courrier_id')->reverse()->values();
     }
 
     /** Un document interne autonome se traite sur l'écran dédié de SEC1 ou de la DG, pas sur la fiche. */

@@ -86,6 +86,18 @@ class MesActionsTest extends CourrierTestCase
         $this->assertContains('Décision attendue', array_column($this->actions($dga), 'objet'));
     }
 
+    public function test_le_dga_en_interim_ne_voit_chaque_courrier_quune_seule_fois(): void
+    {
+        $dg = $this->agent(Poste::DG, $this->direction);
+        $dga = $this->agent(Poste::DGA, $this->direction);
+        Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG, 'objet' => 'Décision unique'])->fresh();
+        DgInterim::query()->create(['dg_titulaire_id' => $dg->id, 'dga_interimaire_id' => $dga->id, 'motif' => 'Mission', 'started_at' => now(), 'started_by_id' => $dg->id]);
+
+        $objets = array_column($this->actions($dga), 'objet');
+
+        $this->assertSame(1, array_count_values($objets)['Décision unique'] ?? 0);
+    }
+
     public function test_le_secretariat_de_direction_voit_le_courrier_distribue_a_accuser(): void
     {
         $dg = $this->agent(Poste::DG, $this->direction);
