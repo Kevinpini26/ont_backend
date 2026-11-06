@@ -787,3 +787,20 @@ Validée par l'ONT le 2026-11-05 (« tout comme tu proposes ») et appliquée, a
 ## Commentaire d'avis de la DG visible aux directions ?
 
 Décision provisoire de l'ONT (2026-11-05) : le commentaire d'avis de la DG (`avis_dg_commentaire`) est **masqué aux directions** (directeur, responsable, secrétariat), dans l'API (fiche, liste) ; il n'apparaît ni dans les impressions, ni dans l'export CSV, ni dans les notifications ou e-mails (test `test_le_commentaire_davis_de_la_dg_est_masque_aux_directions_partout`). La direction garde l'instruction écrite pour elle au moment du dispatch. L'ONT pourra demander plus tard de l'afficher : il suffit de retirer `avis_dg_commentaire` de `CourrierResource::CHAMPS_INTERNES_AU_CIRCUIT`.
+
+## Relevé de la répétition finale (2026-11-06) : à trancher par l'ONT
+
+Rien de ceci n'a été modifié : ces comportements attendent une décision.
+
+- **Courrier d'origine après l'envoi de la réponse.** La DG demande une réponse à un assistant : la réponse
+  est un courrier distinct (ex. `2026-D0001`, statut Envoyé), mais le courrier d'origine reste
+  « En attente d'avis DG », et « Décider » reste sur l'accueil de la DG. Faut-il le clôturer ou le classer
+  automatiquement à l'envoi de la réponse, ou la DG doit-elle le faire elle-même ?
+- **Fin d'intérim par la DG titulaire.** Pendant un intérim, la DG titulaire n'accède plus à l'Espace DG, qui porte le
+  bouton « Terminer l'intérim » : seul l'administrateur peut le terminer à l'écran. Est-ce voulu ?
+- **Attestation avant la date de fin.** Le directeur peut terminer un stage avant sa date de fin. Les deux évaluations
+  clôturent alors le dossier et produisent une attestation qui indique la date de fin prévue, encore à venir.
+  Faut-il l'interdire, ou corriger la date affichée ?
+- **Scan d'un stagiaire.** L'envoi jusqu'à 20 Mo fonctionne par l'API (`/stagiaires/{id}/jeton-capture`), mais aucun
+  écran ne propose ce lien, et le scan reçu n'apparaît pas sur la fiche du stagiaire. Faut-il ajouter cet écran ?
+
