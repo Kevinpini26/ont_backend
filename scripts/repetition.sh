@@ -29,4 +29,6 @@ for dossier in app/private app/public app/backups framework/cache/data framework
 done
 
 export DB_DATABASE="$base" LARAVEL_STORAGE_PATH="$cible" APP_ENV=local MAIL_MAILER=log QUEUE_CONNECTION=sync
-exec php -d variables_order=EGPCS -S 127.0.0.1:"${PORT:-8010}" -t public vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+# server.php sert le dossier courant : il faut démarrer depuis public/.
+cd public
+exec php -d variables_order=EGPCS -S 127.0.0.1:"${PORT:-8010}" ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
