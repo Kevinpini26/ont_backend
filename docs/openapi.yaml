@@ -180,7 +180,7 @@ paths:
                 device_name: { type: string }
             example:
               email: reception@ont.cd
-              password: "Demo#ONT2026"
+              password: "<mot de passe du compte>"
       responses:
         '200':
           description: Connexion réussie.

@@ -29,7 +29,7 @@ php artisan migrate --seed
 php artisan serve
 ```
 
-Un compte administrateur `admin@ont.cd` est créé par le seeder. En local et en test, son mot de passe de démonstration est connu (voir `AdminUserSeeder`). Partout ailleurs, il n'est créé que s'il n'existe pas, jamais réinitialisé, avec le mot de passe fourni par `KERNEL_ADMIN_INITIAL_PASSWORD` (sinon un mot de passe aléatoire inutilisable) et un changement de mot de passe obligatoire à la première connexion. Voir `SECURITY.md`. En environnement local (`APP_ENV=local`), le seeder crée aussi des comptes de démonstration (un par poste du circuit courrier, DFP, un responsable par direction — mot de passe unique `Demo#ONT2026`, voir `Modules\Kernel\Database\Seeders\DemoAccountsSeeder`) ainsi que des courriers de démonstration jusqu'à l'étape « projet à rédiger » (les étapes suivantes se démontrent en direct) et un stagiaire académique/professionnel à chaque étape du cycle de vie.
+Un compte administrateur `admin@ont.cd` est créé par le seeder. En local et en test, son mot de passe de démonstration est connu (voir `AdminUserSeeder`). Partout ailleurs, il n'est créé que s'il n'existe pas, jamais réinitialisé, avec le mot de passe fourni par `KERNEL_ADMIN_INITIAL_PASSWORD` (sinon un mot de passe aléatoire inutilisable) et un changement de mot de passe obligatoire à la première connexion. Voir `SECURITY.md`. En environnement local (`APP_ENV=local`), le seeder crée aussi des comptes de démonstration (un par poste du circuit courrier, DFP, un responsable par direction — mot de passe unique (voir `AdminUserSeeder`), voir `Modules\Kernel\Database\Seeders\DemoAccountsSeeder`) ainsi que des courriers de démonstration jusqu'à l'étape « projet à rédiger » (les étapes suivantes se démontrent en direct) et un stagiaire académique/professionnel à chaque étape du cycle de vie.
 
 ### Base de données
 
@@ -41,7 +41,7 @@ PostgreSQL (paramétrable dans `.env` : `DB_CONNECTION=pgsql`). Les tests utilis
 php artisan test
 ```
 
-Plus de 900 tests couvrant : authentification, verrouillage/désactivation de compte, changement/réinitialisation de mot de passe, passation de poste unique, filtrage par direction, journal d'audit et supervision système (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence, tableau de bord statistique et notifications e-mail tracées (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
+Plus de 1 000 tests couvrant : authentification, verrouillage/désactivation de compte, changement/réinitialisation de mot de passe, passation de poste unique, filtrage par direction, journal d'audit et supervision système (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence, tableau de bord statistique et notifications e-mail tracées (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
 
 ```bash
 ./vendor/bin/pint --test      # style de code (PSR-12 + règles Laravel)
@@ -94,6 +94,7 @@ Détail exhaustif (schémas de requête/réponse, codes d'erreur) : `docs/openap
 | POST | `/api/v1/auth/login` | — | `{email, password, device_name?}` → `{user, token, expires_at}` |
 | POST | `/api/v1/auth/logout` | ✔ | Révoque le jeton courant |
 | GET  | `/api/v1/auth/me` | ✔ | Profil de l'utilisateur connecté |
+| GET | `/api/v1/mes-actions` | ✔ | Accueil « Ce que j'ai à faire » : actions de l'agent, triées par urgence puis retard |
 | POST | `/api/v1/auth/mot-de-passe/changer` | ✔ | Change son propre mot de passe, révoque les autres jetons du compte |
 | POST | `/api/v1/auth/mot-de-passe/oublie` | — | Demande un lien de réinitialisation (réponse générique) |
 | POST | `/api/v1/auth/mot-de-passe/reinitialiser` | — | Réinitialise via le lien reçu par e-mail |

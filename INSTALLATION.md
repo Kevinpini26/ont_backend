@@ -56,6 +56,18 @@ Les migrations de base de données s'exécutent automatiquement au démarrage
 du conteneur `backend` (voir `docker/entrypoint.production.sh`) — rien à
 lancer à la main pour une première installation.
 
+### Variables à renseigner pour la production
+
+| Variable | Rôle |
+|---|---|
+| `KERNEL_ADMIN_INITIAL_PASSWORD` | Mot de passe initial de `admin@ont.cd`, créé par le seed s'il n'existe pas (à changer à la première connexion) |
+| `TRUSTED_PROXIES` | Adresse ou plage du reverse proxy HTTPS. Vide par défaut : aucun en-tête `X-Forwarded-*` n'est cru |
+| `API_LIMITE_CONNECTE` | Appels API par minute et par utilisateur connecté (240 par défaut) |
+| `API_ORIGIN` (conteneur frontend) | Origine de l'API si elle est sur un autre domaine, pour la CSP (vide sinon) |
+
+Limites d'envoi : nginx 64 Mo par requête, PHP 21 Mo par fichier et 64 Mo par requête
+(`docker/php/ont-limites.ini`). Le plus gros fichier accepté par l'application est de 20 Mo.
+
 ## 3. Créer le premier compte administrateur
 
 Aucun compte n'existe après une première installation (contrairement à

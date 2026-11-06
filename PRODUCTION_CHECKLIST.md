@@ -89,7 +89,7 @@ vrai navigateur et un vrai serveur de mail.
 
 Détail complet : `SECURITY.md`.
 
-- [ ] Aucun compte de démonstration (`Demo#ONT2026`) actif en production
+- [ ] Aucun compte de démonstration (`DemoAccountsSeeder`) actif en production
       — ce seeder ne doit jamais tourner hors `APP_ENV=local`
 - [ ] `KERNEL_ADMIN_INITIAL_PASSWORD` renseigné avant le premier `db:seed`, et mot de passe
       changé à la première connexion (le seeder ne crée aucun mot de passe connu en production)
@@ -99,6 +99,12 @@ Détail complet : `SECURITY.md`.
 - [ ] En-têtes de sécurité HTTP vérifiés sur une vraie requête HTTPS
       (`Strict-Transport-Security` ne part que si la requête est déjà en
       HTTPS, voir `SecurityHeaders`)
+
+- [ ] `nginx -t` réussi dans les deux images (configuration frontend et backend)
+- [ ] `API_ORIGIN` renseigné si l'API est sur un autre domaine ; application ouverte
+      sans erreur CSP dans la console du navigateur
+- [ ] Un fichier de 20 Mo passe réellement à travers le reverse proxy, nginx et PHP
+- [ ] Matrice d'accès relue avec l'ONT (`ARCHITECTURE.md`, section 8)
 
 ## 6. Sauvegardes
 
