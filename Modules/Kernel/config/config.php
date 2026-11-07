@@ -104,4 +104,28 @@ return [
     'ocr' => [
         'active' => config('ont.ocr.active', false),
     ],
+
+    /*
+     * Calendrier de travail (lot 6) : valeurs par défaut, toutes réglables dans « Paramètres de
+     * l'organisation » (clés calendrier.*). Horaires et jours fériés PROVISOIRES, à confirmer par l'ONT :
+     * voir docs/questions-ont.md. « MM-JJ » revient chaque année, « AAAA-MM-JJ » vaut une seule fois.
+     */
+    'calendrier' => [
+        'jours_ouvres' => [1, 2, 3, 4, 5],
+        'heure_debut' => '08:30',
+        'heure_fin' => '15:30',
+        'fuseau' => 'Africa/Kinshasa',
+        'jours_feries' => [
+            ['date' => '01-01', 'libelle' => 'Nouvel An'],
+            ['date' => '01-04', 'libelle' => "Martyrs de l'indépendance"],
+            ['date' => '01-16', 'libelle' => 'Héros national Laurent-Désiré Kabila'],
+            ['date' => '01-17', 'libelle' => 'Héros national Patrice Emery Lumumba'],
+            ['date' => '04-06', 'libelle' => 'Simon Kimbangu et conscience africaine'],
+            ['date' => '05-01', 'libelle' => 'Fête du travail'],
+            ['date' => '05-17', 'libelle' => 'Révolution et libération'],
+            ['date' => '06-30', 'libelle' => "Fête de l'indépendance"],
+            ['date' => '08-01', 'libelle' => 'Fête des parents'],
+            ['date' => '12-25', 'libelle' => 'Noël'],
+        ],
+    ],
 ];
