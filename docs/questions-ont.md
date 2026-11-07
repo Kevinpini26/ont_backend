@@ -804,3 +804,24 @@ Rien de ceci n'a été modifié : ces comportements attendent une décision.
 - **Scan d'un stagiaire.** L'envoi jusqu'à 20 Mo fonctionne par l'API (`/stagiaires/{id}/jeton-capture`), mais aucun
   écran ne propose ce lien, et le scan reçu n'apparaît pas sur la fiche du stagiaire. Faut-il ajouter cet écran ?
 
+
+## Lot 6 — heures ouvrées et jours fériés (provisoire, à confirmer)
+
+Tous les délais du circuit se comptent désormais en heures ouvrées (`Modules\Kernel\Support\CalendrierOuvre`),
+avec un calendrier réglable dans « Paramètres de l'organisation » (clés `calendrier.*`).
+
+- **Jours et horaires de travail.** Provisoire : lundi au vendredi, 8 h 30 à 15 h 30, heure de Kinshasa
+  (`Africa/Kinshasa`, UTC+1). Une journée compte donc 7 heures ouvrées. Les représentations à l'heure de
+  Lubumbashi (UTC+2) ne sont pas traitées.
+- **Jours fériés de la RDC.** Liste provisoire et modifiable : 1er janvier, 4 janvier, 16 et 17 janvier,
+  6 avril, 1er mai, 17 mai, 30 juin, 1er août, 25 décembre. À vérifier par l'ONT (ajouts, jours de pont,
+  jours fériés décrétés ponctuellement, qui s'ajoutent avec une date « AAAA-MM-JJ »).
+- **Conversion des délais existants.** Les anciens délais étaient en heures calendaires. Conversion
+  provisoire, à raison de 7 heures ouvrées par jour : retard général et avis de la DG 48 h → 14 h ouvrées ;
+  relecture et validation 24 h → 7 h ; rédaction 72 h → 21 h ; tri 4 h → 4 h ouvrées ; relance des
+  directions sans échéance 7 jours → 7 jours ouvrés ; stagiaires 48 h → 14, 72 h → 21, 168 h → 49.
+  Un délai déjà réglé à l'écran garde sa valeur, désormais lue en heures ouvrées.
+- **Échéance un jour non travaillé.** Une échéance tombant un samedi ou un jour férié n'est dépassée
+  qu'après la fermeture du premier jour ouvré suivant. À confirmer.
+- **Page d'accueil publique.** Elle annonce « Pris en charge par la Réception sous 48h ». Faut-il écrire
+  « sous 2 jours ouvrés » ? Le texte n'a pas été changé.
