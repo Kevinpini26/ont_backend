@@ -239,6 +239,10 @@ class CourrierResource extends JsonResource
                 ];
             }),
             'annule' => $this->annule_at !== null,
+            'non_recevable' => $this->non_recevable_at !== null,
+            'non_recevable_at' => $this->non_recevable_at,
+            'non_recevable_motif' => $this->non_recevable_motif,
+            'origine_arrivee' => $this->sens?->value === 'entrant' ? $this->origineArrivee() : null,
             'annule_at' => $this->annule_at,
             'motif_annulation' => $this->motif_annulation,
             'suspendu' => $this->suspendu_at !== null,

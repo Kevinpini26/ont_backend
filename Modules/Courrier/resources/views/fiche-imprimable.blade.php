@@ -29,7 +29,7 @@
         <tr><td>Statut</td><td>{{ $courrier->statut->label() }}</td></tr>
         <tr><td>Direction d'origine</td><td>{{ $courrier->directionOrigine?->nom ?? '—' }}</td></tr>
         <tr><td>Direction de destination</td><td>{{ $courrier->directionDestination?->nom ?? '—' }}</td></tr>
-        <tr><td>Numéro d'enregistrement</td><td>{{ $courrier->numero_enregistrement ?? '—' }}</td></tr>
+        <tr><td>Numéro d'arrivée</td><td>{{ $courrier->numero_enregistrement ?? '—' }}</td></tr>
         <tr><td>Cote de classement</td><td>{{ $courrier->cote_classement ?? '—' }}</td></tr>
         <tr><td>Date du courrier</td><td>{{ optional($courrier->date_courrier)->translatedFormat('d F Y') ?? '—' }}</td></tr>
         <tr><td>Degré d'urgence</td><td>{{ $courrier->degre_urgence?->label() ?? '—' }}</td></tr>

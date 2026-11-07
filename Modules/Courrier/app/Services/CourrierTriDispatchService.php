@@ -52,7 +52,7 @@ class CourrierTriDispatchService
             // (numéro d'enregistrement) puis le transmet à SEC1 : un dépôt
             // en ligne ne peut pas être trié avant.
             if ($courrier->statut === CourrierStatut::RECU && $courrier->mode_reception === ModeReception::DEPOT_EN_LIGNE) {
-                if ($courrier->numero_enregistrement === null) {
+                if ($courrier->enregistre_at === null) {
                     throw ValidationException::withMessages([
                         'courrier' => 'Ce dépôt doit d’abord être enregistré par la Réception avant d’être trié.',
                     ]);
@@ -356,7 +356,7 @@ class CourrierTriDispatchService
                 if ($utilisateur->poste !== Poste::RECEPTION) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
-                if ($courrier->numero_enregistrement === null) {
+                if ($courrier->enregistre_at === null) {
                     throw ValidationException::withMessages([
                         'courrier' => 'Le dépôt doit être enregistré par la Réception avant sa transmission à SEC1.',
                     ]);

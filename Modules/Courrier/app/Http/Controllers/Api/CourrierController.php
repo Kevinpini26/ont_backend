@@ -367,6 +367,15 @@ class CourrierController extends Controller
         return $this->ressource($courrier->refresh());
     }
 
+    public function declarerNonRecevable(Request $request, Courrier $courrier)
+    {
+        $donnees = $request->validate(['motif' => ['required', 'string', 'min:5', 'max:2000']]);
+        $this->authorize('declarerNonRecevable', $courrier);
+        $this->etats->declarerNonRecevable($courrier, $request->user(), $donnees['motif']);
+
+        return $this->ressource($courrier->refresh());
+    }
+
     public function suspendre(Request $request, Courrier $courrier)
     {
         $this->authorize('suspendre', $courrier);

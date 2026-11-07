@@ -29,6 +29,9 @@ class DossierPublicResource extends JsonResource
         $estDemandeStage = $this->type?->value === 'demande_stage';
 
         return [
+            // Le numéro saisi par le déposant : numéro d'arrivée, ou ancien accusé AR- pour un ancien dépôt.
+            'numero' => $request->input('numero') ?? $this->numero_enregistrement ?? $this->numero_accuse_reception,
+            'numero_arrivee' => $this->numero_enregistrement,
             'numero_accuse_reception' => $this->numero_accuse_reception,
             'objet' => $this->objet,
             'type' => $this->type?->value,
@@ -47,6 +50,10 @@ class DossierPublicResource extends JsonResource
 
     private function statutSimplifieDemandeStage(): string
     {
+        if ($this->non_recevable_at !== null) {
+            return 'Non recevable';
+        }
+
         return match ($this->avis_dg?->value) {
             'favorable' => 'Favorable, transmis au service des stages',
             'defavorable' => 'Non retenu',
@@ -64,6 +71,9 @@ class DossierPublicResource extends JsonResource
      */
     private function statutSimplifieCourrier(): string
     {
+        if ($this->non_recevable_at !== null) {
+            return 'Non recevable';
+        }
         if ($this->reponseEnvoyee() !== null) {
             return 'Réponse envoyée';
         }
@@ -79,7 +89,7 @@ class DossierPublicResource extends JsonResource
      */
     private function etapesCourrier(): array
     {
-        $enregistre = filled($this->numero_enregistrement);
+        $enregistre = $this->enregistre_at !== null;
         $examen = $enregistre && ! in_array($this->statut, [CourrierStatut::RECU, CourrierStatut::EN_ATTENTE_TRI], true);
         $reponse = $this->reponseEnvoyee() !== null;
 

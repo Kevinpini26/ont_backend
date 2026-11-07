@@ -214,13 +214,19 @@ class CourrierCircuitService
                 if ($utilisateur->poste !== Poste::RECEPTION) {
                     throw TransitionNonAutoriseeException::posteNonHabilite();
                 }
-                if ($courrier->numero_enregistrement !== null) {
+                if ($courrier->enregistre_at !== null) {
                     throw ValidationException::withMessages([
                         'courrier' => 'Ce dépôt public est déjà enregistré.',
                     ]);
                 }
+                if ($courrier->estNonRecevable() || $courrier->estAnnule()) {
+                    throw ValidationException::withMessages(['courrier' => 'Ce dépôt est clos (non recevable ou annulé).']);
+                }
 
-                $courrier->numero_enregistrement = $this->numeros->genererNumeroEnregistrement();
+                // Lot 6 : le numéro d'arrivée existe déjà depuis le dépôt ; un ancien dépôt (accusé AR- seul)
+                // reçoit ici son numéro d'arrivée. Jamais de second numéro.
+                $nouveauNumero = $courrier->numero_enregistrement === null;
+                $courrier->numero_enregistrement ??= $this->numeros->genererNumeroEnregistrement();
                 $courrier->classification = $classification;
                 $courrier->note_technique = $noteTechnique;
                 $courrier->accuse_reception_partenaire = $accuseReceptionPartenaire;
@@ -230,7 +236,12 @@ class CourrierCircuitService
                 }
                 $courrier->enregistre_at = now();
                 $courrier->save();
-                $this->helpers->auditerIdentite($courrier, $utilisateur, 'numero_enregistrement', $courrier->numero_enregistrement);
+                if ($nouveauNumero) {
+                    $this->helpers->auditerIdentite($courrier, $utilisateur, 'numero_enregistrement', $courrier->numero_enregistrement);
+                }
+                $this->audit->enregistrer('courrier.depot_verifie', $courrier, $utilisateur, [
+                    'numero_enregistrement' => $courrier->numero_enregistrement,
+                ]);
 
                 return $courrier;
             }

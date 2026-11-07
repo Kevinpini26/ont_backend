@@ -157,6 +157,16 @@ class CourrierPolicy
             && $this->peutGererEtat($user);
     }
 
+    /** Lot 6 : seule la Réception déclare un dépôt en ligne non recevable, avant sa vérification. */
+    public function declarerNonRecevable(User $user, Courrier $courrier): bool
+    {
+        return $courrier->mode_reception?->value === 'depot_en_ligne'
+            && $courrier->statut === CourrierStatut::RECU
+            && $courrier->enregistre_at === null
+            && ! $courrier->estAnnule()
+            && $this->delegations->utilisateurHabilite($user, [Poste::RECEPTION]);
+    }
+
     public function suspendre(User $user, Courrier $courrier): bool
     {
         return ! $courrier->estAnnule() && ! $courrier->estSuspendu()

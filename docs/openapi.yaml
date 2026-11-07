@@ -1431,6 +1431,23 @@ paths:
       responses:
         '200': { description: OK }
         '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /courriers/{courrier}/non-recevable:
+    post:
+      tags: [Courrier]
+      summary: "Déclarer un dépôt en ligne non recevable (Réception, motif obligatoire ; numéro d'arrivée conservé)"
+      x-controleur: "CourrierController@declarerNonRecevable"
+      parameters:
+        - { name: courrier, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [motif], properties: { motif: { type: string, minLength: 5, maxLength: 2000 } } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: "Réservé à la Réception, avant la vérification du dépôt" }
+        '422': { description: Motif manquant }
   /courriers/{courrier}/confier-au-dga:
     post:
       tags: [Courrier]

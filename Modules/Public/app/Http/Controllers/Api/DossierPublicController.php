@@ -37,7 +37,11 @@ class DossierPublicController extends Controller
             return $this->reponseEchec();
         }
 
-        $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->first();
+        // Lot 6 : le numéro d'arrivée unique, ou l'ancien accusé AR- des dépôts antérieurs (toujours accepté).
+        $courrier = Courrier::query()
+            ->where(fn ($q) => $q->where('numero_enregistrement', $numero)->orWhere('numero_accuse_reception', $numero))
+            ->where('type', '!=', CourrierType::TABLEAU_REPARTITION->value)
+            ->first();
 
         if (! $courrier || ! $this->secondFacteurCorrespond($courrier, $nomSaisi)) {
             $this->limiteur->enregistrerEchec(self::PORTEE, $numero, 'public.dossier.verification_echouee', $courrier);

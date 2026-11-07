@@ -6,13 +6,13 @@ Bonjour {{ $courrier->expediteur_externe_nom }},
 Nous vous confirmons la bonne réception de votre courrier adressé à l’Office National du Tourisme.
 
 **Objet de la demande :** {{ $courrier->objet }}<br>
-**Référence de suivi :** {{ $courrier->numero_accuse_reception ?? $courrier->numero_enregistrement }}<br>
+**Référence de suivi :** {{ $courrier->numeroSuivi() }}<br>
 **Date de dépôt :** {{ $courrier->created_at?->format('d/m/Y') }}
 
 Votre demande sera prise en charge conformément au circuit administratif de l’Office National du Tourisme.
 
-@if ($courrier->numero_accuse_reception)
-<x-mail::button :url="config('app.frontend_url').'/suivi-dossier?numero='.$courrier->numero_accuse_reception">
+@if ($courrier->numeroSuivi())
+<x-mail::button :url="config('app.frontend_url').'/suivi-dossier?numero='.urlencode($courrier->numeroSuivi())">
 Suivre ma demande
 </x-mail::button>
 @endif

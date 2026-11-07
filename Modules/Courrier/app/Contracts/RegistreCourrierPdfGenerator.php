@@ -16,5 +16,5 @@ interface RegistreCourrierPdfGenerator
     /**
      * @param  'arrivee'|'depart'  $type
      */
-    public function generer(string $type, Carbon $debut, Carbon $fin): string;
+    public function generer(string $type, Carbon $debut, Carbon $fin, ?string $origine = null): string;
 }

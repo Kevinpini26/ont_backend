@@ -7,7 +7,7 @@ L’Office National du Tourisme vous informe qu’une réponse officielle a ét�
 
 @if ($courrierOrigine)
 **Objet initial :** {{ $courrierOrigine->objet }}<br>
-**Référence de suivi :** {{ $courrierOrigine->numero_accuse_reception }}<br>
+**Référence de suivi :** {{ $courrierOrigine->numeroSuivi() }}<br>
 @endif
 **Référence de la réponse :** {{ $reponse->reference_documentaire ?? $reponse->numero_depart }}<br>
 @if ($reponse->numero_depart)

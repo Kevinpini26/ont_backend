@@ -14,7 +14,7 @@ class AvisDgEnAttenteMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "Avis en attente depuis plus de 48h — {$this->courrier->numero_accuse_reception}",
+            subject: "Avis en attente au-delà du délai — {$this->courrier->numeroSuivi()}",
         );
     }
 

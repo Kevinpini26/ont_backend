@@ -1,11 +1,11 @@
 <x-mail::message>
-# Avis en attente depuis plus de 48 heures
+# Avis en attente au-delà du délai
 
-Le courrier suivant attend votre avis depuis plus de 48 heures.
+Le courrier suivant attend votre avis au-delà du délai prévu (compté en heures ouvrées).
 
 <x-mail::panel>
 **Objet :** {{ $courrier->objetPourCanalExterne() }}<br>
-**Référence :** {{ $courrier->numero_accuse_reception }}
+**Référence :** {{ $courrier->numeroSuivi() }}
 </x-mail::panel>
 
 <x-mail::button :url="config('app.frontend_url').'/courriers/'.$courrier->id">

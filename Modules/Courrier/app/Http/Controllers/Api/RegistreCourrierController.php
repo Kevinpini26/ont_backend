@@ -20,13 +20,14 @@ class RegistreCourrierController extends Controller
             'debut' => ['required', 'date'],
             'fin' => ['required', 'date', 'after_or_equal:debut'],
             'type' => ['nullable', 'in:arrivee,depart'],
+            'origine' => ['nullable', 'in:'.implode(',', Courrier::ORIGINES_ARRIVEE)],
         ]);
 
         $type = $request->string('type', 'arrivee')->toString();
         $debut = Carbon::parse($request->string('debut'))->startOfDay();
         $fin = Carbon::parse($request->string('fin'))->endOfDay();
 
-        $pdf = $this->generateur->generer($type, $debut, $fin);
+        $pdf = $this->generateur->generer($type, $debut, $fin, $request->filled('origine') ? $request->string('origine')->toString() : null);
 
         $nomFichier = sprintf('registre-%s-%s-au-%s.pdf', $type, $debut->toDateString(), $fin->toDateString());
 

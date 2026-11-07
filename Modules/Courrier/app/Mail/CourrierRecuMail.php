@@ -18,7 +18,7 @@ class CourrierRecuMail extends Mailable
 
     public function envelope(): Envelope
     {
-        $reference = $this->courrier->numero_accuse_reception ?? $this->courrier->numero_enregistrement;
+        $reference = $this->courrier->numeroSuivi();
 
         return new Envelope(
             subject: "Nouveau courrier reçu — {$reference}",

@@ -29,6 +29,27 @@ class CourrierEtatService
         });
     }
 
+    /**
+     * Lot 6 : un dépôt en ligne non recevable sort du circuit, mais garde son numéro d'arrivée (jamais
+     * réutilisé) et reste au registre avec la mention « Non recevable ». Il est aussi annulé, pour être
+     * exclu partout où un courrier annulé l'est déjà.
+     */
+    public function declarerNonRecevable(Courrier $courrier, User $acteur, string $motif): Courrier
+    {
+        return DB::transaction(function () use ($courrier, $acteur, $motif) {
+            $courrier = Courrier::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($courrier->getKey());
+            $courrier->update([
+                'non_recevable_at' => now(), 'non_recevable_par_id' => $acteur->id, 'non_recevable_motif' => $motif,
+                'annule_at' => now(), 'annule_par_id' => $acteur->id, 'motif_annulation' => 'Non recevable : '.$motif,
+            ]);
+            $this->audit->enregistrer('courrier.non_recevable', $courrier, $acteur, [
+                'numero_enregistrement' => $courrier->numero_enregistrement, 'motif' => $motif,
+            ]);
+
+            return $courrier;
+        });
+    }
+
     public function suspendre(Courrier $courrier, User $acteur, string $motif): Courrier
     {
         return DB::transaction(function () use ($courrier, $acteur, $motif) {

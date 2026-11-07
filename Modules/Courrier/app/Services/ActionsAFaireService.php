@@ -177,12 +177,14 @@ class ActionsAFaireService
         return Courrier::query()
             ->where('statut', CourrierStatut::RECU->value)
             ->where('mode_reception', 'depot_en_ligne')
+            ->whereNull('annule_at')
+            ->whereNull('non_recevable_at')
             ->whereDoesntHave('transitions', fn ($t) => $t->where('destinataire_poste', Poste::SECRETARIAT_1->value))
             ->limit(200)
             ->get()
             ->map(fn (Courrier $c) => $this->element(
                 'depot',
-                $c->numero_enregistrement === null ? 'Enregistrer le dépôt' : 'Transmettre à SEC1',
+                $c->enregistre_at === null ? 'Enregistrer le dépôt' : 'Transmettre à SEC1',
                 $c,
                 $c->created_at,
                 '/courriers/'.$c->id,

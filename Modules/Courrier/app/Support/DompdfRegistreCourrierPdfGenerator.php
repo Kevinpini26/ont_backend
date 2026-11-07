@@ -6,6 +6,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
+use Modules\Courrier\Enums\CourrierType;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\Poste;
@@ -19,15 +20,18 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
         private readonly DetecteurRupturesSequence $detecteur,
     ) {}
 
-    public function generer(string $type, Carbon $debut, Carbon $fin): string
+    public function generer(string $type, Carbon $debut, Carbon $fin, ?string $origine = null): string
     {
         // Le registre départ porte sur les sorties effectives de la période,
         // sans attribuer ou modifier les numéros établis à la signature.
-        // Le registre d'arrivée suit le numéro d'enregistrement, attribué à tout courrier entré
-        // (guichet ou dépôt en ligne enregistré), et non l'accusé en ligne que le guichet n'attribue pas.
-        // Un dépôt en ligne pas encore enregistré par la Réception n'y figure pas encore.
+        // Lot 6 : le registre d'arrivée liste TOUS les courriers entrants par leur numéro d'arrivée unique,
+        // dès le dépôt (en ligne compris), annulés et non recevables compris, sans le tableau de répartition.
+        // Date d'arrivée : celle du dépôt ; un ancien dépôt en ligne (accusé AR-) a reçu son numéro à sa
+        // vérification par la Réception.
         $colonneNumero = $type === 'depart' ? 'numero_depart' : 'numero_enregistrement';
-        $colonneDate = $type === 'depart' ? 'date_envoi' : DB::raw('coalesce(enregistre_at, created_at)');
+        $colonneDate = $type === 'depart'
+            ? 'date_envoi'
+            : DB::raw('(case when numero_accuse_reception is not null then coalesce(enregistre_at, created_at) else created_at end)');
 
         $user = auth()->user();
         $poste = $user === null ? null : (app(DelegationResolver::class)->posteDelegueAujourdhui($user) ?? $user->poste);
@@ -36,17 +40,23 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
             ->exclureAutonomesAvantTransmission()
             ->whereNotNull($colonneNumero)
             ->whereBetween($colonneDate, [$debut, $fin])
+            ->when($type !== 'depart', fn ($query) => $query->where('type', '!=', CourrierType::TABLEAU_REPARTITION->value))
+            ->when($type !== 'depart' && $origine !== null, fn ($query) => $query->origineArrivee($origine))
             ->with(['directionOrigine', 'directionDestination', 'imputations.direction'])
-            ->orderBy($colonneNumero)
+            // Tri sur la valeur numérique (année, puis séquence), jamais sur le texte : 2026-9999 avant 2026-10000.
+            ->orderByRaw("nullif(regexp_replace(split_part({$colonneNumero}, '-', 1), '\\D', '', 'g'), '')::int")
+            ->orderByRaw("nullif(regexp_replace(split_part({$colonneNumero}, '-', 2), '\\D', '', 'g'), '')::bigint")
             ->get();
 
         $elements = $courriers->map(fn (Courrier $courrier) => (object) [
             'id' => (int) $courrier->getKey(), $colonneNumero => $courrier->getAttribute($colonneNumero),
         ]);
-        $ruptures = $this->detecteur->detecter($elements, $colonneNumero);
+        // Filtré par origine, le registre a des trous attendus : la détection des ruptures n'a alors pas de sens.
+        $ruptures = $origine === null ? $this->detecteur->detecter($elements, $colonneNumero) : [];
 
         return $this->pdf->genererDepuisVue('courrier::registre', [
             'type' => $type,
+            'origine' => $origine,
             'debut' => $debut,
             'fin' => $fin,
             'courriers' => $courriers,

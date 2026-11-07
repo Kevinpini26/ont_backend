@@ -50,7 +50,9 @@ class DemandeStagePublicController extends Controller
         ]);
 
         return response()->json([
-            'numero_accuse_reception' => $courrier->numero_accuse_reception,
+            // Lot 6 : un seul numéro, le numéro d'arrivée ; la clé historique est gardée pour les anciens clients.
+            'numero' => $courrier->numero_enregistrement,
+            'numero_accuse_reception' => $courrier->numero_enregistrement,
         ], 201);
     }
 }

@@ -37,6 +37,7 @@
                 <tr>
                     <th>N°</th>
                     <th>Date</th>
+                    @if ($type !== 'depart')<th>Origine</th>@endif
                     <th>{{ $type === 'depart' ? 'Destinataire' : 'Expéditeur' }}</th>
                     <th>Objet</th>
                     <th>Direction imputée</th>
@@ -49,17 +50,26 @@
                         <td>
                             {{ $type === 'depart' ? $courrier->numero_depart : $courrier->numero_enregistrement }}
                             @if ($type !== 'depart' && $courrier->numero_accuse_reception)
-                                <br><span class="mention-secondaire">Accusé en ligne : {{ $courrier->numero_accuse_reception }}</span>
+                                <br><span class="mention-secondaire">Ancien accusé en ligne : {{ $courrier->numero_accuse_reception }}</span>
                             @endif
                             @if (in_array($courrier->id, $ruptures, true))
                                 <br><span class="mention-rupture">RUPTURE DE SÉQUENCE</span>
                             @endif
                         </td>
                         <td>{{ ($type === 'depart' ? ($courrier->date_envoi ?? $courrier->created_at) : ($courrier->enregistre_at ?? $courrier->created_at))->format('d/m/Y') }}</td>
+                        @if ($type !== 'depart')<td>{{ ['externe' => 'Externe', 'guichet' => 'Guichet', 'en_ligne' => 'En ligne', 'interne' => 'Interne'][$courrier->origineArrivee()] }}</td>@endif
                         <td>{{ $courrier->expediteur_externe_nom ?? $courrier->candidat_nom ?? $courrier->directionOrigine?->nom ?? '—' }}</td>
                         <td>{{ in_array($courrier->id, $objetsMasques ?? [], true) ? 'Objet confidentiel' : $courrier->objet }}</td>
                         <td>{{ $courrier->imputations->firstWhere('est_principale', true)?->direction?->code ?? $courrier->directionDestination?->code ?? '—' }}</td>
-                        <td>{{ $courrier->statut?->label() }}</td>
+                        <td>
+                            @if ($courrier->non_recevable_at)
+                                <strong>Non recevable</strong>
+                            @elseif ($courrier->annule_at)
+                                <strong>Annulé</strong>
+                            @else
+                                {{ $courrier->statut?->label() }}
+                            @endif
+                        </td>
                     </tr>
                 @endforeach
             </tbody>

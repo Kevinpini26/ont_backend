@@ -153,11 +153,11 @@ class CourrierReceptionService
             $courrier = Courrier::query()->create([
                 ...$donnees,
                 'type' => CourrierType::DEMANDE_STAGE,
-                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-                // Comme tout dépôt en ligne : l'enregistrement administratif
-                // (numéro d'enregistrement) et la transmission à SEC1 sont
-                // faits par la Réception, jamais automatiquement.
-                'numero_enregistrement' => null,
+                // Lot 6 : un seul numéro d'arrivée, attribué dès le dépôt (plus d'accusé AR- séparé).
+                'numero_accuse_reception' => null,
+                // Le numéro d'arrivée est attribué au dépôt ; la Réception vérifie ensuite le dossier
+                // (enregistre_at) et le transmet à SEC1, jamais automatiquement.
+                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
                 'statut' => CourrierStatut::RECU,
                 // Une demande de stage suit structurellement le circuit central.
                 'necessite_avis_dg' => true,
@@ -170,9 +170,11 @@ class CourrierReceptionService
             ]);
 
             $this->audit->enregistrer('courrier.depot_public', $courrier, null, [
-                'numero_accuse_reception' => $courrier->numero_accuse_reception,
+                'numero_enregistrement' => $courrier->numero_enregistrement,
                 'depose_at' => now()->toISOString(),
             ]);
+            // Lot 6 : le numéro d'arrivée est attribué au dépôt, sans agent (portail public).
+            $this->helpers->auditerIdentite($courrier, null, 'numero_enregistrement', $courrier->numero_enregistrement);
 
             return $courrier;
         });
@@ -202,8 +204,9 @@ class CourrierReceptionService
             $courrier = Courrier::query()->create([
                 ...$donnees,
                 'type' => CourrierType::CORRESPONDANCE_GENERALE,
-                'numero_accuse_reception' => $this->numeros->genererAccuseReception(),
-                'numero_enregistrement' => null,
+                // Lot 6 : un seul numéro d'arrivée, attribué dès le dépôt (plus d'accusé AR- séparé).
+                'numero_accuse_reception' => null,
+                'numero_enregistrement' => $this->numeros->genererNumeroEnregistrement(),
                 'statut' => CourrierStatut::RECU,
                 'necessite_avis_dg' => true,
                 'initie_par_dg' => false,
@@ -212,9 +215,11 @@ class CourrierReceptionService
             ]);
 
             $this->audit->enregistrer('courrier.depot_public', $courrier, null, [
-                'numero_accuse_reception' => $courrier->numero_accuse_reception,
+                'numero_enregistrement' => $courrier->numero_enregistrement,
                 'depose_at' => now()->toISOString(),
             ]);
+            // Lot 6 : le numéro d'arrivée est attribué au dépôt, sans agent (portail public).
+            $this->helpers->auditerIdentite($courrier, null, 'numero_enregistrement', $courrier->numero_enregistrement);
 
             return $courrier;
         });

@@ -117,7 +117,7 @@ class Courrier extends Model implements Numerisable
         'enregistre_at',
         'created_by',
         'relance_avis_dg_envoyee_at',
-        'annule_at', 'annule_par_id', 'motif_annulation', 'suspendu_at', 'suspendu_par_id', 'motif_suspension',
+        'annule_at', 'annule_par_id', 'motif_annulation', 'non_recevable_at', 'non_recevable_par_id', 'non_recevable_motif', 'suspendu_at', 'suspendu_par_id', 'motif_suspension',
         'anonymise_at',
         'date_courrier',
         'reference_expediteur',
@@ -236,6 +236,7 @@ class Courrier extends Model implements Numerisable
             'enregistre_at' => 'datetime',
             'relance_avis_dg_envoyee_at' => 'datetime',
             'annule_at' => 'datetime',
+            'non_recevable_at' => 'datetime',
             'suspendu_at' => 'datetime',
             'avis_dg_rendu_at' => 'datetime',
             'anonymise_at' => 'datetime',
@@ -256,6 +257,46 @@ class Courrier extends Model implements Numerisable
             'numerisation_statut' => NumerisationStatut::class,
             'tour' => 'integer',
         ];
+    }
+
+    /** Origines du registre d'arrivée (lot 6). */
+    public const ORIGINES_ARRIVEE = ['externe', 'guichet', 'en_ligne', 'interne'];
+
+    /**
+     * Origine d'un courrier entrant : en ligne (portail public), interne (document d'une direction),
+     * guichet (remis en main propre) ou externe (poste, courriel).
+     */
+    public function origineArrivee(): string
+    {
+        return match (true) {
+            $this->mode_reception?->value === 'depot_en_ligne' => 'en_ligne',
+            DocumentProduitDirection::query()->where('courrier_id', $this->getKey())->exists() => 'interne',
+            $this->mode_reception?->value === 'porteur' => 'guichet',
+            default => 'externe',
+        };
+    }
+
+    public function scopeOrigineArrivee(Builder $query, string $origine): Builder
+    {
+        $interne = fn ($q) => $q->selectRaw('1')->from('documents_produits_direction')->whereColumn('documents_produits_direction.courrier_id', 'courriers.id');
+
+        return match ($origine) {
+            'en_ligne' => $query->where('mode_reception', 'depot_en_ligne'),
+            'interne' => $query->whereExists($interne),
+            'guichet' => $query->where('mode_reception', 'porteur')->whereNotExists($interne),
+            default => $query->where(fn ($q) => $q->whereNull('mode_reception')->orWhereNotIn('mode_reception', ['depot_en_ligne', 'porteur']))->whereNotExists($interne),
+        };
+    }
+
+    /** Lot 6 : le numéro que le déposant utilise (numéro d'arrivée, ou ancien accusé AR- d'un ancien dépôt). */
+    public function numeroSuivi(): ?string
+    {
+        return $this->numero_enregistrement ?? $this->numero_accuse_reception;
+    }
+
+    public function estNonRecevable(): bool
+    {
+        return $this->non_recevable_at !== null;
     }
 
     public function scopeExclureAutonomesAvantTransmission(Builder $query): Builder
