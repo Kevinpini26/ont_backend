@@ -834,3 +834,18 @@ poste et intitulé), avec le Secrétariat 02 par défaut.
 
 - **Qui signe le registre d'arrivée, et qui signe le registre de départ ?** Le même poste pour les deux,
   ou deux postes différents (par exemple SEC1 pour l'arrivée et SEC2 pour le départ) ?
+
+## Lot 6 — numéro d'arrivée unique
+
+Un seul numéro d'arrivée par courrier entrant (format `2026-0007`, séquence `enregistrement` continuée),
+attribué au dépôt en ligne, à l'enregistrement au guichet ou à l'arrivée d'un document interne à la
+Réception. Le tableau de répartition garde sa référence propre et ne figure pas au registre d'arrivée.
+Les anciens numéros `AR-…` restent valables pour le suivi public. Un dépôt en ligne peut être déclaré
+« Non recevable » par la Réception (motif obligatoire) : il garde son numéro et reste au registre.
+
+- **Volume annuel de courriers reçus.** Inconnu. Le numéro garde 4 chiffres en 2026 et s'allonge
+  naturellement au-delà de 9 999 (le tri et les contrôles utilisent la valeur numérique).
+- **Origine « externe » ou « guichet ».** Provisoire : un courrier remis en main propre (mode
+  « porteur ») est « guichet » ; un courrier reçu par la poste ou par courriel est « externe ».
+- **Motif de non-recevabilité.** Il n'est pas montré au déposant : le suivi public affiche seulement
+  « Non recevable ». Faut-il le lui communiquer, et le prévenir par e-mail ?

@@ -150,7 +150,8 @@ class MesActionsTest extends CourrierTestCase
         $this->assertSame('Enregistrer le dépôt', $this->actions($reception)[0]['action']);
         $this->assertSame("/courriers/{$depot->id}", $this->actions($reception)[0]['lien']);
 
-        $depot->forceFill(['numero_enregistrement' => '2026-0100'])->save();
+        // Lot 6 : « enregistré » = vérifié par la Réception (enregistre_at), le numéro existant déjà.
+        $depot->forceFill(['numero_enregistrement' => '2026-0100', 'enregistre_at' => now()])->save();
         $this->assertSame('Transmettre à SEC1', $this->actions($reception)[0]['action']);
 
         $depot->transitions()->create(['statut' => CourrierStatut::RECU, 'destinataire_poste' => Poste::SECRETARIAT_1->value, 'created_at' => now()]);

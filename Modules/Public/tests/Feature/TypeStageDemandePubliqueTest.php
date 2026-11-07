@@ -40,7 +40,7 @@ class TypeStageDemandePubliqueTest extends TestCase
 
         $response->assertCreated();
 
-        $courrier = Courrier::query()->where('numero_accuse_reception', $response->json('numero_accuse_reception'))->firstOrFail();
+        $courrier = Courrier::query()->where('numero_enregistrement', $response->json('numero_accuse_reception'))->firstOrFail();
         $this->assertSame('academique', $courrier->type_stage);
         $this->assertNotNull($courrier->lettre_stage_chemin);
         $this->assertNull($courrier->cv_chemin);
@@ -75,7 +75,7 @@ class TypeStageDemandePubliqueTest extends TestCase
 
         $response->assertCreated();
 
-        $courrier = Courrier::query()->where('numero_accuse_reception', $response->json('numero_accuse_reception'))->firstOrFail();
+        $courrier = Courrier::query()->where('numero_enregistrement', $response->json('numero_accuse_reception'))->firstOrFail();
         $this->assertSame('professionnel', $courrier->type_stage);
         $this->assertNull($courrier->lettre_stage_chemin);
         $this->assertNotNull($courrier->lettre_demande_chemin);

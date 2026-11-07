@@ -63,7 +63,7 @@ class AnnulationSuspensionCourrierTest extends CourrierTestCase
         $direction = Direction::factory()->create();
         $reception = $this->agent(Poste::RECEPTION, $direction);
         $sec1 = $this->agent(Poste::SECRETARIAT_1, $direction);
-        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU, 'mode_reception' => 'depot_en_ligne', 'numero_enregistrement' => '2026-0100']);
+        $courrier = Courrier::factory()->create(['statut' => CourrierStatut::RECU, 'mode_reception' => 'depot_en_ligne', 'numero_enregistrement' => '2026-0100', 'enregistre_at' => now()]);
 
         $this->actingAs($reception)->postJson("/api/v1/courriers/{$courrier->id}/suspendre", ['motif' => 'Pièce jointe manquante, relance envoyée.'])
             ->assertOk()

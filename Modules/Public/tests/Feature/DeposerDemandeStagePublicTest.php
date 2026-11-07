@@ -46,7 +46,8 @@ class DeposerDemandeStagePublicTest extends TestCase
         $this->assertNotNull($numero);
 
         $this->assertDatabaseHas('courriers', [
-            'numero_accuse_reception' => $numero,
+            'numero_enregistrement' => $numero,
+            'numero_accuse_reception' => null,
             'type' => CourrierType::DEMANDE_STAGE->value,
             'candidat_nom' => 'Jean Kabila',
             'candidat_email' => 'jean.kabila@example.com',
@@ -54,7 +55,7 @@ class DeposerDemandeStagePublicTest extends TestCase
             'mode_reception' => 'depot_en_ligne',
         ]);
 
-        $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->firstOrFail();
+        $courrier = Courrier::query()->where('numero_enregistrement', $numero)->firstOrFail();
         $this->assertNotNull($courrier->lettre_stage_chemin);
         Storage::disk('local')->assertExists($courrier->lettre_stage_chemin);
 
@@ -76,8 +77,9 @@ class DeposerDemandeStagePublicTest extends TestCase
         $sec1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1, $direction)->create();
 
         $numero = $this->post('/api/v1/public/demandes-stage', $this->payloadValide())->assertCreated()->json('numero_accuse_reception');
-        $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->firstOrFail();
-        $this->assertNull($courrier->numero_enregistrement);
+        $courrier = Courrier::query()->where('numero_enregistrement', $numero)->firstOrFail();
+        // Lot 6 : le numéro d'arrivée est attribué au dépôt ; seule la vérification par la Réception reste à faire.
+        $this->assertNull($courrier->enregistre_at);
 
         $this->actingAs($sec1)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-tri")->assertUnprocessable();
 

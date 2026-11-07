@@ -45,7 +45,8 @@ class DeposerCourrierExternePublicTest extends TestCase
         $this->assertNotNull($numero);
 
         $this->assertDatabaseHas('courriers', [
-            'numero_accuse_reception' => $numero,
+            'numero_enregistrement' => $numero,
+            'numero_accuse_reception' => null,
             'type' => CourrierType::CORRESPONDANCE_GENERALE->value,
             'expediteur_externe_nom' => 'Agence Voyage Congo SARL',
             'expediteur_externe_email' => 'contact@agence-exemple.cd',
@@ -56,17 +57,20 @@ class DeposerCourrierExternePublicTest extends TestCase
             'mode_reception' => 'depot_en_ligne',
         ]);
 
-        $courrier = Courrier::query()->where('numero_accuse_reception', $numero)->firstOrFail();
-        $this->assertNull($courrier->numero_enregistrement);
+        $courrier = Courrier::query()->where('numero_enregistrement', $numero)->firstOrFail();
+        // Lot 6 : le numéro d'arrivée est attribué au dépôt ; seule la vérification par la Réception reste à faire.
+        $this->assertNull($courrier->enregistre_at);
         $this->assertSame('recu', $courrier->statut->value);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.depot_public',
             'auditable_id' => $courrier->id,
             'user_id' => null,
         ]);
-        $this->assertDatabaseMissing('audit_logs', [
+        // Lot 6 (règle inversée) : le numéro d'arrivée est attribué et tracé dès le dépôt, sans agent.
+        $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.numero_enregistrement_attribue',
             'auditable_id' => $courrier->id,
+            'user_id' => null,
         ]);
         $this->assertNotNull($courrier->piece_jointe_chemin);
         Storage::disk('local')->assertExists($courrier->piece_jointe_chemin);
@@ -79,8 +83,9 @@ class DeposerCourrierExternePublicTest extends TestCase
         $this->assertTrue($jobAccuse->mailable->courrier->is($courrier));
         $rendu = $jobAccuse->mailable->render();
         $this->assertStringContainsString('Proposition de partenariat', $rendu);
-        $this->assertStringContainsString($courrier->numero_accuse_reception, $rendu);
-        $this->assertStringNotContainsString('2026-0001', $rendu);
+        // Lot 6 : l'accusé porte le numéro d'arrivée unique, avec le lien de suivi.
+        $this->assertStringContainsString($courrier->numero_enregistrement, $rendu);
+        $this->assertStringContainsString('/suivi-dossier?numero=', $rendu);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.accuse_reception_envoye',
             'auditable_id' => $courrier->id,
@@ -100,8 +105,9 @@ class DeposerCourrierExternePublicTest extends TestCase
             ->assertCreated()
             ->json('numero_accuse_reception');
 
-        $courrier = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numero)->firstOrFail();
-        $this->assertNull($courrier->numero_enregistrement);
+        $courrier = Courrier::withoutGlobalScopes()->where('numero_enregistrement', $numero)->firstOrFail();
+        // Lot 6 : le numéro d'arrivée est attribué au dépôt ; seule la vérification par la Réception reste à faire.
+        $this->assertNull($courrier->enregistre_at);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.accuse_reception_echec',
             'auditable_id' => $courrier->id,
@@ -140,11 +146,12 @@ class DeposerCourrierExternePublicTest extends TestCase
         $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create();
         $secretariat1 = User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1, $direction)->create();
 
-        $courrier = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numero)->firstOrFail();
+        $courrier = Courrier::withoutGlobalScopes()->where('numero_enregistrement', $numero)->firstOrFail();
         $chemin = $courrier->piece_jointe_chemin;
         $empreinte = hash_file('sha256', Storage::disk('local')->path($chemin));
 
-        $this->assertNull($courrier->numero_enregistrement);
+        // Lot 6 : le numéro d'arrivée est attribué au dépôt ; seule la vérification par la Réception reste à faire.
+        $this->assertNull($courrier->enregistre_at);
         $this->actingAs($reception)->getJson("/api/v1/courriers/{$courrier->id}")->assertOk();
         $this->actingAs($secretariat1)->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", [
             'classification' => 'externe',
@@ -160,9 +167,15 @@ class DeposerCourrierExternePublicTest extends TestCase
         ])->assertOk();
         $numeroEnregistrement = $premiereReponse->json('data.numero_enregistrement');
         $this->assertNotNull($numeroEnregistrement);
-        $this->assertSame($numero, $courrier->fresh()->numero_accuse_reception);
+        $this->assertSame($numero, $courrier->fresh()->numero_enregistrement, 'Lot 6 : la vérification ne change pas le numéro d’arrivée.');
+        // Lot 6 : le numéro est attribué au dépôt (sans agent) ; la Réception trace sa vérification.
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'courrier.numero_enregistrement_attribue',
+            'auditable_id' => $courrier->id,
+            'user_id' => null,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'courrier.depot_verifie',
             'auditable_id' => $courrier->id,
             'user_id' => $reception->id,
         ]);
@@ -193,26 +206,22 @@ class DeposerCourrierExternePublicTest extends TestCase
         $this->assertSame($empreinte, hash_file('sha256', Storage::disk('local')->path($chemin)));
     }
 
-    public function test_les_numeros_suivent_lordre_denregistrement_et_non_lordre_depot(): void
+    /** Lot 6 (règle inversée) : le numéro suit l'ordre d'arrivée ; la vérification par la Réception ne le change pas. */
+    public function test_les_numeros_suivent_lordre_darrivee_et_la_verification_ne_les_change_pas(): void
     {
         Mail::fake();
         Storage::fake('local');
         $direction = Direction::factory()->create();
         $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create();
 
-        $accuseA = $this->post('/api/v1/public/courriers-externes', $this->payloadValide(['objet' => 'Dépôt A']))->assertCreated()->json('numero_accuse_reception');
-        $accuseB = $this->post('/api/v1/public/courriers-externes', $this->payloadValide(['objet' => 'Dépôt B']))->assertCreated()->json('numero_accuse_reception');
-        $a = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $accuseA)->firstOrFail();
-        $b = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $accuseB)->firstOrFail();
-        $this->assertNull($a->numero_enregistrement);
-        $this->assertNull($b->numero_enregistrement);
+        $numeroA = $this->post('/api/v1/public/courriers-externes', $this->payloadValide(['objet' => 'Dépôt A']))->assertCreated()->json('numero');
+        $numeroB = $this->post('/api/v1/public/courriers-externes', $this->payloadValide(['objet' => 'Dépôt B']))->assertCreated()->json('numero');
+        $this->assertLessThan((int) substr($numeroB, -4), (int) substr($numeroA, -4));
+        $b = Courrier::withoutGlobalScopes()->where('numero_enregistrement', $numeroB)->firstOrFail();
 
         $payload = ['classification' => 'externe', 'accuse_reception_partenaire' => 'Reçu'];
-        $numeroB = $this->actingAs($reception)->postJson("/api/v1/courriers/{$b->id}/enregistrer", $payload)->assertOk()->json('data.numero_enregistrement');
-        $numeroA = $this->actingAs($reception)->postJson("/api/v1/courriers/{$a->id}/enregistrer", $payload)->assertOk()->json('data.numero_enregistrement');
-
-        $this->assertLessThan((int) substr($numeroA, -4), (int) substr($numeroB, -4));
-        $this->assertNotSame($numeroA, $numeroB);
+        $this->actingAs($reception)->postJson("/api/v1/courriers/{$b->id}/enregistrer", $payload)->assertOk()
+            ->assertJsonPath('data.numero_enregistrement', $numeroB);
     }
 
     public function test_seule_la_reception_peut_enregistrer_un_depot_public(): void
@@ -220,7 +229,7 @@ class DeposerCourrierExternePublicTest extends TestCase
         Mail::fake();
         Storage::fake('local');
         $numero = $this->post('/api/v1/public/courriers-externes', $this->payloadValide())->assertCreated()->json('numero_accuse_reception');
-        $courrier = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numero)->firstOrFail();
+        $courrier = Courrier::withoutGlobalScopes()->where('numero_enregistrement', $numero)->firstOrFail();
         $direction = Direction::factory()->create();
         $acteursInterdits = [
             User::factory()->agentCircuitCourrier(Poste::SECRETARIAT_1, $direction)->create(),
@@ -240,7 +249,8 @@ class DeposerCourrierExternePublicTest extends TestCase
             ->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", $payload)
             ->assertNotFound();
 
-        $this->assertNull($courrier->fresh()->numero_enregistrement);
+        // Lot 6 : aucun de ces postes ne vérifie le dépôt à la place de la Réception.
+        $this->assertNull($courrier->fresh()->enregistre_at);
         $reception = User::factory()->agentCircuitCourrier(Poste::RECEPTION, $direction)->create();
         $this->actingAs($reception)->postJson("/api/v1/courriers/{$courrier->id}/enregistrer", $payload)->assertOk();
         $this->assertNotNull($courrier->fresh()->numero_enregistrement);

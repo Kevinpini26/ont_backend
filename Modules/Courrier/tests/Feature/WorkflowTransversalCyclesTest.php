@@ -59,7 +59,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
             'expediteur_externe_email' => 'partenaire@example.test',
             'piece_jointe' => UploadedFile::fake()->create('a.pdf', 20, 'application/pdf'),
         ])->assertCreated()->json('numero_accuse_reception');
-        $a = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numeroAccuseA)->firstOrFail();
+        $a = Courrier::withoutGlobalScopes()->where('numero_enregistrement', $numeroAccuseA)->firstOrFail();
         Queue::assertPushed(
             EnvoyerNotificationEmailJob::class,
             fn ($job) => $job->mailable instanceof AccuseReceptionCourrierExterneMail && $job->email === 'partenaire@example.test',
@@ -68,7 +68,8 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $this->assertSame(CourrierType::CORRESPONDANCE_GENERALE, $a->type);
         $this->assertSame('Organisation Partenaire Tourisme RDC', $a->expediteur_externe_nom);
         $this->assertSame('depot_en_ligne', $a->mode_reception->value);
-        $this->assertNull($a->numero_enregistrement);
+        // Lot 6 : le numéro d'arrivée est attribué au dépôt ; seule la vérification par la Réception reste à faire.
+        $this->assertNull($a->enregistre_at);
         Storage::disk('local')->assertExists($a->piece_jointe_chemin);
         $dossierId = $a->dossier_id;
         $this->actingAs($reception)->postJson("/api/v1/courriers/{$a->id}/transmettre-sec1")->assertUnprocessable();
@@ -79,7 +80,8 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $a->refresh();
         $numeroA = $a->numero_enregistrement;
         $this->assertNotNull($numeroA);
-        $this->assertAuditActeur('courrier.numero_enregistrement_attribue', $a->id, $reception->id);
+        // Lot 6 : numéro attribué au dépôt ; la Réception trace sa vérification.
+        $this->assertAuditActeur('courrier.depot_verifie', $a->id, $reception->id);
         $this->actingAs($reception)->postJson("/api/v1/courriers/{$a->id}/transmettre-sec1")->assertOk();
         $this->assertAuditActeur('courrier.transmis_sec1', $a->id, $reception->id);
         $this->presenterADg($a, $sec1, $dg);
@@ -479,7 +481,7 @@ class WorkflowTransversalCyclesTest extends CourrierTestCase
         $numeroAr = $reponseDepot->json('numero_accuse_reception');
         $this->assertNotNull($numeroAr);
 
-        $a = Courrier::withoutGlobalScopes()->where('numero_accuse_reception', $numeroAr)->firstOrFail();
+        $a = Courrier::withoutGlobalScopes()->where('numero_enregistrement', $numeroAr)->firstOrFail();
         $this->assertSame('recu', $a->statut->value);
 
         // 2. Accusé reçu avec le numéro A/R, réellement envoyé (pas

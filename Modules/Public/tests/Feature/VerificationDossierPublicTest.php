@@ -74,7 +74,8 @@ class VerificationDossierPublicTest extends TestCase
             ->assertJsonPath('data.etapes.1.atteinte', false)
             ->assertJsonPath('data.etapes.3.atteinte', false);
 
-        $courrier->update(['numero_enregistrement' => '2026-9901', 'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
+        // Lot 6 : le jalon « Enregistré » suit la vérification par la Réception (enregistre_at).
+        $courrier->update(['numero_enregistrement' => '2026-9901', 'enregistre_at' => now(), 'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG]);
         $this->verifier('AR-2026-000044', 'Partenaire Jalons SA')
             ->assertJsonPath('data.etapes.1.atteinte', true)
             ->assertJsonPath('data.etapes.2.atteinte', true)
