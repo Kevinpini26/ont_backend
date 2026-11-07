@@ -2,6 +2,7 @@
 
 namespace Modules\Kernel\Tests\Feature;
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -101,6 +102,13 @@ class RestaurerBaseDeDonneesTest extends TestCase
      * ouverte) : rediriger "pgsql" vers la base jetable suffit à les cibler,
      * sans toucher au reste de l'application.
      */
+    /** En cas d'échec, montre la sortie de la commande (pg_dump ou psql) au lieu d'un simple code 1. */
+    private function assertCommandeReussie(string $commande, array $arguments): void
+    {
+        $code = Artisan::call($commande, $arguments);
+        $this->assertSame(0, $code, "{$commande} a échoué : ".Artisan::output());
+    }
+
     private function pointerVers(string $base): void
     {
         $this->exigerBaseJetable($base);
@@ -139,7 +147,7 @@ class RestaurerBaseDeDonneesTest extends TestCase
         );
 
         $this->pointerVers(self::DB_SOURCE);
-        $this->artisan('kernel:sauvegarder-base-de-donnees')->assertSuccessful();
+        $this->assertCommandeReussie('kernel:sauvegarder-base-de-donnees', []);
 
         $fichiers = Storage::disk('backups-local')->files('database');
         $this->assertCount(1, $fichiers);
@@ -150,10 +158,10 @@ class RestaurerBaseDeDonneesTest extends TestCase
         $this->recreerBaseJetable(self::DB_CIBLE);
         $this->pointerVers(self::DB_CIBLE);
 
-        $this->artisan('kernel:restaurer-base-de-donnees', [
+        $this->assertCommandeReussie('kernel:restaurer-base-de-donnees', [
             'fichier' => $fichiers[0],
             '--force' => true,
-        ])->assertSuccessful();
+        ]);
 
         $valeur = $this->pdo(self::DB_CIBLE)
             ->query('SELECT valeur FROM marqueur')
@@ -178,12 +186,12 @@ class RestaurerBaseDeDonneesTest extends TestCase
         touch(Storage::disk('backups-local')->path('database/ont-ancienne.sql.gz'), now()->subDays(10)->timestamp);
 
         $this->pointerVers(self::DB_SOURCE);
-        $this->artisan('kernel:sauvegarder-base-de-donnees')->assertSuccessful();
+        $this->assertCommandeReussie('kernel:sauvegarder-base-de-donnees', []);
 
         $this->recreerBaseJetable(self::DB_CIBLE);
         $this->pointerVers(self::DB_CIBLE);
 
-        $this->artisan('kernel:restaurer-base-de-donnees', ['--force' => true])->assertSuccessful();
+        $this->assertCommandeReussie('kernel:restaurer-base-de-donnees', ['--force' => true]);
 
         $valeur = $this->pdo(self::DB_CIBLE)->query('SELECT valeur FROM marqueur')->fetchColumn();
         $this->assertSame('la-plus-recente', $valeur);

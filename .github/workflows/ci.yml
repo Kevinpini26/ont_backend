@@ -58,6 +58,16 @@ jobs:
       - name: Analyse statique (Larastan)
         run: ./vendor/bin/phpstan analyse --memory-limit=1G
 
+      # Pas de fichier .env en CI : une clé d'application jetable, propre à chaque exécution.
+      - name: Clé d'application de test
+        run: echo "APP_KEY=$(php artisan key:generate --show)" >> "$GITHUB_ENV"
+
+      - name: Versions des outils PostgreSQL (sauvegarde et restauration)
+        run: |
+          pg_dump --version
+          psql --version
+          psql --version >/dev/null && PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USERNAME" -d "$DB_DATABASE" -tAc 'show server_version'
+
       - name: Migrer la base de test
         run: php artisan migrate --force
 
