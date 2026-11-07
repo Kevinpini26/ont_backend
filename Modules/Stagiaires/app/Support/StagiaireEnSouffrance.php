@@ -5,6 +5,7 @@ namespace Modules\Stagiaires\Support;
 use Illuminate\Support\Collection;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\Stagiaire;
 
@@ -25,16 +26,17 @@ class StagiaireEnSouffrance
      */
     public function pourUtilisateur(User $utilisateur): Collection
     {
-        $seuilDefaut = (int) config('stagiaires.delai_indicatif_heures_par_defaut', 72);
+        $seuilDefaut = (int) config('stagiaires.delai_indicatif_heures_par_defaut', 21);
+        $calendrier = CalendrierOuvre::depuisReglages();
         $delaisParStatut = config('stagiaires.delais_indicatifs_heures', []);
 
         return Stagiaire::query()
             ->whereNotIn('statut', array_map(fn ($s) => $s->value, self::STATUTS_TERMINAUX))
             ->get()
             ->filter(fn (Stagiaire $stagiaire) => $this->actionnableParUtilisateur($stagiaire, $utilisateur))
-            ->map(function (Stagiaire $stagiaire) use ($delaisParStatut, $seuilDefaut) {
+            ->map(function (Stagiaire $stagiaire) use ($delaisParStatut, $seuilDefaut, $calendrier) {
                 $depuis = $stagiaire->statut_change_at ?? $stagiaire->created_at;
-                $heures = (int) $depuis->diffInHours(now());
+                $heures = (int) floor($calendrier->heuresOuvreesEntre($depuis, now()));
                 $seuil = (int) ($delaisParStatut[$stagiaire->statut->value] ?? $seuilDefaut);
                 $niveau = (int) match (true) {
                     $heures >= $seuil * 3 => 3,

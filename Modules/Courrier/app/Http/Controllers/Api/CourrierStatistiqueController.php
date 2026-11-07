@@ -18,6 +18,7 @@ use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\PeriodeStatistique;
 
@@ -90,6 +91,7 @@ class CourrierStatistiqueController extends Controller
         // blocage du service, juste un signal pour le Secrétariat 01 (voir
         // CourrierCircuitService::transmettreEnAttenteAvisDg()).
         $delaiAlerteTri = (int) Setting::valeur('courrier.tri_delai_alerte_heures', 4);
+        $calendrier = CalendrierOuvre::depuisReglages();
         $courriersNonTries = Courrier::query()
             ->when(! $sec1, fn ($query) => $query->withoutGlobalScopes())
             ->exclureAutonomesAvantTransmission()
@@ -101,7 +103,7 @@ class CourrierStatistiqueController extends Controller
                 'id' => $c->id,
                 'numero_accuse_reception' => $c->numero_accuse_reception,
                 'objet' => $c->objet,
-                'depuis_heures' => ($c->bordereauCourant()?->created_at ?? $c->created_at)->diffInHours(now()),
+                'depuis_heures' => (int) floor($calendrier->heuresOuvreesEntre($c->bordereauCourant()?->created_at ?? $c->created_at, now())),
             ])
             ->filter(fn (array $ligne) => $ligne['depuis_heures'] >= $delaiAlerteTri)
             ->sortByDesc('depuis_heures')
@@ -174,7 +176,7 @@ class CourrierStatistiqueController extends Controller
         // Courriers dont la dernière transition remonte à plus de
         // `seuil_jours`, tous statuts non clôturés confondus — signal
         // d'alerte générique, indépendant de l'étape précise où ça bloque.
-        $enAttenteDepuisLongtemps = CourriersNonTraites::compter(now()->subDays($seuilJours));
+        $enAttenteDepuisLongtemps = CourriersNonTraites::compter(CalendrierOuvre::depuisReglages()->seuilJours($seuilJours));
 
         $avisRendus = Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()->whereBetween('avis_dg_rendu_at', [$periode->debut, $periode->fin])->count();
         $avisRendusPrecedent = Courrier::query()->withoutGlobalScopes()->exclureAutonomesAvantTransmission()->whereBetween('avis_dg_rendu_at', [$periode->debutPrecedente, $periode->finPrecedente])->count();
@@ -262,7 +264,8 @@ class CourrierStatistiqueController extends Controller
         // par cette direction dont la dernière transition remonte à plus de
         // 48h — même requête que dg()::en_attente_depuis_longtemps, seuil
         // fixe et filtrée sur cette seule direction.
-        $recusNonTraites48h = CourriersNonTraites::compter(now()->subHours(48), $directionId);
+        // Lot 6 : en heures ouvrées (réglage courrier.retard_delai_heures, 14 h ≈ 2 jours de travail).
+        $recusNonTraites48h = CourriersNonTraites::compter(CalendrierOuvre::depuisReglages()->seuil((int) Setting::valeur('courrier.retard_delai_heures', 14)), $directionId);
 
         $emisEnCours = $courriers()
             ->tap($filtrerOrigine)

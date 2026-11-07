@@ -4,6 +4,7 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\CourrierType;
@@ -102,6 +103,8 @@ class TriUrgenceCourrierTest extends CourrierTestCase
 
     public function test_un_courrier_non_trie_depuis_plus_du_delai_configure_remonte_en_alerte(): void
     {
+        // Lot 6 : les délais se comptent en heures ouvrées ; date fixe un mercredi 15 h (Kinshasa) pour que le test ne dépende pas du jour où il tourne.
+        $this->travelTo(Carbon::parse('2026-11-11 15:00', 'Africa/Kinshasa'));
         Setting::definir('courrier.tri_delai_alerte_heures', 4);
 
         $direction = Direction::factory()->create();

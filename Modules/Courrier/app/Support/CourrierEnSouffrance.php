@@ -9,6 +9,7 @@ use Modules\Courrier\Enums\SensCourrier;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 
 /**
  * Liste des courriers "en souffrance" — non traités depuis plus longtemps
@@ -26,7 +27,8 @@ class CourrierEnSouffrance
      */
     public function pourUtilisateur(User $utilisateur): Collection
     {
-        $seuilDefaut = (int) config('courrier.delai_indicatif_heures_par_defaut', 48);
+        $seuilDefaut = (int) config('courrier.delai_indicatif_heures_par_defaut', 14);
+        $calendrier = CalendrierOuvre::depuisReglages();
         // en_attente_avis_dg est le seul délai de cette table réglable
         // depuis l'écran "Paramètres de l'organisation" (voir
         // SettingController) : les autres restent des choix de
@@ -34,7 +36,7 @@ class CourrierEnSouffrance
         // Direction.
         $delaisParStatut = [
             ...config('courrier.delais_indicatifs_heures', []),
-            'en_attente_avis_dg' => (int) Setting::valeur('courrier.avis_dg_delai_alerte_heures', 48),
+            'en_attente_avis_dg' => (int) Setting::valeur('courrier.avis_dg_delai_alerte_heures', 14),
         ];
 
         return Courrier::query()
@@ -42,10 +44,10 @@ class CourrierEnSouffrance
             ->with('transitions')
             ->get()
             ->filter(fn (Courrier $courrier) => $this->actionnableParUtilisateur($courrier, $utilisateur))
-            ->map(function (Courrier $courrier) use ($delaisParStatut, $seuilDefaut) {
+            ->map(function (Courrier $courrier) use ($delaisParStatut, $seuilDefaut, $calendrier) {
                 $bordereau = $courrier->bordereauCourant();
                 $depuis = $bordereau?->created_at ?? $courrier->created_at;
-                $heures = (int) $depuis->diffInHours(now());
+                $heures = (int) floor($calendrier->heuresOuvreesEntre($depuis, now()));
                 $seuil = (int) ($delaisParStatut[$courrier->statut->value] ?? $seuilDefaut);
                 $niveau = (int) match (true) {
                     $heures >= $seuil * 3 => 3,

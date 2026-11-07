@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Enums\Poste;
@@ -44,13 +45,15 @@ class CourrierEnSouffranceTest extends CourrierTestCase
 
     public function test_le_niveau_de_gravite_augmente_avec_lanciennete(): void
     {
+        // Lot 6 : les délais se comptent en heures ouvrées ; date fixe un mercredi 15 h (Kinshasa) pour que le test ne dépende pas du jour où il tourne.
+        $this->travelTo(Carbon::parse('2026-11-11 15:00', 'Africa/Kinshasa'));
         $direction = Direction::factory()->create();
         $courrier = Courrier::factory()->create(['statut' => CourrierStatut::EN_ATTENTE_AVIS_DG, 'necessite_avis_dg' => true]);
         // 3x le délai indicatif (48h) : niveau maximal.
         $courrier->transitions()->create([
             'statut' => CourrierStatut::EN_ATTENTE_AVIS_DG,
-            'accuse_reception_at' => now()->subHours(150),
-            'created_at' => now()->subHours(150),
+            'accuse_reception_at' => now()->subDays(10),
+            'created_at' => now()->subDays(10),
         ]);
         $dg = $this->agent(Poste::DG, $direction);
 

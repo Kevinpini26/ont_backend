@@ -11,6 +11,7 @@ use Modules\Courrier\Enums\TraitementDirectionStatut;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Direction;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 
 class DispatchCourrier extends Model
 {
@@ -86,7 +87,7 @@ class DispatchCourrier extends Model
         }
         $traitement = $this->relationLoaded('traitementDirection') ? $this->traitementDirection : $this->traitementDirection()->first();
 
-        return $this->echeance_at->lt(now()->startOfDay())
+        return CalendrierOuvre::depuisReglages()->echeanceDepassee($this->echeance_at)
             && $traitement?->statut !== TraitementDirectionStatut::TERMINE_DIRECTEUR;
     }
 

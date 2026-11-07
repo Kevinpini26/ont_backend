@@ -18,7 +18,9 @@ use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\TraitementDirection;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 use Modules\Kernel\Support\DelegationResolver;
 use Modules\Kernel\Support\DgAuthorityResolver;
 
@@ -31,7 +33,8 @@ use Modules\Kernel\Support\DgAuthorityResolver;
 class ActionsAFaireService
 {
     /** Au-delà, un élément en attente est signalé en retard (même seuil que les compteurs). */
-    public const HEURES_AVANT_RETARD = 48;
+    /** Délai par défaut avant « en retard », en heures ouvrées (réglage courrier.retard_delai_heures). */
+    public const HEURES_AVANT_RETARD = 14;
 
     private const RANG_URGENCE = ['tres_urgent' => 0, 'urgent' => 1, 'normal' => 2];
 
@@ -87,7 +90,7 @@ class ActionsAFaireService
     /** @return array<string, mixed> */
     public function element(string $type, string $action, ?Courrier $courrier, ?Carbon $depuis, string $lien, array $extra = []): array
     {
-        $enRetard = $extra['en_retard'] ?? ($depuis !== null && $depuis->lt(now()->subHours(self::HEURES_AVANT_RETARD)));
+        $enRetard = $extra['en_retard'] ?? $this->calendrier()->estEnRetard($depuis, $this->heuresAvantRetard());
         unset($extra['en_retard']);
 
         // array_merge et non « + » : les valeurs fournies (référence, objet d'une demande de stage) priment.
@@ -269,7 +272,7 @@ class ActionsAFaireService
                 ->get()
                 ->each(fn (DispatchCourrier $d) => $actions->push($this->element(
                     'distribution', 'Accuser réception du courrier distribué', $d->courrier, $d->execute_at, '/direction/courriers-recus',
-                    ['cle' => (string) $d->id, 'en_retard' => $d->estEnRetard() || ($d->execute_at?->lt(now()->subHours(self::HEURES_AVANT_RETARD)) ?? false)],
+                    ['cle' => (string) $d->id, 'en_retard' => $d->estEnRetard() || $this->calendrier()->estEnRetard($d->execute_at, $this->heuresAvantRetard())],
                 )));
         }
 
@@ -303,5 +306,17 @@ class ActionsAFaireService
             ->limit(100)
             ->get()
             ->map(fn ($note) => $this->element('instruction', 'Lire l’instruction', $note->courrier, $note->created_at, '/instructions-recues', ['cle' => (string) $note->id]));
+    }
+
+    private ?CalendrierOuvre $calendrierOuvre = null;
+
+    private function calendrier(): CalendrierOuvre
+    {
+        return $this->calendrierOuvre ??= CalendrierOuvre::depuisReglages();
+    }
+
+    private function heuresAvantRetard(): int
+    {
+        return (int) Setting::valeur('courrier.retard_delai_heures', self::HEURES_AVANT_RETARD);
     }
 }

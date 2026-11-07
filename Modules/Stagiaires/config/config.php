@@ -54,11 +54,13 @@ return [
      * config('courrier.delais_indicatifs_heures') : purement indicatif,
      * ne bloque jamais, voir StagiaireEnSouffrance.
      */
-    'delai_indicatif_heures_par_defaut' => 72,
+    // Lot 6 : en HEURES OUVRÉES (7 h = une journée de travail). Conversion provisoire
+    // (48 h → 14, 72 h → 21, 168 h → 49), à confirmer : voir docs/questions-ont.md.
+    'delai_indicatif_heures_par_defaut' => 21,
     'delais_indicatifs_heures' => [
-        'dossier_recu' => 48,
-        'en_attente_affectation' => 72,
-        'affecte' => 72,
-        'evaluation_en_cours' => 168,
+        'dossier_recu' => 14,
+        'en_attente_affectation' => 21,
+        'affecte' => 21,
+        'evaluation_en_cours' => 49,
     ],
 ];

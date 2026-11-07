@@ -10,6 +10,8 @@ use Modules\Courrier\Services\CourrierAnnotationService;
 use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Consultation;
+use Modules\Kernel\Models\Setting;
+use Modules\Kernel\Support\CalendrierOuvre;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Models\Stagiaire;
 
@@ -42,7 +44,7 @@ class NotificationCompteurController extends Controller
             // Même seuil que CourrierStatistiqueController::pourDirection()
             // ('courriers_recus_non_traites_48h') : rouge réservé au cas
             // vraiment bloquant, pas un nouveau critère de sévérité.
-            $nonTraites48h = CourriersNonTraites::compter(now()->subHours(48), $user->direction_id);
+            $nonTraites48h = CourriersNonTraites::compter(CalendrierOuvre::depuisReglages()->seuil((int) Setting::valeur('courrier.retard_delai_heures', 14)), $user->direction_id);
 
             $compteurs['courriers_recus'] = [
                 'count' => $nonConsultes,

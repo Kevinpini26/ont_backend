@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Enums\DegreUrgence;
@@ -93,6 +94,8 @@ class CopiesEcheancesRelancesTest extends CourrierTestCase
 
     public function test_les_directions_en_retard_sont_relancees_une_seule_fois_et_la_dg_est_informee(): void
     {
+        // Lot 6 : les délais se comptent en heures ouvrées ; date fixe un mercredi 15 h (Kinshasa) pour que le test ne dépende pas du jour où il tourne.
+        $this->travelTo(Carbon::parse('2026-11-11 15:00', 'Africa/Kinshasa'));
         Notification::fake();
         $dg = $this->agent(Poste::DG, Direction::factory()->create());
         $direction = Direction::factory()->create();
@@ -106,7 +109,8 @@ class CopiesEcheancesRelancesTest extends CourrierTestCase
             'autorite_poste' => Poste::DG, 'decide_at' => now()->subDays(10), 'statut' => DispatchStatut::EXECUTE,
         ]);
         $enRetard = $creer(['cycle' => 1, 'execute_at' => now()->subDays(9), 'echeance_at' => now()->subDay()->toDateString()]);
-        $sansEcheanceAncien = $creer(['cycle' => 2, 'execute_at' => now()->subDays(9)]);
+        // 12 jours calendaires : nettement plus de 7 jours ouvrés (9 jours tombaient pile sur la limite).
+        $sansEcheanceAncien = $creer(['cycle' => 2, 'execute_at' => now()->subDays(12)]);
         $dansLesDelais = $creer(['cycle' => 3, 'execute_at' => now()->subDays(9), 'echeance_at' => now()->addDays(3)->toDateString()]);
         $recent = $creer(['cycle' => 4, 'execute_at' => now()->subDay()]);
 

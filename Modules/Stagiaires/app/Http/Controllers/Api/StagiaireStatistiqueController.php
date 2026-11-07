@@ -8,6 +8,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Direction;
+use Modules\Kernel\Support\CalendrierOuvre;
 use Modules\Kernel\Support\PeriodeStatistique;
 use Modules\Stagiaires\Enums\StagiaireStatut;
 use Modules\Stagiaires\Enums\StagiaireTypeStage;
@@ -192,7 +193,7 @@ class StagiaireStatistiqueController extends Controller
 
             $donnees['demandes_en_attente'] = Stagiaire::query()->withoutGlobalScopes()
                 ->whereIn('statut', [StagiaireStatut::DOSSIER_RECU, StagiaireStatut::EN_ATTENTE_AFFECTATION])
-                ->where('created_at', '<=', now()->subDays($seuilJours))
+                ->where('created_at', '<=', CalendrierOuvre::depuisReglages()->seuilJours($seuilJours))
                 ->orderBy('created_at')
                 ->get(['id', 'nom', 'statut', 'created_at'])
                 ->map(fn (Stagiaire $s) => ['id' => $s->id, 'nom' => $s->nom, 'statut_label' => $s->statut->label(), 'created_at' => $s->created_at])

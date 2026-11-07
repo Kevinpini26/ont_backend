@@ -4,6 +4,7 @@ namespace Modules\Courrier\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Modules\Courrier\Console\RelancerAvisDgEnAttenteCommand;
@@ -49,6 +50,8 @@ class NotificationsEmailTest extends CourrierTestCase
 
     public function test_la_relance_davis_dg_ne_seffectue_que_pour_les_courriers_en_attente_depuis_plus_de_48h(): void
     {
+        // Lot 6 : les délais se comptent en heures ouvrées ; date fixe un mercredi 15 h (Kinshasa) pour que le test ne dépende pas du jour où il tourne.
+        $this->travelTo(Carbon::parse('2026-11-11 15:00', 'Africa/Kinshasa'));
         Queue::fake();
 
         $direction = Direction::factory()->create();

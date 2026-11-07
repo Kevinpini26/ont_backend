@@ -12,6 +12,7 @@ use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 
 /**
  * Relance les directions qui n'ont pas terminé le traitement d'un courrier
@@ -32,7 +33,9 @@ class RelancerDirectionsEnRetardCommand extends Command
 
     public function handle(): int
     {
-        $limiteSansEcheance = now()->subDays((int) config('courrier.relance_direction.delai_jours_sans_echeance', 7));
+        $calendrier = CalendrierOuvre::depuisReglages();
+        // Lot 6 : jours ouvrés, et une échéance n'est dépassée qu'après la fermeture du premier jour ouvré.
+        $limiteSansEcheance = $calendrier->seuilJours((int) config('courrier.relance_direction.delai_jours_sans_echeance', 7));
 
         $dispatchs = DispatchCourrier::query()
             ->where('type_destination', DispatchTypeDestination::DIRECTION->value)
@@ -42,7 +45,8 @@ class RelancerDirectionsEnRetardCommand extends Command
                 ->where('echeance_at', '<', now()->startOfDay())
                 ->orWhere(fn ($sans) => $sans->whereNull('echeance_at')->where('execute_at', '<', $limiteSansEcheance)))
             ->whereDoesntHave('traitementDirection', fn ($t) => $t->where('statut', TraitementDirectionStatut::TERMINE_DIRECTEUR->value))
-            ->get();
+            ->get()
+            ->filter(fn (DispatchCourrier $d) => $d->echeance_at === null || $calendrier->echeanceDepassee($d->echeance_at));
 
         $dg = User::query()->where('role', UserRole::AGENT_CIRCUIT_COURRIER->value)->where('poste', Poste::DG->value)->get();
 

@@ -379,11 +379,13 @@ return [
      * ci-dessous. Ces durées sont un choix de présentation raisonnable,
      * pas une norme métier confirmée — voir docs/questions-ont.md.
      */
-    'delai_indicatif_heures_par_defaut' => 48,
+    // Lot 6 : en HEURES OUVRÉES (7 h = une journée de travail). Conversion provisoire des anciennes
+    // valeurs calendaires (48 h → 14, 24 h → 7, 72 h → 21), à confirmer : voir docs/questions-ont.md.
+    'delai_indicatif_heures_par_defaut' => 14,
     'delais_indicatifs_heures' => [
-        'en_attente_avis_dg' => 48,
-        'en_relecture' => 24,
-        'projet_a_rediger' => 72,
-        'projet_a_valider' => 24,
+        'en_attente_avis_dg' => 14,
+        'en_relecture' => 7,
+        'projet_a_rediger' => 21,
+        'projet_a_valider' => 7,
     ],
 ];

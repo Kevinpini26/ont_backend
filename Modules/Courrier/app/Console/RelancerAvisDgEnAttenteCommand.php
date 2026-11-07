@@ -9,7 +9,9 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\NotificationService;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
+use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Models\User;
+use Modules\Kernel\Support\CalendrierOuvre;
 use Modules\Kernel\Support\DgAuthorityResolver;
 
 /**
@@ -20,9 +22,9 @@ use Modules\Kernel\Support\DgAuthorityResolver;
  */
 class RelancerAvisDgEnAttenteCommand extends Command
 {
-    protected $signature = 'courrier:relancer-avis-dg-en-attente {--seuil-heures=48}';
+    protected $signature = 'courrier:relancer-avis-dg-en-attente {--seuil-heures= : heures ouvrées (défaut : réglage courrier.avis_dg_delai_alerte_heures)}';
 
-    protected $description = "Relance la DG pour les courriers en attente d'avis depuis plus de 48h";
+    protected $description = "Relance la DG pour les courriers en attente d'avis au-delà du délai d'alerte, en heures ouvrées";
 
     public function __construct(private readonly NotificationService $notifications, private readonly DgAuthorityResolver $autoriteDg)
     {
@@ -31,8 +33,8 @@ class RelancerAvisDgEnAttenteCommand extends Command
 
     public function handle(): int
     {
-        $seuilHeures = (int) $this->option('seuil-heures');
-        $seuil = now()->subHours($seuilHeures);
+        $seuilHeures = (int) ($this->option('seuil-heures') ?? Setting::valeur('courrier.avis_dg_delai_alerte_heures', 14));
+        $seuil = CalendrierOuvre::depuisReglages()->seuil($seuilHeures);
 
         $courriers = Courrier::query()
             ->withoutGlobalScopes()
