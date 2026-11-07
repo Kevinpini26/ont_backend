@@ -260,4 +260,37 @@ class RestaurerBaseDeDonneesTest extends TestCase
         Process::assertDidntRun(fn ($p) => ($p->command[0] ?? null) === 'sh');
         $this->assertFileDoesNotExist(storage_path('app/tmp-restore-ont-2026-11-05_030000.sql.gz'), 'Le test ne laisse aucun fichier temporaire.');
     }
+
+    /**
+     * Relevé à la première CI réelle : un pg_dump 17 ou plus récent écrit « SET transaction_timeout = 0; »,
+     * que psql refuse sur un serveur 16 (ON_ERROR_STOP) : la sauvegarde ne se restaurait plus.
+     */
+    public function test_une_sauvegarde_dun_pg_dump_recent_se_restaure_sur_un_serveur_plus_ancien(): void
+    {
+        Storage::fake('backups-local');
+        config(['backup.disk' => 'backups-local']);
+        Storage::disk('backups-local')->put('database/ont-2026-11-07_030000.sql.gz', gzencode(
+            "SET statement_timeout = 0;\nSET transaction_timeout = 0;\nCREATE TABLE marqueur (id int);\n"
+        ));
+        $sqlRecu = null;
+
+        Process::fake(function ($process) use (&$sqlRecu) {
+            $commande = (array) $process->command;
+            if (($commande[0] ?? null) === 'gzip' && in_array('-df', $commande, true)) {
+                file_put_contents(substr(end($commande), 0, -3), gzdecode((string) file_get_contents(end($commande))));
+                unlink(end($commande));
+            }
+            if (($commande[0] ?? null) === 'psql') {
+                $fichier = collect($commande)->first(fn ($a) => str_starts_with((string) $a, '--file='));
+                $sqlRecu = file_get_contents(substr((string) $fichier, 7));
+            }
+
+            return Process::result(exitCode: 0);
+        });
+
+        $this->artisan('kernel:restaurer-base-de-donnees', ['--force' => true])->assertSuccessful();
+
+        $this->assertStringNotContainsString('transaction_timeout', (string) $sqlRecu);
+        $this->assertStringContainsString('CREATE TABLE marqueur', (string) $sqlRecu);
+    }
 }

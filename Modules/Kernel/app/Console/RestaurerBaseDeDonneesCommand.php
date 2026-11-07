@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Console\ConfirmableTrait;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
+use Modules\Kernel\Support\CompatibiliteSauvegardePostgres;
 
 /**
  * Restaure la base PostgreSQL depuis une sauvegarde produite par
@@ -83,6 +84,9 @@ class RestaurerBaseDeDonneesCommand extends Command
 
             return self::FAILURE;
         }
+
+        // Sauvegarde d'un pg_dump plus récent que le serveur : voir CompatibiliteSauvegardePostgres.
+        CompatibiliteSauvegardePostgres::nettoyer($cheminSql);
 
         $resultat = Process::env(['PGPASSWORD' => $config['password']])->timeout(3600)->run([
             'psql', '--host='.$config['host'], '--port='.$config['port'], '--username='.$config['username'],

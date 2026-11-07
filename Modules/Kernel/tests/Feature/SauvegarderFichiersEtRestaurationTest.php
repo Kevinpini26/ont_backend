@@ -83,4 +83,35 @@ class SauvegarderFichiersEtRestaurationTest extends TestCase
         Process::assertRan(fn ($p) => ($p->command[0] ?? null) === 'createdb' && str_starts_with(end($p->command), 'ont_verif_restauration_'));
         Process::assertRan(fn ($p) => ($p->command[0] ?? null) === 'dropdb' && str_starts_with(end($p->command), 'ont_verif_restauration_'));
     }
+
+    /** Relevé à la première CI réelle : voir CompatibiliteSauvegardePostgres. */
+    public function test_la_verification_retire_le_reglage_quun_serveur_16_ne_connait_pas(): void
+    {
+        Storage::fake('backups-local');
+        config(['backup.disk' => 'backups-local']);
+        Storage::disk('backups-local')->put('database/ont-2026-11-07_030000.sql.gz', gzencode("SET transaction_timeout = 0;\nselect 1;\n"));
+        $sqlRestaure = null;
+
+        Process::fake(function ($process) use (&$sqlRestaure) {
+            $commande = (array) $process->command;
+            if (($commande[0] ?? null) === 'gzip' && ($commande[1] ?? null) === '-df') {
+                $archive = end($commande);
+                file_put_contents(substr($archive, 0, -3), gzdecode((string) file_get_contents($archive)));
+            }
+            if (($commande[0] ?? null) === 'psql' && in_array('ON_ERROR_STOP=1', $commande, true)) {
+                $fichier = collect($commande)->first(fn ($a) => str_starts_with((string) $a, '--file='));
+                $sqlRestaure = file_get_contents(substr((string) $fichier, 7));
+            }
+            if (in_array('select count(*) from migrations', $commande, true)) {
+                return Process::result(output: "42\n");
+            }
+
+            return Process::result(exitCode: 0);
+        });
+
+        $this->artisan('kernel:verifier-restauration')->assertSuccessful();
+
+        $this->assertStringNotContainsString('transaction_timeout', (string) $sqlRestaure);
+        $this->assertStringContainsString('select 1;', (string) $sqlRestaure);
+    }
 }

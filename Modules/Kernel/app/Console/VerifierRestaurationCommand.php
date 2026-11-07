@@ -5,6 +5,7 @@ namespace Modules\Kernel\Console;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
+use Modules\Kernel\Support\CompatibiliteSauvegardePostgres;
 
 /**
  * Prouve qu'une sauvegarde est restaurable : la dernière sauvegarde de la base (ou celle passée
@@ -86,6 +87,8 @@ class VerifierRestaurationCommand extends Command
                 $baseAVider = true;
             }
 
+            // Sauvegarde d'un pg_dump plus récent que le serveur : voir CompatibiliteSauvegardePostgres.
+            CompatibiliteSauvegardePostgres::nettoyer($sql);
             $restauration = Process::env($env)->timeout(3600)->run(['psql', ...$connexion, '--quiet', '-v', 'ON_ERROR_STOP=1', '--dbname='.$base, '--file='.$sql]);
             if ($restauration->failed()) {
                 $this->error('Échec de la restauration : '.$restauration->errorOutput());
