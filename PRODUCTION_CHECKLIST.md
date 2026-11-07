@@ -106,6 +106,17 @@ Détail complet : `SECURITY.md`.
 - [ ] Un fichier de 20 Mo passe réellement à travers le reverse proxy, nginx et PHP
 - [ ] Matrice d'accès relue avec l'ONT (`ARCHITECTURE.md`, section 8)
 
+### Lot 6 — conformité aux pratiques du courrier
+
+- [ ] Calendrier de travail confirmé par l'ONT : jours, horaires, jours fériés de l'année
+- [ ] Délais provisoires relus (retard, tri, avis de la DG, classeur : heures ouvrées) — un délai déjà
+      réglé à l'écran se lit désormais en heures ouvrées
+- [ ] Signataire de chaque registre réglé (SEC2 par défaut)
+- [ ] Circuit direct entre directions laissé **désactivé** tant que l'ONT n'a pas fixé les natures autorisées
+- [ ] Plan de classement saisi (rubriques, durées, sorts finaux) avant toute proposition de bordereau
+- [ ] OCR : laissé désactivé, ou activé (`OCR_ACTIVE=true`) après essai sur un vrai scan du serveur
+- [ ] Migration : les anciens accusés `AR-…` restent valables au suivi public ; aucun numéro n'est renuméroté
+
 ## 6. Sauvegardes
 
 - [ ] Sauvegarde automatique quotidienne confirmée active

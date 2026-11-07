@@ -41,7 +41,7 @@ PostgreSQL (paramétrable dans `.env` : `DB_CONNECTION=pgsql`). Les tests utilis
 php artisan test
 ```
 
-Plus de 1 000 tests couvrant : authentification, verrouillage/désactivation de compte, changement/réinitialisation de mot de passe, passation de poste unique, filtrage par direction, journal d'audit et supervision système (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence, tableau de bord statistique et notifications e-mail tracées (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
+Plus de 1 090 tests couvrant : authentification, verrouillage/désactivation de compte, changement/réinitialisation de mot de passe, passation de poste unique, filtrage par direction, journal d'audit et supervision système (Kernel) ; progression stricte du circuit courrier, bordereau de transmission et décharge obligatoire à chaque étape, refus de signature sans relecture validée, atomicité sous concurrence, tableau de bord statistique et notifications e-mail tracées (Courrier) ; création automatique de la fiche stagiaire, double évaluation et calcul de la note finale, présences, quotas d'affectation et tableau de bord DFP (Stagiaires) ; vérification publique d'un dossier avec second facteur anti-énumération, dépôt de demande de stage en ligne (Public).
 
 ```bash
 ./vendor/bin/pint --test      # style de code (PSR-12 + règles Laravel)

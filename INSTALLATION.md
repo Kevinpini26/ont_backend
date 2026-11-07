@@ -68,6 +68,14 @@ lancer à la main pour une première installation.
 Limites d'envoi : nginx 64 Mo par requête, PHP 21 Mo par fichier et 64 Mo par requête
 (`docker/php/ont-limites.ini`). Le plus gros fichier accepté par l'application est de 20 Mo.
 
+### Lecture des scans (OCR)
+
+L'image de production contient `poppler-utils` et `tesseract-ocr` (français) depuis le lot 6, mais la
+lecture des scans est **désactivée par défaut**. Pour l'activer : `OCR_ACTIVE=true`, puis redémarrer la
+file d'attente. Mesuré sur un serveur à 8 cœurs : environ 2,4 secondes par page A4 (200 dpi) ; ces outils
+ajoutent environ 86 Mo à l'image. La recherche dans les scans respecte les droits d'accès et la
+confidentialité (voir `RechercheScansConfidentialiteTest`).
+
 ## 3. Créer le premier compte administrateur
 
 Aucun compte n'existe après une première installation (contrairement à
@@ -99,6 +107,10 @@ Contrairement à un déploiement Laravel classique (cron système +
 `docker compose up` (services `scheduler` et `queue-worker`, voir
 `docker-compose.yml`) — rien à configurer côté système d'exploitation du
 serveur hôte.
+
+Tâches planifiées ajoutées au lot 6 : `courrier:alerter-classeur` (chaque heure : courriers au classeur
+d'attente au-delà du délai en heures ouvrées). Les relances existantes comptent désormais en heures ouvrées
+(calendrier réglable dans « Paramètres de l'organisation »).
 
 Vérifier qu'ils tournent : `docker compose logs -f scheduler queue-worker`.
 Si l'un des deux plante, `docker compose restart scheduler` (ou
