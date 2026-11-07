@@ -16,6 +16,7 @@ use Modules\Courrier\Models\DispatchCourrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\MissionDocumentaire;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Support\ClasseurEnRetard;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
 use Modules\Kernel\Models\Setting;
@@ -143,7 +144,9 @@ class ActionsAFaireService
                     $courrier,
                     $bordereau?->created_at ?? $courrier->created_at,
                     $this->lienDeFile($courrier, $poste),
-                    ['cle' => $poste->value],
+                    // Lot 6 : au classeur d'attente, le retard suit le délai propre au classeur.
+                    ['cle' => $poste->value] + ($courrier->statut === CourrierStatut::EN_ATTENTE_CLASSEUR
+                        ? ['en_retard' => ClasseurEnRetard::estEnRetard($courrier)] : []),
                 ));
             }
         }

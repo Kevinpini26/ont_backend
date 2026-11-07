@@ -13,6 +13,7 @@ use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\CourrierTransition;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\ReorientationTri;
+use Modules\Courrier\Support\ClasseurEnRetard;
 use Modules\Courrier\Support\CourriersNonTraites;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Enums\UserRole;
@@ -212,6 +213,9 @@ class CourrierStatistiqueController extends Controller
             'en_preparation_relecture' => $enPreparationRelecture,
             'a_signer' => $aSigner,
             'en_attente_depuis_longtemps' => $enAttenteDepuisLongtemps,
+            // Lot 6 : courriers au classeur d'attente de SEC1 au-delà du délai (heures ouvrées).
+            'classeur_en_retard' => ClasseurEnRetard::filtrer(Courrier::query()->withoutGlobalScopes())->count(),
+            'classeur_delai_heures' => ClasseurEnRetard::delaiHeures(),
             'seuil_jours' => $seuilJours,
             'dossiers_en_boucle' => $dossiersEnBoucle,
             'seuil_tours' => $seuilTours,

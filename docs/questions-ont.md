@@ -849,3 +849,12 @@ Les anciens numéros `AR-…` restent valables pour le suivi public. Un dépôt 
   « porteur ») est « guichet » ; un courrier reçu par la poste ou par courriel est « externe ».
 - **Motif de non-recevabilité.** Il n'est pas montré au déposant : le suivi public affiche seulement
   « Non recevable ». Faut-il le lui communiquer, et le prévenir par e-mail ?
+
+## Lot 6 — classeur d'attente de SEC1
+
+Un courrier « normal » mis au classeur d'attente déclenche, au-delà du délai, une alerte à SEC1, la
+mention « En retard » dans sa file, un compteur dans l'Espace DG et une seule relance de la DG
+(commande `courrier:alerter-classeur`, chaque heure). Le courrier ne part jamais seul à la DG.
+
+- **Délai maximum au classeur.** Provisoire : 14 heures ouvrées (2 jours de travail), réglable dans
+  « Paramètres de l'organisation » (`courrier.classeur_delai_heures`). À confirmer par l'ONT.

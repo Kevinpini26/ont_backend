@@ -4,6 +4,7 @@ namespace Modules\Courrier\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Gate;
+use Modules\Courrier\Console\AlerterClasseurEnRetardCommand;
 use Modules\Courrier\Console\AnonymiserCandidaturesNonRetenuesCommand;
 use Modules\Courrier\Console\GenererRegistreCourrierCommand;
 use Modules\Courrier\Console\ReconcilerPdfOfficielDocumentAutonomeCommand;
@@ -58,6 +59,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         RelancerAvisDgEnAttenteCommand::class,
+        AlerterClasseurEnRetardCommand::class,
         RelancerDirectionsEnRetardCommand::class,
         AnonymiserCandidaturesNonRetenuesCommand::class,
         GenererRegistreCourrierCommand::class,
@@ -106,6 +108,7 @@ class CourrierServiceProvider extends ModuleServiceProvider
     protected function configureSchedules(Schedule $schedule): void
     {
         $schedule->command(RelancerAvisDgEnAttenteCommand::class)->hourly();
+        $schedule->command(AlerterClasseurEnRetardCommand::class)->hourly();
         $schedule->command(RelancerDirectionsEnRetardCommand::class)->dailyAt('08:00');
         $schedule->command(AnonymiserCandidaturesNonRetenuesCommand::class)->daily();
         $schedule->command(ReconcilerPdfOfficielDocumentAutonomeCommand::class)->dailyAt('02:00')->withoutOverlapping();

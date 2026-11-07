@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Services\CycleDecisionnelService;
+use Modules\Courrier\Support\ClasseurEnRetard;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Http\Resources\DirectionResource;
 use Modules\Kernel\Http\Resources\UserResource;
@@ -240,6 +241,7 @@ class CourrierResource extends JsonResource
             }),
             'annule' => $this->annule_at !== null,
             'non_recevable' => $this->non_recevable_at !== null,
+            'classeur_en_retard' => $this->statut === CourrierStatut::EN_ATTENTE_CLASSEUR && ClasseurEnRetard::estEnRetard($this->resource),
             'non_recevable_at' => $this->non_recevable_at,
             'non_recevable_motif' => $this->non_recevable_motif,
             'origine_arrivee' => $this->sens?->value === 'entrant' ? $this->origineArrivee() : null,

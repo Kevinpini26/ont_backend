@@ -36,6 +36,8 @@ class SettingController extends Controller
         'courrier.tri_delai_alerte_heures' => ['type' => 'integer', 'defaut' => 4],
         'courrier.avis_dg_delai_alerte_heures' => ['type' => 'integer', 'defaut' => 14],
         'courrier.retard_delai_heures' => ['type' => 'integer', 'defaut' => 14],
+        // Lot 6 : délai maximum au classeur d'attente de SEC1, en heures ouvrées (provisoire).
+        'courrier.classeur_delai_heures' => ['type' => 'integer', 'defaut' => 14],
         // Cartouche de signature des registres (lot 6) : l'ONT n'a pas de Secrétaire Général, SEC2 par défaut.
         'registre.arrivee.signataire_poste' => ['type' => 'poste', 'defaut' => 'secretariat_2'],
         'registre.arrivee.signataire_intitule' => ['type' => 'string', 'defaut' => 'Le Secrétariat 02'],
