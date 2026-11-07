@@ -43,6 +43,9 @@ class SettingController extends Controller
         'registre.arrivee.signataire_intitule' => ['type' => 'string', 'defaut' => 'Le Secrétariat 02'],
         'registre.depart.signataire_poste' => ['type' => 'poste', 'defaut' => 'secretariat_2'],
         'registre.depart.signataire_intitule' => ['type' => 'string', 'defaut' => 'Le Secrétariat 02'],
+        // Circuit direct entre directions (lot 6) : désactivé par défaut, natures autorisées provisoires.
+        'circuit_direct.actif' => ['type' => 'booleen', 'defaut' => false],
+        'circuit_direct.natures_autorisees' => ['type' => 'natures', 'defaut' => null],
         // Calendrier de travail (lot 6) : valeurs par défaut dans config('kernel.calendrier').
         'calendrier.jours_ouvres' => ['type' => 'jours', 'defaut' => null],
         'calendrier.heure_debut' => ['type' => 'heure', 'defaut' => null],
@@ -78,6 +81,15 @@ class SettingController extends Controller
             $definition['type'] === 'email' => ['valeur' => ['required', 'email']],
             $definition['type'] === 'jours' => ['valeur' => ['required', 'array', 'min:1', 'max:7'], 'valeur.*' => ['integer', 'between:1,7', 'distinct']],
             $definition['type'] === 'heure' => ['valeur' => ['required', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/']],
+            $definition['type'] === 'booleen' => ['valeur' => ['present', 'boolean']],
+            $definition['type'] === 'natures' => [
+                'valeur' => ['present', 'array'],
+                // Les engagements financiers et contrats restent toujours dans le circuit central.
+                'valeur.*' => ['string', 'distinct', Rule::in(array_values(array_diff(
+                    array_keys((array) config('courrier.circuit_direct.natures', [])),
+                    (array) config('courrier.circuit_direct.exclues_toujours', []),
+                )))],
+            ],
             $definition['type'] === 'poste' => ['valeur' => ['required', 'string', Rule::in(array_map(
                 fn (Poste $poste) => $poste->value,
                 array_filter(Poste::cases(), fn (Poste $poste) => ! $poste->estHistorique()),
@@ -101,6 +113,9 @@ class SettingController extends Controller
                 throw ValidationException::withMessages(['valeur' => "L'heure de fin doit être après l'heure de début."]);
             }
         }
+        if ($definition['type'] === 'booleen') {
+            $donnees['valeur'] = (bool) $donnees['valeur'];
+        }
         if ($definition['type'] === 'jours') {
             $donnees['valeur'] = array_values(array_map('intval', $donnees['valeur']));
         }
@@ -122,8 +137,10 @@ class SettingController extends Controller
 
     private function defaut(string $cle): mixed
     {
-        return str_starts_with($cle, 'calendrier.')
-            ? config('kernel.'.$cle)
-            : self::DEFINITIONS[$cle]['defaut'];
+        return match (true) {
+            str_starts_with($cle, 'calendrier.') => config('kernel.'.$cle),
+            $cle === 'circuit_direct.natures_autorisees' => config('courrier.circuit_direct.natures_autorisees_par_defaut', []),
+            default => self::DEFINITIONS[$cle]['defaut'],
+        };
     }
 }

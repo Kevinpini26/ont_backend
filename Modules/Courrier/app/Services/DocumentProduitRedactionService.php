@@ -120,6 +120,7 @@ class DocumentProduitRedactionService
                 'document_source_id' => null,
                 'direction_id' => $direction->id,
                 'direction_destination_souhaitee_id' => $destinationId,
+                'nature' => $donnees['nature'] ?? null,
                 'directeur_id' => $directeur->id,
                 'version_contenu' => 1,
                 'statut' => DocumentProduitStatut::BROUILLON,

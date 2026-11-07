@@ -5,8 +5,10 @@ namespace Modules\Courrier\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Courrier\Enums\DocumentProduitOrigine;
+use Modules\Courrier\Enums\DocumentProduitStatut;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DocumentProduitDirection;
+use Modules\Courrier\Services\CircuitDirectService;
 use Modules\Kernel\Models\AuditLog;
 use Modules\Kernel\Models\User;
 
@@ -26,6 +28,15 @@ class DocumentProduitDirectionResource extends JsonResource
             'scan_officiel_version' => $this->whenLoaded('scansOfficiels', fn () => $this->scansOfficiels->first()?->version),
             'version_contenu' => $this->version_contenu, 'modifie_at' => $this->modifie_at,
             'statut' => $this->statut?->value, 'statut_label' => $this->statut?->label(),
+            // Lot 6 : nature et circuit direct (désactivé par défaut).
+            'nature' => $this->nature,
+            'nature_label' => $this->nature === null ? null : (config('courrier.circuit_direct.natures')[$this->nature] ?? $this->nature),
+            'circuit_direct' => $this->circuit_direct_at !== null,
+            'circuit_direct_at' => $this->circuit_direct_at,
+            'recu_destination' => $this->recu_destination_at !== null,
+            'recu_destination_at' => $this->recu_destination_at,
+            'peut_transmettre_direct' => $this->statut === DocumentProduitStatut::SCAN_ENREGISTRE && app(CircuitDirectService::class)->refus($this->resource) === null,
+            'raison_circuit_central' => $this->statut === DocumentProduitStatut::SCAN_ENREGISTRE ? app(CircuitDirectService::class)->refus($this->resource) : null,
             'courrier' => $this->whenLoaded('courrier', function (?Courrier $courrier) use ($request): ?array {
                 if ($courrier === null) {
                     return null;

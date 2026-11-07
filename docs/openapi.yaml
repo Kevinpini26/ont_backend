@@ -2087,6 +2087,37 @@ paths:
       responses:
         '200': { description: OK }
         '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /documents-produits-direction/recus-direct:
+    get:
+      tags: [Courrier]
+      summary: "Documents internes reçus par le circuit direct (secrétariat ou directeur de la direction destinataire)"
+      x-controleur: "DocumentProduitDirectionController@recusDirect"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Réservé aux directions }
+  /documents-produits-direction/{document}/transmettre-direct:
+    post:
+      tags: [Courrier]
+      summary: "Transmettre un document interne directement à la direction destinataire (circuit direct, désactivé par défaut)"
+      x-controleur: "DocumentProduitDirectionController@transmettreDirect"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '422': { description: "Circuit direct désactivé, ou document qui doit suivre le circuit central (raison donnée)" }
+  /documents-produits-direction/{document}/accuser-reception-direct:
+    post:
+      tags: [Courrier]
+      summary: "Le secrétariat destinataire accuse réception d'un document reçu par le circuit direct"
+      x-controleur: "DocumentProduitDirectionController@accuserReceptionDirect"
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '422': { description: Accusé déjà donné ou mauvais destinataire }
   /documents-produits-direction/{document}:
     get:
       tags: [Courrier]

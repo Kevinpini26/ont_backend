@@ -59,6 +59,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/documents-produits-direction/autonomes-sec1', [DocumentProduitDirectionController::class, 'autonomesAcceptesSec1']);
     Route::get('/documents-produits-direction/autonomes-dg', [DocumentProduitDirectionController::class, 'autonomesEnAttenteDg']);
     Route::get('/documents-produits-direction', [DocumentProduitDirectionController::class, 'index']);
+    Route::get('/documents-produits-direction/recus-direct', [DocumentProduitDirectionController::class, 'recusDirect']);
     Route::post('/documents-produits-direction/autonomes', [DocumentProduitDirectionController::class, 'storeAutonome']);
     Route::get('/documents-produits-direction/{document}/controle-dg', [DocumentProduitDirectionController::class, 'etatAutonomeDg']);
     Route::post('/documents-produits-direction/{document}/decision-dg', [DocumentProduitDirectionController::class, 'deciderAutonomeDg']);
@@ -79,6 +80,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/documents-produits-direction/{document}/prendre-en-charge-sec1', [DocumentProduitDirectionController::class, 'prendreEnChargeAutonomeSec1']);
     Route::post('/documents-produits-direction/{document}/transmettre-dg-sec1', [DocumentProduitDirectionController::class, 'transmettreAutonomeDgDepuisSec1']);
     Route::post('/documents-produits-direction/{document}/recevoir', [DocumentProduitDirectionController::class, 'recevoir']);
+    Route::post('/documents-produits-direction/{document}/transmettre-direct', [DocumentProduitDirectionController::class, 'transmettreDirect']);
+    Route::post('/documents-produits-direction/{document}/accuser-reception-direct', [DocumentProduitDirectionController::class, 'accuserReceptionDirect']);
     Route::get('/classements-documents', [ClassementDocumentController::class, 'index']);
     Route::post('/dispatchs/{dispatch}/classer', [ClassementDocumentController::class, 'classer']);
     Route::post('/classements-documents/{classement}/archiver', [ClassementDocumentController::class, 'archiver']);

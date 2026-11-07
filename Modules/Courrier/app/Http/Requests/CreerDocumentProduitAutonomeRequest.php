@@ -18,6 +18,7 @@ class CreerDocumentProduitAutonomeRequest extends FormRequest
             'objet' => ['required', 'string', 'max:255'],
             'contenu' => ['required', 'array'],
             'direction_destination_souhaitee_id' => ['nullable', 'integer', 'exists:directions,id'],
+            'nature' => ['nullable', 'string', 'in:'.implode(',', array_keys(config('courrier.circuit_direct.natures', [])))],
         ];
     }
 }

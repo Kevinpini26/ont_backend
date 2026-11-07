@@ -11,6 +11,8 @@ enum DocumentProduitStatut: string
     case SCAN_ENREGISTRE = 'scan_enregistre';
     case TRANSMIS_RECEPTION = 'transmis_reception';
     case ENTRE_CIRCUIT = 'entre_circuit';
+    // Lot 6 : circuit direct entre directions (désactivé par défaut).
+    case TRANSMIS_DIRECTION = 'transmis_direction';
 
     public function label(): string
     {
@@ -18,7 +20,7 @@ enum DocumentProduitStatut: string
             self::BROUILLON => 'Brouillon', self::SOUMIS_DIRECTEUR => 'Soumis au Directeur',
             self::A_CORRIGER => 'À corriger', self::VALIDE => 'Validé par le Directeur',
             self::SCAN_ENREGISTRE => 'Scan officiel enregistré',
-            self::TRANSMIS_RECEPTION => 'Transmis à la Réception', self::ENTRE_CIRCUIT => 'Entré dans le circuit central',
+            self::TRANSMIS_RECEPTION => 'Transmis à la Réception', self::TRANSMIS_DIRECTION => 'Transmis directement à la direction', self::ENTRE_CIRCUIT => 'Entré dans le circuit central',
         };
     }
 }

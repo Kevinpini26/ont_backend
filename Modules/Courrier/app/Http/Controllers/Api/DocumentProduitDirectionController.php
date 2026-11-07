@@ -18,6 +18,7 @@ use Modules\Courrier\Http\Requests\SoumettreDocumentProduitRequest;
 use Modules\Courrier\Http\Resources\DocumentProduitDirectionResource;
 use Modules\Courrier\Models\DocumentProduitDirection;
 use Modules\Courrier\Models\TraitementDirection;
+use Modules\Courrier\Services\CircuitDirectService;
 use Modules\Courrier\Services\CourrierCircuitService;
 use Modules\Courrier\Services\DispatchCourrierService;
 use Modules\Courrier\Services\DocumentProduitDirectionService;
@@ -441,6 +442,30 @@ class DocumentProduitDirectionController extends Controller
             : $this->service->transmettreReception($document, $request->user());
 
         return new DocumentProduitDirectionResource($this->chargerTracabilite($transmis, true));
+    }
+
+    /** Lot 6 : circuit direct entre directions (désactivé par défaut, voir CircuitDirectService). */
+    public function transmettreDirect(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('view', $document);
+
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(app(CircuitDirectService::class)->transmettre($document, $request->user()), true));
+    }
+
+    public function accuserReceptionDirect(Request $request, DocumentProduitDirection $document)
+    {
+        $this->authorize('view', $document);
+
+        return new DocumentProduitDirectionResource($this->chargerTracabilite(app(CircuitDirectService::class)->accuserReception($document, $request->user()), true));
+    }
+
+    public function recusDirect(Request $request)
+    {
+        abort_unless($request->user()->role === UserRole::SECRETARIAT_DIRECTION || $request->user()->role->estDirecteurDirection(), 403);
+
+        return DocumentProduitDirectionResource::collection(
+            app(CircuitDirectService::class)->recusPour($request->user())->with(['courrier', 'direction', 'directionDestinationSouhaitee'])->paginate(20)
+        );
     }
 
     public function recevoir(Request $request, DocumentProduitDirection $document)

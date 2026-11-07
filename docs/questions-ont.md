@@ -858,3 +858,19 @@ mention « En retard » dans sa file, un compteur dans l'Espace DG et une seule 
 
 - **Délai maximum au classeur.** Provisoire : 14 heures ouvrées (2 jours de travail), réglable dans
   « Paramètres de l'organisation » (`courrier.classeur_delai_heures`). À confirmer par l'ONT.
+
+## Lot 6 — circuit direct entre directions (désactivé par défaut)
+
+Le schéma officiel fait passer tout document interne par la Réception, SEC1, la DG et SEC2 : c'est
+toujours le comportement par défaut. L'administrateur peut ouvrir un circuit direct (« Paramètres de
+l'organisation », réglages `circuit_direct.*`, chaque modification inscrite au journal d'audit). Le document
+est alors créé, validé, référencé, signé et scanné comme les autres, reçoit son numéro d'arrivée et va
+directement au secrétariat de la direction destinataire, qui accuse réception ; la DG reçoit une copie.
+
+Restent toujours dans le circuit central : courrier externe, document adressé à la DG (sans direction
+destinataire), demande de stage, engagement financier, contrat ou convention, document confidentiel ou secret,
+et toute nature non autorisée (donc tout nouveau type tant qu'il n'est pas autorisé).
+
+- **Quels types de documents peuvent circuler directement entre directions ?** Provisoire : seulement la
+  « note de service ». Natures proposées : note de service, note interne, compte rendu, engagement financier,
+  contrat ou convention, autre. Liste à confirmer.

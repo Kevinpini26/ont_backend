@@ -28,11 +28,11 @@ class DocumentProduitDirection extends Model
 
     protected $table = 'documents_produits_direction';
 
-    protected $fillable = ['origine', 'traitement_direction_id', 'courrier_id', 'document_source_id', 'direction_id', 'direction_destination_souhaitee_id', 'directeur_id', 'version_contenu', 'modifie_par_id', 'modifie_at', 'statut', 'cree_par_id', 'cree_at', 'soumis_par_id', 'soumis_at', 'correction_demandee_par_id', 'motif_correction', 'correction_demandee_at', 'valide_par_id', 'valide_at', 'transmis_reception_par_id', 'transmis_reception_at', 'recu_par_id', 'recu_at'];
+    protected $fillable = ['nature', 'circuit_direct_par_id', 'circuit_direct_at', 'recu_destination_par_id', 'recu_destination_at', 'origine', 'traitement_direction_id', 'courrier_id', 'document_source_id', 'direction_id', 'direction_destination_souhaitee_id', 'directeur_id', 'version_contenu', 'modifie_par_id', 'modifie_at', 'statut', 'cree_par_id', 'cree_at', 'soumis_par_id', 'soumis_at', 'correction_demandee_par_id', 'motif_correction', 'correction_demandee_at', 'valide_par_id', 'valide_at', 'transmis_reception_par_id', 'transmis_reception_at', 'recu_par_id', 'recu_at'];
 
     protected function casts(): array
     {
-        return ['origine' => DocumentProduitOrigine::class, 'statut' => DocumentProduitStatut::class, 'version_contenu' => 'integer', 'pdf_officiel_version_contenu' => 'integer', 'pdf_officiel_genere_at' => 'datetime', 'cree_at' => 'datetime', 'modifie_at' => 'datetime', 'soumis_at' => 'datetime', 'correction_demandee_at' => 'datetime', 'valide_at' => 'datetime', 'transmis_reception_at' => 'datetime', 'recu_at' => 'datetime'];
+        return ['circuit_direct_at' => 'datetime', 'recu_destination_at' => 'datetime', 'origine' => DocumentProduitOrigine::class, 'statut' => DocumentProduitStatut::class, 'version_contenu' => 'integer', 'pdf_officiel_version_contenu' => 'integer', 'pdf_officiel_genere_at' => 'datetime', 'cree_at' => 'datetime', 'modifie_at' => 'datetime', 'soumis_at' => 'datetime', 'correction_demandee_at' => 'datetime', 'valide_at' => 'datetime', 'transmis_reception_at' => 'datetime', 'recu_at' => 'datetime'];
     }
 
     public function traitement(): BelongsTo
@@ -123,8 +123,19 @@ class DocumentProduitDirection extends Model
             return false;
         }
 
+        if ($user->role === UserRole::SECRETARIAT_DIRECTION && $user->direction_id === $this->direction_id) {
+            return true;
+        }
+
+        // Lot 6 : un document transmis par le circuit direct est visible de la direction destinataire.
+        if ($this->statut === DocumentProduitStatut::TRANSMIS_DIRECTION
+            && $user->direction_id === $this->direction_destination_souhaitee_id
+            && ($user->role === UserRole::SECRETARIAT_DIRECTION || $user->role->estDirecteurDirection())) {
+            return true;
+        }
+
         if ($user->role === UserRole::SECRETARIAT_DIRECTION) {
-            return $user->direction_id === $this->direction_id;
+            return false;
         }
 
         return $user->role->estDirecteurDirection()

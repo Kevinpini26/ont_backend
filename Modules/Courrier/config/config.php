@@ -388,4 +388,22 @@ return [
         'projet_a_rediger' => 21,
         'projet_a_valider' => 7,
     ],
+
+    /*
+     * Lot 6 : circuit direct entre directions, DÉSACTIVÉ par défaut (réglages circuit_direct.* dans
+     * « Paramètres de l'organisation »). Natures des documents internes ; celles de « exclues_toujours »
+     * restent dans le circuit central quel que soit le réglage. Liste PROVISOIRE : voir docs/questions-ont.md.
+     */
+    'circuit_direct' => [
+        'natures' => [
+            'note_de_service' => 'Note de service',
+            'note_interne' => 'Note interne',
+            'compte_rendu' => 'Compte rendu',
+            'engagement_financier' => 'Engagement financier',
+            'contrat' => 'Contrat ou convention',
+            'autre' => 'Autre document',
+        ],
+        'exclues_toujours' => ['engagement_financier', 'contrat'],
+        'natures_autorisees_par_defaut' => ['note_de_service'],
+    ],
 ];
