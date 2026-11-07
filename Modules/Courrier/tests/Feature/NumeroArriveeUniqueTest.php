@@ -215,4 +215,16 @@ class NumeroArriveeUniqueTest extends CourrierTestCase
         $this->assertSame([now()->year.'-9999', now()->year.'-10000'], $this->registre(['origine' => 'externe'])['courriers']->pluck('numero_enregistrement')->all());
         $this->assertSame([$enLigne->numero_enregistrement], $this->registre(['origine' => 'en_ligne'])['courriers']->pluck('numero_enregistrement')->all());
     }
+
+    /** Relevé à la répétition du lot 6 : la liste de la Réception présentait encore « à transmettre ». */
+    public function test_la_liste_indique_quun_depot_en_ligne_est_deja_transmis_a_sec1(): void
+    {
+        $courrier = $this->deposerEnLigne('Déjà transmis');
+        $this->verifier($courrier);
+        $this->actingAs($this->reception)->postJson("/api/v1/courriers/{$courrier->id}/transmettre-sec1")->assertOk();
+
+        $ligne = collect($this->actingAs($this->reception)->getJson('/api/v1/courriers?statut=recu')->assertOk()->json('data'))->firstWhere('id', $courrier->id);
+
+        $this->assertTrue($ligne['depot_transmis_sec1'] ?? false);
+    }
 }

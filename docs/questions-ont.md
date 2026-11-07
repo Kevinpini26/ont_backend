@@ -890,3 +890,11 @@ de versement, l'autorité DG le valide (jamais son auteur), et rien n'est suppri
   (ou la date de clôture, ou la date du dernier document) ?
 - **Validation** : provisoire, SEC2 propose et l'autorité DG valide. Faut-il un autre signataire
   (par exemple les Archives nationales pour un versement) ?
+
+## Lot 6 — relevé de la répétition finale (2026-11-07)
+
+- **Registre complet pour SEC2.** Depuis la matrice d'accès du lot 2, SEC2 ne voit au registre que son propre
+  périmètre ; la DG voit tout. Or SEC2 signe le registre par défaut. Faut-il que SEC2 voie le registre
+  d'arrivée complet ? (Rien n'a été changé : règle d'accès à valider.)
+- **Accusé de SEC1 au classeur.** Un courrier mis au classeur par SEC1 lui-même apparaît « Accuser réception »
+  sur l'accueil de SEC1, alors qu'il ne quitte pas son bureau. Comportement antérieur au lot 6, à confirmer.

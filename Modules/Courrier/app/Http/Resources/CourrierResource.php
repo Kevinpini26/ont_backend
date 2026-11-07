@@ -253,6 +253,9 @@ class CourrierResource extends JsonResource
                     'sort_final_execute_at' => $dossier->sort_final_execute_at,
                 ];
             })(),
+            // Lot 6 : un dépôt en ligne transmis à SEC1 reste « reçu » jusqu'à son accusé ; la liste doit le savoir.
+            'depot_transmis_sec1' => $this->mode_reception?->value === 'depot_en_ligne' && $this->statut === CourrierStatut::RECU
+                && $this->transitions()->where('destinataire_poste', Poste::SECRETARIAT_1->value)->exists(),
             'non_recevable' => $this->non_recevable_at !== null,
             'classeur_en_retard' => $this->statut === CourrierStatut::EN_ATTENTE_CLASSEUR && ClasseurEnRetard::estEnRetard($this->resource),
             'non_recevable_at' => $this->non_recevable_at,
