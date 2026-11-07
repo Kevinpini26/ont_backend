@@ -1,7 +1,7 @@
 # Questions à poser à l'ONT
 
 Points laissés configurables plutôt que figés dans le code, en attendant validation
-par la DFP et/ou le Secrétariat Général. Chaque entrée indique où le paramètre
+par la DFP, SEC1, SEC2 ou la DG (l'ONT n'a pas de Secrétaire Général). Chaque entrée indique où le paramètre
 provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
 
 ## Lot 1 — courrier, registre
@@ -44,7 +44,7 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
 - **Qui a accès au registre PDF.** Actuellement ouvert à l'administrateur
   et à tout poste du circuit courrier central, même périmètre que les
   statistiques (voir `CourrierPolicy::voirRegistre()`). À restreindre si
-  seul un rôle précis (Secrétariat Général, DG) doit pouvoir l'éditer.
+  seul un rôle précis (SEC1, SEC2, DG) doit pouvoir l'éditer.
 
 - **Niveau de confidentialité : périmètre exact d'accès.** Implémenté :
   un courrier confidentiel/secret est visible par les postes du circuit
@@ -62,7 +62,7 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   hiérarchique direct) qui devrait pouvoir désigner son propre
   remplaçant en cas d'absence — mais aucune notion de hiérarchie entre
   postes n'existe dans le système pour arbitrer ça automatiquement. À
-  confirmer avec la DFP/le Secrétariat Général.
+  confirmer avec la DFP, SEC1 et SEC2.
 
 - **Délégation de poste et niveau d'ancienneté/permissions du délégataire.**
   `DelegationPoste` ne vérifie pas que le délégataire a le rôle
@@ -209,7 +209,7 @@ provisoire vit dans le code, pour l'ajuster une fois la réponse connue.
   par direction/type de stage, avec la note moyenne — périmètre exact
   (faut-il aussi les stages encore en cours en fin d'année, un taux de
   réussite avec seuil de note, une ventilation par établissement ?) à
-  confirmer avec la DFP/le Secrétariat Général. Généré à la demande (comme
+  confirmer avec la DFP, SEC1 et SEC2. Généré à la demande (comme
   le registre courrier), pas automatiquement en fin d'année.
 
 - **Qui a accès au rapport annuel.** Restreint à la DFP et à
@@ -249,7 +249,7 @@ périmètre du code :
   L'ordonnance-loi ne fixe aucun chiffre (voir §5 de
   `conformite-donnees.md`) : `config('kernel.mention_information.duree_conservation')`
   reste un texte d'attente, aucune purge automatique n'a été implémentée.
-  À chiffrer avec la DFP/le Secrétariat Général, catégorie par catégorie
+  À chiffrer avec la DFP, SEC1 et SEC2, catégorie par catégorie
   (dossier stagiaire non affecté, dossier stagiaire clôturé, courrier,
   journal d'audit).
 
@@ -313,7 +313,7 @@ périmètre du code :
   directions, le routage du circuit courrier et la visibilité des
   utilisateurs restent tous nationaux, sans aucune segmentation par site.
   Une vraie préparation multi-site opérationnelle demanderait de trancher,
-  avec la DFP/le Secrétariat Général : les représentations provinciales
+  avec la DFP, SEC1 et SEC2 : les représentations provinciales
   ont-elles leurs propres séquences de numérotation ? Un agent d'une
   représentation provinciale voit-il uniquement les dossiers de son site,
   ou tout le national comme aujourd'hui ? Ce lot pose le référentiel sans
@@ -744,7 +744,7 @@ prêté à confusion dans les commentaires de code.)
 
 ## Durée de conservation affichée au public
 
-La mention d'information publique affiche pour l'instant une formule générique (« durée nécessaire aux finalités poursuivies »). Quelle durée précise l'ONT veut-elle afficher, pour les dossiers de stage et pour la correspondance? À valider avec la DFP et le Secrétariat Général (article 193, 3° de l'ordonnance-loi).
+La mention d'information publique affiche pour l'instant une formule générique (« durée nécessaire aux finalités poursuivies »). Quelle durée précise l'ONT veut-elle afficher, pour les dossiers de stage et pour la correspondance? À valider avec la DFP, SEC1 et SEC2 (article 193, 3° de l'ordonnance-loi).
 
 ## Anonymisation : pièces jointes, numérisations et documents d'une candidature non retenue
 
@@ -825,3 +825,12 @@ avec un calendrier réglable dans « Paramètres de l'organisation » (clés `ca
   qu'après la fermeture du premier jour ouvré suivant. À confirmer.
 - **Page d'accueil publique.** Elle annonce « Pris en charge par la Réception sous 48h ». Faut-il écrire
   « sous 2 jours ouvrés » ? Le texte n'a pas été changé.
+
+## Lot 6 — signature des registres
+
+L'ONT n'a pas de Secrétaire Général : SEC1 et SEC2 tiennent ce rôle. Le cartouche « Vu et certifié par »
+du registre se règle dans « Paramètres de l'organisation » (`registre.arrivee.*` et `registre.depart.*` :
+poste et intitulé), avec le Secrétariat 02 par défaut.
+
+- **Qui signe le registre d'arrivée, et qui signe le registre de départ ?** Le même poste pour les deux,
+  ou deux postes différents (par exemple SEC1 pour l'arrivée et SEC2 pour le départ) ?

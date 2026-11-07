@@ -71,7 +71,7 @@
     <table class="cartouche">
         <tr>
             <td>Établi par</td>
-            <td>Vu et certifié par le Secrétaire Général</td>
+            <td>Vu et certifié par : {{ $signataire['intitule'] ?? 'Le Secrétariat 02' }}@if (! empty($signataire['poste']) && ($signataire['poste'] !== ($signataire['intitule'] ?? null)))<br><small>({{ $signataire['poste'] }})</small>@endif</td>
         </tr>
     </table>
 </body>

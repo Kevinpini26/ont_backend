@@ -9,6 +9,7 @@ use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
 use Modules\Courrier\Models\Courrier;
 use Modules\Kernel\Contracts\PdfGenerationService;
 use Modules\Kernel\Enums\Poste;
+use Modules\Kernel\Models\Setting;
 use Modules\Kernel\Support\DelegationResolver;
 
 class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
@@ -51,6 +52,10 @@ class DompdfRegistreCourrierPdfGenerator implements RegistreCourrierPdfGenerator
             'courriers' => $courriers,
             'ruptures' => $ruptures,
             'total' => $courriers->count(),
+            'signataire' => [
+                'intitule' => (string) Setting::valeur("registre.{$type}.signataire_intitule", 'Le Secrétariat 02'),
+                'poste' => Poste::tryFrom((string) Setting::valeur("registre.{$type}.signataire_poste", 'secretariat_2'))?->label(),
+            ],
             // Objet des courriers confidentiels masqué sauf pour la DG et SEC2 (matrice d'accès, E).
             'objetsMasques' => $courriers
                 ->reject(fn (Courrier $courrier) => $user !== null && Gate::forUser($user)->allows('voirObjetConfidentielEnMasse', $courrier))

@@ -6,7 +6,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * Point d'extension : produit le registre imprimable d'une période — le
- * document que le Secrétariat Général signe et que la tutelle réclame en
+ * document que le Secrétariat 02 signe (cartouche réglable) et que la tutelle réclame en
  * cas de contrôle. Retourne le contenu binaire du PDF (jamais un chemin :
  * à l'appelant — commande ou route de téléchargement — de décider quoi en
  * faire), même convention que Kernel\Contracts\PdfGenerationService.

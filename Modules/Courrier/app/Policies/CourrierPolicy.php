@@ -376,7 +376,7 @@ class CourrierPolicy
      * aux postes du circuit central et à l'administrateur, comme
      * voirStatistiques(). Périmètre volontairement large en attendant
      * confirmation (voir docs/questions-ont.md) — à restreindre si la
-     * DFP/le Secrétariat Général précise que ce doit être un poste unique.
+     * DFP ou la DG précise que ce doit être un poste unique.
      */
     public function imputer(User $user, Courrier $courrier): bool
     {

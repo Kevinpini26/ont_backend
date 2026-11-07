@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Kernel\Contracts\AuditLogger;
+use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\Setting;
 
 /**
@@ -35,6 +36,11 @@ class SettingController extends Controller
         'courrier.tri_delai_alerte_heures' => ['type' => 'integer', 'defaut' => 4],
         'courrier.avis_dg_delai_alerte_heures' => ['type' => 'integer', 'defaut' => 14],
         'courrier.retard_delai_heures' => ['type' => 'integer', 'defaut' => 14],
+        // Cartouche de signature des registres (lot 6) : l'ONT n'a pas de Secrétaire Général, SEC2 par défaut.
+        'registre.arrivee.signataire_poste' => ['type' => 'poste', 'defaut' => 'secretariat_2'],
+        'registre.arrivee.signataire_intitule' => ['type' => 'string', 'defaut' => 'Le Secrétariat 02'],
+        'registre.depart.signataire_poste' => ['type' => 'poste', 'defaut' => 'secretariat_2'],
+        'registre.depart.signataire_intitule' => ['type' => 'string', 'defaut' => 'Le Secrétariat 02'],
         // Calendrier de travail (lot 6) : valeurs par défaut dans config('kernel.calendrier').
         'calendrier.jours_ouvres' => ['type' => 'jours', 'defaut' => null],
         'calendrier.heure_debut' => ['type' => 'heure', 'defaut' => null],
@@ -70,6 +76,10 @@ class SettingController extends Controller
             $definition['type'] === 'email' => ['valeur' => ['required', 'email']],
             $definition['type'] === 'jours' => ['valeur' => ['required', 'array', 'min:1', 'max:7'], 'valeur.*' => ['integer', 'between:1,7', 'distinct']],
             $definition['type'] === 'heure' => ['valeur' => ['required', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/']],
+            $definition['type'] === 'poste' => ['valeur' => ['required', 'string', Rule::in(array_map(
+                fn (Poste $poste) => $poste->value,
+                array_filter(Poste::cases(), fn (Poste $poste) => ! $poste->estHistorique()),
+            ))]],
             $definition['type'] === 'fuseau' => ['valeur' => ['required', 'string', Rule::in(timezone_identifiers_list())]],
             $definition['type'] === 'jours_feries' => [
                 'valeur' => ['present', 'array', 'max:100'],

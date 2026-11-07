@@ -6,7 +6,7 @@ directement, pas un résumé de doctrine — voir la note méthodologique en
 fin de document). Les numéros d'article cités ci-dessous renvoient à ce
 texte. Ce document sert de référence pour les choix déjà faits dans le
 code (implémentés dans ce lot ou les précédents) et pour les points qui
-restent à trancher avec la DFP / le Secrétariat Général — ces derniers
+restent à trancher avec la DFP, SEC1 et SEC2 — ces derniers
 sont repris dans `docs/questions-ont.md`.
 
 ## 1. Champ d'application
@@ -42,7 +42,7 @@ Aucune démarche de déclaration ni d'autorisation auprès de l'Autorité de
 protection des données n'a été effectuée à ce jour côté ONT, à la
 connaissance de ce code — c'est une démarche administrative externe au
 système, mais son absence expose l'ONT à un traitement non conforme. À
-vérifier en priorité avec la DFP / le Secrétariat Général.
+vérifier en priorité avec la DFP, SEC1 et SEC2.
 
 ## 3. Localisation des données (article 201)
 
@@ -129,7 +129,7 @@ désignation formelle d'un **délégué à la protection des données**
 (mentionné aux articles 189, 4° et 206) et la tenue du **registre des
 traitements** que ce délégué met à la disposition de l'Autorité (articles
 227-228) — aucun des deux n'existe dans ce système ni dans l'organisation
-décrite. À signaler à la DFP/au Secrétariat Général : la dispense des
+décrite. À signaler à la DFP, à SEC1 et à SEC2 : la dispense des
 formalités de déclaration prévue à l'article 189, 4° est précisément
 conditionnée à la désignation de ce délégué.
 
@@ -191,7 +191,7 @@ tutelle ou à l'INACO en cas de contrôle.
 redevance d'archivage prévue à l'article 46, ou s'enregistrer/transmettre
 ses archives numériques à l'INACO selon des modalités précises — ce sont
 des démarches administratives externes au système, à confirmer avec la
-DFP/le Secrétariat Général.
+DFP, SEC1 et SEC2.
 
 ## Note méthodologique
 

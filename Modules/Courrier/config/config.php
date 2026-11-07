@@ -360,7 +360,7 @@ return [
     /**
      * Format du numéro de départ (registre sortant) — provisoire, voir
      * docs/questions-ont.md : le format exact reste à valider avec le
-     * Secrétariat Général. %d = année, %04d = séquence annuelle.
+     * SEC1, SEC2 et la DG. %d = année, %04d = séquence annuelle.
      */
     'format_numero_depart' => '%d-D%04d',
 

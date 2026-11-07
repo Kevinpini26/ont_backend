@@ -9,7 +9,7 @@ use Modules\Courrier\Contracts\RegistreCourrierPdfGenerator;
 
 /**
  * Produit le registre imprimable d'une période — document que le
- * Secrétariat Général signe et que la tutelle réclame en cas de contrôle.
+ * Secrétariat 02 signe (cartouche réglable) et que la tutelle réclame en cas de contrôle.
  */
 class GenererRegistreCourrierCommand extends Command
 {

@@ -86,7 +86,7 @@ class DefaultNumeroGeneratorTest extends TestCase
 
     /**
      * Format provisoire (voir docs/questions-ont.md — le format exact du
-     * numéro de départ reste à valider avec le Secrétariat Général) :
+     * numéro de départ reste à valider avec SEC2 et la DG) :
      * configurable depuis l'écran "Paramètres de l'organisation" (voir
      * Setting::valeur('courrier.format_numero_depart')), défaut "%d-D%04d"
      * qui reprend la forme de numero_enregistrement avec un D distinctif.

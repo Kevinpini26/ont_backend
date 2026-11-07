@@ -30,7 +30,7 @@ Légende : **En place** · **Partiel** · **Écart**.
 ## Décisions attendues
 
 1. **Calendrier de conservation** (écart 10) : l'ONT dispose-t-il d'un tableau de gestion ? Sinon,
-   faut-il le préparer avec la DFP et le Secrétariat Général ?
+   faut-il le préparer avec la DFP, SEC1 et SEC2 ?
 2. **PDF/A** (écart 12) : faut-il l'exiger pour les courriers signés et les registres ?
 3. **Journal d'audit** (point 15) : faut-il le protéger au niveau de la base ?
 4. **Plan de classement** (point 9) : faut-il un référentiel des séries ?
