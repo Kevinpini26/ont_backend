@@ -219,6 +219,7 @@ class CourrierController extends Controller
         $lignes = $query->orderBy('id')->cursor()->map(fn (Courrier $c) => [
             $c->numero_enregistrement,
             $c->numero_accuse_reception,
+            $c->sens?->value === 'entrant' ? ['externe' => 'Externe', 'guichet' => 'Guichet', 'en_ligne' => 'En ligne', 'interne' => 'Interne'][$c->origineArrivee()] : '',
             Gate::forUser($utilisateur)->allows('voirObjetConfidentielEnMasse', $c) && Gate::forUser($utilisateur)->allows('consulterContenu', $c)
                 ? $c->objet : 'Objet confidentiel',
             $c->type->label(),
@@ -231,7 +232,7 @@ class CourrierController extends Controller
         ]);
 
         return CsvExporter::streamer('courriers.csv', [
-            "Numéro d'enregistrement", "Numéro d'accusé de réception", 'Objet', 'Type', 'Statut',
+            "Numéro d'arrivée", 'Ancien accusé en ligne', 'Origine', 'Objet', 'Type', 'Statut',
             'Direction origine', 'Direction destination', 'Urgence', 'Date du courrier', 'Date de réception',
         ], $lignes);
     }
@@ -603,7 +604,7 @@ class CourrierController extends Controller
         if ($request->filled('numero_sms')) {
             $this->notifications->notifierParSms(
                 $request->string('numero_sms')->toString(),
-                "ONT : lien de capture pour numériser le courrier {$courrier->numero_accuse_reception} (valable 15 min) : {$url}",
+                "ONT : lien de capture pour numériser le courrier {$courrier->numeroSuivi()} (valable 15 min) : {$url}",
             );
         }
 
@@ -627,7 +628,7 @@ class CourrierController extends Controller
 
         return response($pdf, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "inline; filename=\"feuille-couverture-{$courrier->numero_accuse_reception}.pdf\"",
+            'Content-Disposition' => "inline; filename=\"feuille-couverture-{$courrier->numeroSuivi()}.pdf\"",
         ]);
     }
 
@@ -681,7 +682,9 @@ class CourrierController extends Controller
      */
     public function importerLot(ImporterLotNumerisationRequest $request)
     {
-        $courrier = Courrier::query()->where('numero_accuse_reception', $request->string('numero_accuse_reception'))->firstOrFail();
+        // Lot 6 : numéro d'arrivée, ou ancien accusé AR- d'un ancien dépôt.
+        $numero = $request->string('numero_accuse_reception')->toString();
+        $courrier = Courrier::query()->where(fn ($q) => $q->where('numero_enregistrement', $numero)->orWhere('numero_accuse_reception', $numero))->firstOrFail();
         $this->authorize('view', $courrier);
 
         return DB::transaction(function () use ($request, $courrier) {
@@ -745,14 +748,14 @@ class CourrierController extends Controller
             'notes_masquees' => $notesMasquees,
             'courrier' => $courrier->load(['directionOrigine', 'directionDestination', 'transitions.auteur', 'transitions.destinataireUser', 'transitions.accuseReceptionPar']),
             'qr_verification_data_uri' => $this->qrCode->genererSvgDataUri(
-                rtrim(config('app.frontend_url'), '/')."/verification-dossier?numero={$courrier->numero_accuse_reception}",
+                rtrim(config('app.frontend_url'), '/').'/suivi-dossier?numero='.urlencode((string) $courrier->numeroSuivi()),
                 120,
             ),
         ]);
 
         return response($pdf, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "inline; filename=\"fiche-{$courrier->numero_accuse_reception}.pdf\"",
+            'Content-Disposition' => "inline; filename=\"fiche-{$courrier->numeroSuivi()}.pdf\"",
         ]);
     }
 
@@ -767,7 +770,7 @@ class CourrierController extends Controller
             app(PdfOfficielIntegrity::class)->verifier($courrier);
         }
 
-        return Storage::disk('local')->download($courrier->pdf_chemin, "courrier-{$courrier->numero_accuse_reception}.pdf");
+        return Storage::disk('local')->download($courrier->pdf_chemin, "courrier-{$courrier->numeroSuivi()}.pdf");
     }
 
     public function telechargerLettreStage(Courrier $courrier)
@@ -780,7 +783,7 @@ class CourrierController extends Controller
 
         return Storage::disk('local')->download(
             $courrier->lettre_stage_chemin,
-            "lettre-stage-{$courrier->numero_accuse_reception}.{$extension}"
+            "lettre-stage-{$courrier->numeroSuivi()}.{$extension}"
         );
     }
 
@@ -808,7 +811,7 @@ class CourrierController extends Controller
 
         $extension = pathinfo($chemin, PATHINFO_EXTENSION);
 
-        return Storage::disk('local')->download($chemin, "{$piece}-{$courrier->numero_accuse_reception}.{$extension}");
+        return Storage::disk('local')->download($chemin, "{$piece}-{$courrier->numeroSuivi()}.{$extension}");
     }
 
     public function telechargerPieceJointe(Courrier $courrier)
@@ -821,7 +824,7 @@ class CourrierController extends Controller
 
         return Storage::disk('local')->download(
             $courrier->piece_jointe_chemin,
-            "piece-jointe-{$courrier->numero_accuse_reception}.{$extension}"
+            "piece-jointe-{$courrier->numeroSuivi()}.{$extension}"
         );
     }
 
@@ -840,7 +843,7 @@ class CourrierController extends Controller
 
         return Storage::disk('local')->download(
             $piece->chemin,
-            "{$piece->libelle}-{$courrier->numero_accuse_reception}.{$extension}"
+            "{$piece->libelle}-{$courrier->numeroSuivi()}.{$extension}"
         );
     }
 
@@ -930,7 +933,7 @@ class CourrierController extends Controller
 
         return Storage::disk('local')->download(
             $document->chemin,
-            "numerisation-{$courrier->numero_accuse_reception}-v{$document->version}.pdf"
+            "numerisation-{$courrier->numeroSuivi()}-v{$document->version}.pdf"
         );
     }
 

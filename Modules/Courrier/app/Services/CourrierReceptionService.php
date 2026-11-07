@@ -103,12 +103,9 @@ class CourrierReceptionService
     }
 
     /**
-     * Un courrier enregistré au guichet n'a pas de numero_accuse_reception
-     * public (voir creer() ci-dessus) : l'email de confirmation à
-     * l'expéditeur ou au candidat n'offre donc aucun lien de suivi, juste
-     * la confirmation elle-même. Sans adresse email captée, rien n'est
-     * envoyé automatiquement ; l'agent imprime la fiche de secours via
-     * GET /courriers/{courrier}/accuse-reception-guichet
+     * Lot 6 : le courrier déposé au guichet a son numéro d'arrivée ; si une adresse e-mail est fournie,
+     * l'expéditeur ou le candidat reçoit le même accusé, avec le lien de suivi en ligne. Dans tous les
+     * cas, l'agent imprime le récépissé via GET /courriers/{courrier}/accuse-reception-guichet
      * (CourrierController::accuseReceptionGuichet()).
      */
     private function accuserReceptionGuichet(Courrier $courrier): void

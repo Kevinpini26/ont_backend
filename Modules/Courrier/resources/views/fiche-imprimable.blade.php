@@ -21,7 +21,7 @@
 <body>
     @include('courrier::partials.entete')
 
-    <div class="titre">Fiche imprimable — {{ $courrier->numero_accuse_reception }}</div>
+    <div class="titre">Fiche imprimable — {{ $courrier->numeroSuivi() ?? $courrier->numero_depart }}</div>
 
     <table class="tableau">
         <tr><td>Objet</td><td>@can('consulterContenu', $courrier){{ $courrier->objet }}@else Objet confidentiel @endcan</td></tr>

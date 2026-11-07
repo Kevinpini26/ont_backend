@@ -27,7 +27,7 @@
 
             <div class="titre">Feuille de couverture</div>
 
-            <div class="numero">{{ $ligne['courrier']->numero_accuse_reception }}</div>
+            <div class="numero">{{ $ligne['courrier']->numeroSuivi() }}</div>
 
             <div class="code-barres">
                 <img src="{{ $ligne['code_barres_data_uri'] }}" alt="Code-barres">

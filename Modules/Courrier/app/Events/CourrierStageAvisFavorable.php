@@ -53,7 +53,7 @@ class CourrierStageAvisFavorable
 
     public function referenceCourrier(): string
     {
-        return $this->courrier->numero_accuse_reception;
+        return (string) $this->courrier->numeroSuivi();
     }
 
     public function typeStage(): ?string

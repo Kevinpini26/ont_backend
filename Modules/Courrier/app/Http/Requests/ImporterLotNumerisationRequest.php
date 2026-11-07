@@ -3,6 +3,7 @@
 namespace Modules\Courrier\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Courrier\Models\Courrier;
 
 /**
  * Un segment déjà découpé par le navigateur (voir
@@ -20,7 +21,14 @@ class ImporterLotNumerisationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'numero_accuse_reception' => ['required', 'string', 'exists:courriers,numero_accuse_reception'],
+            // Lot 6 : le numéro d'arrivée (code-barres des nouvelles feuilles), ou un ancien accusé AR-.
+            'numero_accuse_reception' => ['required', 'string', function (string $attribut, mixed $valeur, \Closure $echec): void {
+                $existe = Courrier::query()->withoutGlobalScopes()
+                    ->where(fn ($q) => $q->where('numero_enregistrement', $valeur)->orWhere('numero_accuse_reception', $valeur))->exists();
+                if (! $existe) {
+                    $echec('Aucun courrier ne porte ce numéro.');
+                }
+            }],
             'fichier' => [
                 'required', 'file',
                 'max:'.config('kernel.numerisation.plafond_ko_courrier'),

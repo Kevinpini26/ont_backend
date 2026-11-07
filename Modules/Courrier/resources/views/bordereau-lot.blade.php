@@ -53,7 +53,7 @@
             @foreach ($bordereau->courriers as $index => $courrier)
                 <tr>
                     <td>{{ $index + 1 }}</td>
-                    <td>{{ $courrier->numero_accuse_reception ?? $courrier->numero_enregistrement ?? '—' }}</td>
+                    <td>{{ $courrier->numeroSuivi() ?? '—' }}</td>
                     <td>@can('consulterContenu', $courrier){{ $courrier->objet }}@else Objet confidentiel @endcan</td>
                 </tr>
                 @if (($notes[$courrier->id] ?? collect())->isNotEmpty() || ($notesMasquees[$courrier->id] ?? false))

@@ -40,13 +40,13 @@ class DompdfFeuilleCouvertureGenerator implements FeuilleCouvertureGenerator
         return [
             'courrier' => $courrier,
             'nombre_pages_attendues' => $nombrePagesAttendues,
-            'code_barres_data_uri' => $this->genererCodeBarresDataUri($courrier->numero_accuse_reception),
+            'code_barres_data_uri' => $this->genererCodeBarresDataUri((string) $courrier->numeroSuivi()),
             // Numéro seul (déjà imprimé en clair juste au-dessus) : le nom
             // du déposant reste exigé en second facteur sur la page de
             // vérification elle-même (voir DossierPublicController), le QR
             // ne contourne donc pas cette protection.
             'qr_verification_data_uri' => $this->qrCode->genererSvgDataUri(
-                rtrim(config('app.frontend_url'), '/')."/verification-dossier?numero={$courrier->numero_accuse_reception}",
+                rtrim(config('app.frontend_url'), '/').'/suivi-dossier?numero='.urlencode((string) $courrier->numeroSuivi()),
                 120,
             ),
         ];

@@ -21,7 +21,8 @@
 <body>
     @include('courrier::partials.entete')
 
-    <div class="titre">Accusé de réception</div>
+    <div class="titre">Récépissé de dépôt</div>
+    <p style="text-align: center; margin: 0;">Numéro d'arrivée</p>
 
     <div class="numero">{{ $courrier->numero_enregistrement }}</div>
 
@@ -31,8 +32,12 @@
             <td>@can('consulterContenu', $courrier){{ $courrier->objet }}@else Objet confidentiel @endcan</td>
         </tr>
         <tr>
-            <td>Date</td>
-            <td>{{ $courrier->created_at->translatedFormat('d F Y') }}</td>
+            <td>Date et heure du dépôt</td>
+            <td>{{ $deposeLe->translatedFormat('d F Y') }} à {{ $deposeLe->format('H:i') }}</td>
+        </tr>
+        <tr>
+            <td>Nombre de pièces</td>
+            <td>{{ $nombrePieces }}</td>
         </tr>
         <tr>
             <td>{{ $nomDeposant['libelle'] }}</td>
@@ -41,9 +46,13 @@
     </table>
 
     <p class="mention">
-        Ce document atteste la réception de votre dossier par l'Office
-        National du Tourisme. Il ne constitue ni son enregistrement
-        administratif définitif ni une réponse officielle.
+        Ce récépissé atteste la réception de votre dossier par l'Office National du Tourisme, sous le
+        numéro d'arrivée ci-dessus. Il ne constitue pas une réponse officielle.
+    </p>
+
+    <p class="mention">
+        <strong>Suivez votre dossier en ligne</strong> sur {{ $lienSuivi }}, avec ce numéro et le nom
+        ou l'adresse e-mail indiqués lors du dépôt.
     </p>
 
     <p class="contact">

@@ -355,7 +355,7 @@ class CourrierReponseService
             }
 
             $this->audit->enregistrer('courrier.signature', $courrier, $utilisateur, [
-                'description' => "Signature du courrier {$courrier->numero_accuse_reception}",
+                'description' => "Signature du courrier {$courrier->numeroSuivi()}",
                 'source_autorite' => $sourceAutorite,
                 'numero_depart' => $courrier->numero_depart,
             ]);
