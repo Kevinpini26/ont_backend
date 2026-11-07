@@ -46,11 +46,16 @@ RUN composer dump-autoload --optimize --no-dev --no-scripts
 
 FROM php:8.3-fpm-alpine AS final
 
+# Lot 6 : outils de lecture des scans (OCR), DÉSACTIVÉE par défaut (OCR_ACTIVE=false). pdftoppm (poppler-utils)
+# rastérise chaque page, tesseract la lit en français. Voir docs/numerisation-courrier.md.
 RUN apk add --no-cache \
         postgresql-client \
         libpq \
         icu-libs \
         libzip \
+        poppler-utils \
+        tesseract-ocr \
+        tesseract-ocr-data-fra \
     && apk add --no-cache --virtual .build-deps \
         postgresql-dev \
         icu-dev \
