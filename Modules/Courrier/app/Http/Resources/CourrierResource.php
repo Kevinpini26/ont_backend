@@ -7,6 +7,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
 use Modules\Courrier\Enums\CourrierStatut;
 use Modules\Courrier\Models\Courrier;
+use Modules\Courrier\Models\Dossier;
 use Modules\Courrier\Services\CycleDecisionnelService;
 use Modules\Courrier\Support\ClasseurEnRetard;
 use Modules\Kernel\Enums\Poste;
@@ -240,6 +241,18 @@ class CourrierResource extends JsonResource
                 ];
             }),
             'annule' => $this->annule_at !== null,
+            // Lot 6 : rubrique du plan de classement, fin de conservation et sort final prévu (dossier).
+            'conservation' => $this->dossier_id === null ? null : (function (): ?array {
+                $dossier = Dossier::query()->with('rubriqueClassement')->find($this->dossier_id);
+                $rubrique = $dossier?->rubriqueClassement;
+
+                return $rubrique === null ? null : [
+                    'rubrique' => $rubrique->intitule(),
+                    'fin_conservation_le' => $dossier->finConservationLe()?->toDateString(),
+                    'sort_final' => $rubrique->sort_final,
+                    'sort_final_execute_at' => $dossier->sort_final_execute_at,
+                ];
+            })(),
             'non_recevable' => $this->non_recevable_at !== null,
             'classeur_en_retard' => $this->statut === CourrierStatut::EN_ATTENTE_CLASSEUR && ClasseurEnRetard::estEnRetard($this->resource),
             'non_recevable_at' => $this->non_recevable_at,

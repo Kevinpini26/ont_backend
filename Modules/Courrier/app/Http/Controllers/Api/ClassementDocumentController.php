@@ -28,7 +28,7 @@ class ClassementDocumentController extends Controller
 
     public function classer(Request $request, DispatchCourrier $dispatch)
     {
-        $data = $request->validate(['cote' => ['nullable', 'string', 'max:255'], 'emplacement' => ['required', 'string', 'max:255'], 'observation' => ['nullable', 'string', 'max:5000']]);
+        $data = $request->validate(['rubrique_classement_id' => ['nullable', 'integer', 'exists:plan_classement_rubriques,id'], 'cote' => ['nullable', 'string', 'max:255'], 'emplacement' => ['required', 'string', 'max:255'], 'observation' => ['nullable', 'string', 'max:5000']]);
 
         return response()->json(['data' => (new ClassementDocumentResource($this->service->classer($dispatch, $request->user(), $data)))->resolve($request)]);
     }

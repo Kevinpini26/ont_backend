@@ -2087,6 +2087,82 @@ paths:
       responses:
         '200': { description: OK }
         '401': { $ref: '#/components/responses/NonAuthentifie' }
+  /plan-classement:
+    get:
+      tags: [Courrier]
+      summary: "Rubriques du plan de classement (vide par défaut)"
+      x-controleur: "PlanClassementController@index"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+    post:
+      tags: [Courrier]
+      summary: "Créer une rubrique (administrateur ; durée et sort final provisoires)"
+      x-controleur: "PlanClassementController@store"
+      responses:
+        '201': { description: Créée }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Réservé à l'administrateur }
+  /plan-classement/{rubrique}:
+    put:
+      tags: [Courrier]
+      summary: "Modifier une rubrique (administrateur, audité)"
+      x-controleur: "PlanClassementController@update"
+      parameters:
+        - { name: rubrique, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Accès refusé }
+  /plan-classement/fin-conservation:
+    get:
+      tags: [Courrier]
+      summary: "Dossiers arrivés en fin de conservation (SEC2, autorité DG)"
+      x-controleur: "PlanClassementController@finConservation"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Accès refusé }
+  /plan-classement/bordereaux:
+    get:
+      tags: [Courrier]
+      summary: "Bordereaux d'élimination et de versement"
+      x-controleur: "PlanClassementController@bordereaux"
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Accès refusé }
+    post:
+      tags: [Courrier]
+      summary: "Proposer un bordereau (SEC2) ; rien n'est exécuté avant validation"
+      x-controleur: "PlanClassementController@proposer"
+      responses:
+        '201': { description: Proposé }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Réservé à SEC2 }
+        '422': { description: Dossier non éligible }
+  /plan-classement/bordereaux/{bordereau}/valider:
+    post:
+      tags: [Courrier]
+      summary: "Valider un bordereau (autorité DG, autre personne que l'auteur) ; aucune suppression"
+      x-controleur: "PlanClassementController@valider"
+      parameters:
+        - { name: bordereau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Accès refusé }
+  /plan-classement/bordereaux/{bordereau}/pdf:
+    get:
+      tags: [Courrier]
+      summary: "Bordereau d'élimination ou de versement (PDF)"
+      x-controleur: "PlanClassementController@pdf"
+      parameters:
+        - { name: bordereau, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/NonAuthentifie' }
+        '403': { description: Accès refusé }
   /documents-produits-direction/recus-direct:
     get:
       tags: [Courrier]

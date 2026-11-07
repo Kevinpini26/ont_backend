@@ -4,12 +4,15 @@ namespace Modules\Courrier\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Modules\Courrier\Contracts\SequenceGenerator;
 use Modules\Courrier\Enums\ClassementDocumentStatut;
 use Modules\Courrier\Enums\DispatchStatut;
 use Modules\Courrier\Enums\DispatchTypeDestination;
 use Modules\Courrier\Models\ClassementDocument;
 use Modules\Courrier\Models\Courrier;
 use Modules\Courrier\Models\DispatchCourrier;
+use Modules\Courrier\Models\Dossier;
+use Modules\Courrier\Models\PlanClassementRubrique;
 use Modules\Kernel\Contracts\AuditLogger;
 use Modules\Kernel\Enums\Poste;
 use Modules\Kernel\Models\User;
@@ -17,7 +20,7 @@ use Modules\Kernel\Support\DelegationResolver;
 
 class ClassementDocumentService
 {
-    public function __construct(private readonly DispatchCourrierService $dispatchs, private readonly AuditLogger $audit, private readonly DelegationResolver $delegations) {}
+    public function __construct(private readonly DispatchCourrierService $dispatchs, private readonly AuditLogger $audit, private readonly DelegationResolver $delegations, private readonly SequenceGenerator $sequences) {}
 
     public function classer(DispatchCourrier $dispatch, User $sec2, array $data): ClassementDocument
     {
@@ -31,7 +34,19 @@ class ClassementDocumentService
             }
             if (ClassementDocument::query()->where('courrier_id', $dispatch->courrier_id)->exists()) {
                 throw ValidationException::withMessages(['courrier' => 'Ce document possède déjà un classement institutionnel.']);
-            } $classement = ClassementDocument::query()->create(['courrier_id' => $dispatch->courrier_id, 'dossier_id' => $dispatch->dossier_id, 'dispatch_courrier_id' => $dispatch->id, 'statut' => ClassementDocumentStatut::CLASSE, 'cote' => $data['cote'] ?? null, 'emplacement' => $data['emplacement'], 'observation' => $data['observation'] ?? null, 'classe_par_id' => $sec2->id, 'classe_at' => now()]);
+            }
+            // Lot 6 : sans cote saisie, la cote se calcule depuis la rubrique du plan de classement
+            // (les cotes déjà attribuées ne changent jamais). La rubrique est rattachée au dossier.
+            if (! empty($data['rubrique_classement_id'])) {
+                $rubrique = PlanClassementRubrique::query()->findOrFail($data['rubrique_classement_id']);
+                if (blank($data['cote'] ?? null)) {
+                    $data['cote'] = sprintf('%s-%d-%04d', $rubrique->code, now()->year, $this->sequences->suivant('cote_rubrique_'.$rubrique->id, now()->year));
+                }
+                if ($dispatch->dossier_id !== null) {
+                    Dossier::query()->whereKey($dispatch->dossier_id)->whereNull('rubrique_classement_id')->update(['rubrique_classement_id' => $rubrique->id]);
+                }
+            }
+            $classement = ClassementDocument::query()->create(['courrier_id' => $dispatch->courrier_id, 'dossier_id' => $dispatch->dossier_id, 'dispatch_courrier_id' => $dispatch->id, 'statut' => ClassementDocumentStatut::CLASSE, 'cote' => $data['cote'] ?? null, 'emplacement' => $data['emplacement'], 'observation' => $data['observation'] ?? null, 'classe_par_id' => $sec2->id, 'classe_at' => now()]);
             Courrier::withoutGlobalScopes()->whereKey($dispatch->courrier_id)->update(['cote_classement' => $classement->cote, 'emplacement_physique' => $classement->emplacement]);
             $this->dispatchs->executerClassement($dispatch, $sec2, $classement);
             $this->audit->enregistrer('classement_document.classe', $classement, $sec2, $data);

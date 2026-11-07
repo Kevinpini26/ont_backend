@@ -874,3 +874,19 @@ et toute nature non autorisée (donc tout nouveau type tant qu'il n'est pas auto
 - **Quels types de documents peuvent circuler directement entre directions ?** Provisoire : seulement la
   « note de service ». Natures proposées : note de service, note interne, compte rendu, engagement financier,
   contrat ou convention, autre. Liste à confirmer.
+
+## Lot 6 — plan de classement et conservation
+
+Le référentiel (rubriques, durée d'utilité administrative, sort final : conserver, verser aux Archives
+nationales, détruire) se règle par l'administrateur. Il est **vide par défaut** : aucune durée n'a été
+inventée. La cote se calcule à partir de la rubrique choisie au classement (`CODE-ANNÉE-SÉQUENCE`) ; les cotes
+déjà attribuées ne changent pas. Aucune destruction automatique : SEC2 propose un bordereau d'élimination ou
+de versement, l'autorité DG le valide (jamais son auteur), et rien n'est supprimé de l'application.
+
+- **Plan de classement** : quelles rubriques, avec quels codes ?
+- **Durées de conservation** : quelle durée d'utilité administrative pour chaque rubrique ?
+- **Sort final** : pour chaque rubrique, conserver, verser aux Archives nationales ou détruire ?
+- **Point de départ** : provisoire, la durée court depuis l'archivage du dossier. Est-ce la bonne date
+  (ou la date de clôture, ou la date du dernier document) ?
+- **Validation** : provisoire, SEC2 propose et l'autorité DG valide. Faut-il un autre signataire
+  (par exemple les Archives nationales pour un versement) ?

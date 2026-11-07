@@ -16,6 +16,7 @@ use Modules\Courrier\Http\Controllers\Api\DossierController;
 use Modules\Courrier\Http\Controllers\Api\EmpruntOriginalController;
 use Modules\Courrier\Http\Controllers\Api\InstructionCourrierDgController;
 use Modules\Courrier\Http\Controllers\Api\MissionDocumentaireController;
+use Modules\Courrier\Http\Controllers\Api\PlanClassementController;
 use Modules\Courrier\Http\Controllers\Api\RegistreCourrierController;
 use Modules\Courrier\Http\Controllers\Api\TraitementDirectionController;
 
@@ -84,6 +85,15 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/documents-produits-direction/{document}/accuser-reception-direct', [DocumentProduitDirectionController::class, 'accuserReceptionDirect']);
     Route::get('/classements-documents', [ClassementDocumentController::class, 'index']);
     Route::post('/dispatchs/{dispatch}/classer', [ClassementDocumentController::class, 'classer']);
+    // Lot 6 : plan de classement et conservation.
+    Route::get('/plan-classement', [PlanClassementController::class, 'index']);
+    Route::post('/plan-classement', [PlanClassementController::class, 'store']);
+    Route::get('/plan-classement/fin-conservation', [PlanClassementController::class, 'finConservation']);
+    Route::get('/plan-classement/bordereaux', [PlanClassementController::class, 'bordereaux']);
+    Route::post('/plan-classement/bordereaux', [PlanClassementController::class, 'proposer']);
+    Route::post('/plan-classement/bordereaux/{bordereau}/valider', [PlanClassementController::class, 'valider']);
+    Route::get('/plan-classement/bordereaux/{bordereau}/pdf', [PlanClassementController::class, 'pdf']);
+    Route::put('/plan-classement/{rubrique}', [PlanClassementController::class, 'update']);
     Route::post('/classements-documents/{classement}/archiver', [ClassementDocumentController::class, 'archiver']);
     Route::post('/classements-documents/{classement}/corriger', [ClassementDocumentController::class, 'corriger']);
     Route::post('/dossiers/{dossier}/decision-archivage', [ArchivageDossierController::class, 'decider']);
